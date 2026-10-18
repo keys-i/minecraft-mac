@@ -23,7 +23,7 @@ CrossOver work is documented in [docs/LEGACY.md](LEGACY.md).
 | GameInput preparation | Verify/extract known MSI files and prepare registry entries | `standalone-gameinput.py` |
 | Windows compatibility | WineGDK with local GDK, Store, privilege, and Realms patches | `bootstrap-sources.py`, `patches/standalone-wine-*.patch` |
 | Graphics | Pinned upstream DXMT and optional verified display-lifetime bridge | `scripts/build-standalone-graphics.sh` |
-| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `scripts/build-launcher.sh`, `package-launcher.py`, `build-dmg.py` |
+| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `package.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `export-source.py`, `SOURCE-SHA256.txt` |
 
 The [stability notes](STABILITY.md) describe token renewal, device/title

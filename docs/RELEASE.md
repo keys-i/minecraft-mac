@@ -108,12 +108,12 @@ preparing the current helper example, the core checks are:
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 bootstrap-sources.py --check
 python3 export-source.py --check
-./scripts/build-launcher.sh
+python3 package.py launcher
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 bash tests/run-xuser-tests.sh
 ```
 
-`package-launcher.py` verifies the final bundle signature and records SHA-256
-hashes of bundled resource files. `build-dmg.py` verifies the image after creating
+`package.py app` verifies the final bundle signature and records SHA-256
+hashes of bundled resource files. `package.py dmg` verifies the image after creating
 it. These integrity checks do not replace notarization or gameplay testing.

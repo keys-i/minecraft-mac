@@ -1,6 +1,8 @@
 """Verify the advertised OS target includes every bundled native component."""
 import importlib.util
+import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -9,12 +11,56 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('packager', Path(__file__).resolve().parents[1] / 'package-launcher.py')
+spec = importlib.util.spec_from_file_location('packager', Path(__file__).resolve().parents[1] / 'package.py')
 packager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_dmg_stages_only_the_app_and_removes_temporary_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / 'Example.app'
+            (app / 'Contents').mkdir(parents=True)
+            (app / 'Contents/Info.plist').write_bytes(b'fixture')
+            (root / 'private.txt').write_text('must not be packaged')
+            output = root / 'result.dmg'
+            stages = []
+
+            def native(command, **kwargs):
+                if command[:2] == ['hdiutil', 'create']:
+                    stage = Path(command[command.index('-srcfolder') + 1])
+                    stages.append(stage)
+                    self.assertEqual({entry.name for entry in stage.iterdir()}, {'Example.app', 'Applications'})
+                    self.assertEqual((stage / 'Applications').readlink(), Path('/Applications'))
+                    self.assertEqual((stage / 'Example.app/Contents/Info.plist').read_bytes(), b'fixture')
+                    output.write_bytes(b'disk image')
+
+            with patch.object(packager.subprocess, 'run', side_effect=native) as run, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                packager.main(['dmg', '--app', str(app), '--output', str(output)])
+            self.assertEqual(len(stages), 1)
+            self.assertFalse(stages[0].parent.exists())
+            self.assertEqual(run.call_args.args[0], ['hdiutil', 'verify', str(output)])
+
+    def test_dmg_rejects_missing_app_and_existing_output_before_native_tools(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / 'Example.app'
+            output = root / 'existing.dmg'
+            output.write_bytes(b'keep existing image')
+            for exists in (False, True):
+                with self.subTest(app_exists=exists):
+                    if exists:
+                        (app / 'Contents').mkdir(parents=True)
+                        (app / 'Contents/Info.plist').write_bytes(b'fixture')
+                    with patch.object(packager.subprocess, 'run') as run, \
+                            contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                        packager.main(['dmg', '--app', str(app), '--output', str(output)])
+                    self.assertEqual(error.exception.code, 2)
+                    run.assert_not_called()
+                    self.assertEqual(output.read_bytes(), b'keep existing image')
+
     def test_graphics_links_stay_inside_a_movable_bundle(self):
         for bridge in (None, {'version': 'v0.80'}):
             with self.subTest(bridge=bridge), tempfile.TemporaryDirectory() as temporary:

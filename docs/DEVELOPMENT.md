@@ -68,8 +68,8 @@ STANDALONE_JOBS=3 ./scripts/build-standalone-wine.sh
 python3 standalone-setup.py --build-helper --jobs 4
 python3 -m venv build/packaging-env
 build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
-python3 package-launcher.py
-python3 build-dmg.py
+python3 package.py app
+python3 package.py dmg
 ```
 
 Use a Python 3.12+ `python3` when creating `build/packaging-env`. If the venv
@@ -103,7 +103,7 @@ retains and verifies its provenance; see [stability notes](STABILITY.md).
 
 ## Iterate without losing a working build
 
-`./scripts/build-launcher.sh` creates `build/Bedrock for Mac.app`, a development front end
+`python3 package.py launcher` creates `build/Bedrock for Mac.app`, a development front end
 that points at this checkout and uses `/usr/bin/python3`. It is useful for Swift
 and worker changes after preparing the local runtime, but is not a portable app.
 `python3 launcher/setup.py --status` inspects its installation without sign-in.
@@ -111,8 +111,8 @@ and worker changes after preparing the local runtime, but is not a portable app.
 The packager refuses to overwrite an existing output. Use a new output name:
 
 ```sh
-python3 package-launcher.py --output 'build/iteration-2/Bedrock for Mac.app'
-python3 build-dmg.py --app 'build/iteration-2/Bedrock for Mac.app' \
+python3 package.py app --output 'build/iteration-2/Bedrock for Mac.app'
+python3 package.py dmg --app 'build/iteration-2/Bedrock for Mac.app' \
   --output 'build/Bedrock for Mac-iteration-2.dmg'
 ```
 

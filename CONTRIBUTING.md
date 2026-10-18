@@ -32,7 +32,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 export-source.py --check
 shasum -a 256 -c SOURCE-SHA256.txt
 python3 bootstrap-sources.py --check  # after fetching the pinned sources
-./scripts/build-launcher.sh                 # macOS with Command Line Tools
+python3 package.py launcher                 # macOS with Command Line Tools
 ```
 
 Use [the testing guide](docs/TESTING.md) for which checks a change needs, exact

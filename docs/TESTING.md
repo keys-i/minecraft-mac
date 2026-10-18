@@ -28,7 +28,7 @@ shasum -a 256 -c SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 81 tests. Coverage includes source isolation,
+The Python suite currently has 83 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -49,7 +49,7 @@ exported source file changed, first regenerate `SOURCE-SHA256.txt` following
 Compile the interface on a Mac with Command Line Tools:
 
 ```sh
-./scripts/build-launcher.sh
+python3 package.py launcher
 ```
 
 Use local fixture status streams to inspect first-run, progress, cancellation,
@@ -101,14 +101,14 @@ Microsoft. Never run those under the assumption that all probes are offline.
 
 ## Verify a packaged artifact
 
-`package-launcher.py` verifies the final bundle signature and records hashes of
+`package.py app` verifies the final bundle signature and records hashes of
 regular resource files in `Contents/Resources/payload-sha256.json`.
-`build-dmg.py` verifies the DMG. To check an existing default artifact:
+`package.py dmg` verifies the DMG. To check an existing default artifact:
 
 ```sh
 codesign --verify --deep --strict 'build/packaged/Bedrock for Mac.app'
-hdiutil verify 'build/Bedrock for Mac.dmg'
-shasum -a 256 'build/Bedrock for Mac.dmg'
+hdiutil verify 'build/Minecraft-Mac-preview.dmg'
+shasum -a 256 'build/Minecraft-Mac-preview.dmg'
 python3 - <<'PY'
 from pathlib import Path
 import hashlib, json, plistlib

@@ -67,8 +67,8 @@ python3 bootstrap-sources.py
 python3 standalone-setup.py --build-helper
 python3 -m venv build/packaging-env
 build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
-python3 package-launcher.py
-python3 build-dmg.py --output 'build/Minecraft-Mac-preview.dmg'
+python3 package.py app
+python3 package.py dmg --output 'build/Minecraft-Mac-preview.dmg'
 ```
 
 The output is `build/Minecraft-Mac-preview.dmg`. The app includes its Python worker,
@@ -88,7 +88,7 @@ running copy; pass that path to `build-dmg.py --app` and choose a new `--output`
 For tool installation, first-build checks, safe rebuilds, and build failures,
 follow the full [development guide](docs/DEVELOPMENT.md).
 
-For a development launcher tied to your checkout, use `./scripts/build-launcher.sh`.
+For a development launcher tied to your checkout, use `python3 package.py launcher`.
 For command-line setup, probes, and download details, see
 [STANDALONE-SETUP.md](docs/SETUP.md).
 
