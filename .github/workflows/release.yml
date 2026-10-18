@@ -9,7 +9,10 @@ concurrency:
   group: source-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
   archive:
+    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -17,13 +20,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
-      - name: Verify source
-        run: |
-          python -m unittest discover -s tests -p 'test_*.py'
-          python minecraft.py source check
-          sha256sum --check --quiet tools/SOURCE-SHA256.txt
       - name: Package reviewed source
         run: |
+          python minecraft.py source check
           mkdir -p outputs
           python minecraft.py source export outputs/minecraft-mac
           tar -C outputs -czf outputs/minecraft-mac-source.tar.gz minecraft-mac

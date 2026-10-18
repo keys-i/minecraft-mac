@@ -136,11 +136,17 @@ corresponding source for the exact components distributed.
 requests and manual dispatch. It checks the supported Python source versions,
 the native launcher and the pinned account helper without using a real account
 
-[Source release](../.github/workflows/release.yml) verifies the source tests,
-allowlist and inventory before packaging an archive and SHA-256 checksums.
+[Source release](../.github/workflows/release.yml) calls the same complete checks
+at the release commit before packaging an archive and SHA-256 checksums.
 Running it manually on `main` creates a downloadable Actions artifact without
 creating a release. Pushing a reviewed `v*` tag publishes the same files as a
 GitHub prerelease; it does not build or publish the DMG
+
+[Security](../.github/workflows/security.yml) runs CodeQL for Python and a real
+Swift launcher build on pushes, pull requests and a weekly schedule. Analysis
+has only repository-read and security-event upload permissions; it does not
+fetch the game or access a Microsoft account. CodeQL does not cover the Rust
+helper or patched Wine/DXMT sources
 
 [Dependabot](../.github/dependabot.yml) checks GitHub Actions and Python
 packaging dependencies weekly. Review each update and regenerate

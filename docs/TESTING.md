@@ -165,7 +165,11 @@ toolchain are pinned. CI does not package Wine, run Minecraft, access Keychain,
 or certify that the full app supports macOS 15. Confirm checks belong to the
 exact PR commit before merging.
 
-The [source-release workflow](../.github/workflows/release.yml) runs source
-checks again before creating the allowlisted archive. A manual run exercises
+The [security workflow](../.github/workflows/security.yml) analyses Python and
+Swift with CodeQL, including a real native launcher build. It runs on pushes,
+pull requests and weekly; it does not analyse Rust or upstream native sources
+
+The [source-release workflow](../.github/workflows/release.yml) reuses all source
+checks at the same commit before creating the allowlisted archive. A manual run exercises
 packaging without a GitHub release; a `v*` tag additionally publishes a source
 prerelease. Neither path builds or publishes a runtime DMG

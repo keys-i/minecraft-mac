@@ -34,6 +34,7 @@ ALLOWED_FILES = (
     'tools/requirements.txt',
     '.github/workflows/checks.yml',
     '.github/workflows/release.yml',
+    '.github/workflows/security.yml',
     '.github/dependabot.yml',
     '.github/ISSUE_TEMPLATE/bug_report.yml',
     'docs/RELEASE.md',
