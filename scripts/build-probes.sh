@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT/build/winegdk"
 export PATH="$PWD/toolbin:/opt/homebrew/opt/llvm/bin:/usr/bin:/bin"
 make -j6 include/d3d11.h include/dxgi.h include/dxgitype.h include/dxgiformat.h \
@@ -9,7 +9,7 @@ make -j6 include/d3d11.h include/dxgi.h include/dxgitype.h include/dxgiformat.h 
 for PROBE in graphics-probe runtime-auth-probe store-callback-probe; do
   ./tools/winegcc/winegcc -o "$ROOT/runtime/$PROBE.exe" --wine-objdir . \
     --cc-cmd="/opt/homebrew/opt/llvm/bin/clang -D__STDC__" -b x86_64-windows \
-    "$ROOT/$PROBE.c" -Iinclude -I"$ROOT/sources/winegdk/include" \
+    "$ROOT/probes/$PROBE.c" -Iinclude -I"$ROOT/sources/winegdk/include" \
     -I"$ROOT/sources/winegdk/include/msvcrt" -D__WINESRC__ -nostdlib \
     -Wl,-entry:mainCRTStartup dlls/kernel32/x86_64-windows/libkernel32.a \
     dlls/ucrtbase/x86_64-windows/libucrtbase.a --no-default-config

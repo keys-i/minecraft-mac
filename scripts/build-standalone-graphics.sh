@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stage the official, open-source DXMT release. No CrossOver files are used.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 export LC_ALL=en_US.UTF-8
 exec /usr/bin/python3 - "$ROOT" "$@" <<'PY'
 import argparse

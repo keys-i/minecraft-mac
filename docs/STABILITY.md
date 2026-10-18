@@ -19,7 +19,7 @@ structured errors, and one Keychain read per process. The additional fixes cover
 
 ## Graphics and packaging
 
-Follow [the graphics notes](../standalone-graphics-notes.md) to build, probe,
+Follow [the graphics notes](GRAPHICS.md) to build, probe,
 and explicitly stage the optional bridge into an idle runtime. The default
 [development build](DEVELOPMENT.md) still stages upstream DXMT. The memory fix
 is not enabled merely by merging source or rebuilding the Swift interface.

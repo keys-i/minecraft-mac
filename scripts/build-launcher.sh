@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build a local native front end; no developer account or Xcode app required.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 APP="$ROOT/build/Bedrock for Mac.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ROOT/build/swift-module-cache"
 xcrun swiftc -parse-as-library -O -target arm64-apple-macos15.0 -module-cache-path "$ROOT/build/swift-module-cache" \

@@ -4,7 +4,7 @@ Use local development for app testing. Keep game downloads, worlds, credentials,
 logs, and compiled dependencies out of commits. The source exporter uses an
 explicit allowlist; add each new source file to it.
 
-Read [CONTEXT.md](CONTEXT.md) for the architecture and [AGENTS.md](AGENTS.md) for
+Read [CONTEXT.md](docs/CONTEXT.md) for the architecture and [AGENTS.md](AGENTS.md) for
 repository conventions. The [development guide](docs/DEVELOPMENT.md) documents
 the complete local build. Use a descriptive branch; do not use `Codex/*` or
 `codex/*` branch names.
@@ -32,7 +32,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 export-source.py --check
 shasum -a 256 -c SOURCE-SHA256.txt
 python3 bootstrap-sources.py --check  # after fetching the pinned sources
-./build-launcher.sh                 # macOS with Command Line Tools
+./scripts/build-launcher.sh                 # macOS with Command Line Tools
 ```
 
 Use [the testing guide](docs/TESTING.md) for which checks a change needs, exact

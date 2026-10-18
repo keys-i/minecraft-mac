@@ -8,8 +8,8 @@ select **Sign in now**.
 
 The repository is GPLv3 source with separately licensed upstream components.
 It contains no Minecraft payload or Microsoft account. Current release status
-and verified behavior live in [docs/RELEASE.md](docs/RELEASE.md). Original
-CrossOver work is documented in [docs/LEGACY.md](docs/LEGACY.md).
+and verified behavior live in [docs/RELEASE.md](RELEASE.md). Original
+CrossOver work is documented in [docs/LEGACY.md](LEGACY.md).
 
 ## Components
 
@@ -22,11 +22,11 @@ CrossOver work is documented in [docs/LEGACY.md](docs/LEGACY.md).
 | Acquisition tools | Helper compilation and verified Microsoft threading component | `standalone-setup.py` |
 | GameInput preparation | Verify/extract known MSI files and prepare registry entries | `standalone-gameinput.py` |
 | Windows compatibility | WineGDK with local GDK, Store, privilege, and Realms patches | `bootstrap-sources.py`, `patches/standalone-wine-*.patch` |
-| Graphics | Pinned upstream DXMT and optional verified display-lifetime bridge | `build-standalone-graphics.sh` |
-| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `build-launcher.sh`, `package-launcher.py`, `build-dmg.py` |
+| Graphics | Pinned upstream DXMT and optional verified display-lifetime bridge | `scripts/build-standalone-graphics.sh` |
+| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `scripts/build-launcher.sh`, `package-launcher.py`, `build-dmg.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `export-source.py`, `SOURCE-SHA256.txt` |
 
-The [stability notes](docs/STABILITY.md) describe token renewal, device/title
+The [stability notes](STABILITY.md) describe token renewal, device/title
 authentication, recorded dead-socket recovery, and the optional graphics bridge.
 The bridge's source provenance is included in packaged resources, with library
 hashes recorded again after ad-hoc signing.
@@ -103,10 +103,10 @@ Wine and DXMT are x86-64 and require Rosetta; the native launcher is arm64.
 
 Account and license traffic uses verified HTTPS. Game bytes use a separate
 client without account headers/cookies; it currently permits the two catalog
-HTTP CDN hosts documented in [STANDALONE-SETUP.md](STANDALONE-SETUP.md).
+HTTP CDN hosts documented in [STANDALONE-SETUP.md](SETUP.md).
 Some unencrypted package sections lack complete integrity authentication. This
 is an unresolved release gate, not a claim that host allowlisting authenticates
-HTTP downloads. See [SECURITY.md](SECURITY.md).
+HTTP downloads. See [SECURITY.md](../SECURITY.md).
 
 App resource checksums, a valid ad-hoc bundle signature, source checksums, and
 notarization serve different purposes. None substitutes for game-package
@@ -115,11 +115,11 @@ rebuilding the helper can require new Keychain authorization.
 
 ## Where to make changes
 
-- User journey or error copy: launcher files and [user guide](docs/USER_GUIDE.md).
+- User journey or error copy: launcher files and [user guide](USER_GUIDE.md).
 - Account/download behavior: helper source plus source-level tests; preserve the
   one-helper lifecycle covered in `tests/test_onboarding.py`.
 - Wine/Xodus fixes: tracked patches and bootstrap/build configuration, not just
   edits in ignored `sources/` or `build/` checkouts.
 - New public files: explicit source-export allowlist and regenerated inventory.
-- Build, packaging, or supported-version changes: [development guide](docs/DEVELOPMENT.md)
-  and dated [release evidence](docs/RELEASE.md).
+- Build, packaging, or supported-version changes: [development guide](DEVELOPMENT.md)
+  and dated [release evidence](RELEASE.md).

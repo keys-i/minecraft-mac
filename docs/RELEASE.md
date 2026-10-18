@@ -108,7 +108,7 @@ preparing the current helper example, the core checks are:
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 bootstrap-sources.py --check
 python3 export-source.py --check
-./build-launcher.sh
+./scripts/build-launcher.sh
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 bash tests/run-xuser-tests.sh

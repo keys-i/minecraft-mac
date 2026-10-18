@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD="$ROOT/build/winegdk"
 RUST_TOOLCHAIN=$(rustup run 1.98.0 rustc --print sysroot)
 SDK=$(xcrun --show-sdk-path)

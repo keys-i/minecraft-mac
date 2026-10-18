@@ -21,7 +21,7 @@ release work.
 | --- | --- |
 | Install, sign in, play, back up worlds, or troubleshoot | [User guide](docs/USER_GUIDE.md) |
 | Build or change the app locally | [Development guide](docs/DEVELOPMENT.md) |
-| Understand components, paths, and account/process ownership | [Project context](CONTEXT.md) |
+| Understand components, paths, and account/process ownership | [Project context](docs/CONTEXT.md) |
 | Contribute a fix or run checks | [Contributing](CONTRIBUTING.md) and [testing](docs/TESTING.md) |
 | Work on this repository with a coding agent | [Agent guidance](AGENTS.md) |
 | Review release readiness or export source | [Release status](docs/RELEASE.md) and [publishing](docs/PUBLISHING.md) |
@@ -62,8 +62,8 @@ expect Homebrew at `/opt/homebrew`. Python **3.12+** is required for packaging.
 git clone https://github.com/keys-i/minecraft-mac.git
 cd minecraft-mac
 python3 bootstrap-sources.py
-./build-standalone-wine.sh
-./build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
+./scripts/build-standalone-wine.sh
+./scripts/build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
 python3 standalone-setup.py --build-helper
 python3 -m venv build/packaging-env
 build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
@@ -88,9 +88,9 @@ running copy; pass that path to `build-dmg.py --app` and choose a new `--output`
 For tool installation, first-build checks, safe rebuilds, and build failures,
 follow the full [development guide](docs/DEVELOPMENT.md).
 
-For a development launcher tied to your checkout, use `./build-launcher.sh`.
+For a development launcher tied to your checkout, use `./scripts/build-launcher.sh`.
 For command-line setup, probes, and download details, see
-[STANDALONE-SETUP.md](STANDALONE-SETUP.md).
+[STANDALONE-SETUP.md](docs/SETUP.md).
 
 ## Help
 

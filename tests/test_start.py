@@ -135,9 +135,20 @@ class StartTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1]
         with patch.object(start, 'ROOT', source):
             exporter = start.module('export-source')
-        for name in ('Start.command', 'start.py', 'install-build-tools.sh',
+        for name in ('Start.command', 'start.py', 'scripts/install-build-tools.sh',
                      'tests/test_start.py', 'patches/standalone-wine-xuser-z-device-auth.patch'):
             self.assertIn(name, exporter.ALLOWED_FILES)
+
+    def test_setup_inputs_exist_in_the_organised_source_checkout(self):
+        source = Path(__file__).resolve().parents[1]
+        with patch.object(start, 'ROOT', source), patch.object(start, 'run'), \
+                patch.object(start, 'module') as bootstrap, patch.object(start, 'Steps') as steps:
+            bootstrap.return_value.PROJECTS = {}
+            start.setup(2, 'CA')
+        self.assertTrue(steps.return_value.step.call_args_list)
+        for call in steps.return_value.step.call_args_list:
+            for name in call.args[3]:
+                self.assertTrue((source / name).is_file(), name)
 
     def test_fresh_homebrew_rustup_is_found_in_its_keg_only_path(self):
         source = Path(__file__).resolve().parents[1]
@@ -152,7 +163,7 @@ chmod +x "$(dirname "$0")/../opt/rustup/bin/rustup"
 ''')
         brew.chmod(0o755)
         script = self.root / 'tools.sh'
-        script.write_text((source / 'install-build-tools.sh').read_text()
+        script.write_text((source / 'scripts/install-build-tools.sh').read_text()
                           .replace('/opt/homebrew', str(brew_root))
                           .replace('/usr/bin/arch', '/usr/bin/true'))
         result = subprocess.run(['/bin/bash', str(script)],

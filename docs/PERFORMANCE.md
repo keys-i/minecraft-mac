@@ -44,7 +44,7 @@ produce the results above
 The package retains the verified display/ColorSync lifetime correction and
 IPv6 adapter index correction. The display-query probe previously measured
 784,384 retained bytes upstream and 16,384 bytes with the correction after
-2,000 queries; see [the graphics evidence](../standalone-graphics-notes.md)
+2,000 queries; see [the graphics evidence](GRAPHICS.md)
 
 Menu window checks observed 20 responses over 45 seconds with a maximum
 response time of 13 ms after restarting the earlier blocked session. This

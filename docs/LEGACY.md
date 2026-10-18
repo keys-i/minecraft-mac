@@ -45,7 +45,7 @@ Once `/tmp/xodus.sock` exists and the helper reports that preparation finished:
 
 Stop the helper with Ctrl-C after closing the game. Do not run multiple account helpers at once.
 
-`build-runtime.sh`, `stage-runtime.py`, `build-helper.sh`, and `build-probes.sh` rebuild the local components from the prepared sources. Exit the game and helper before rebuilding. A changed helper binary may require macOS to authorize Keychain access again.
+`scripts/build-runtime.sh`, `stage-runtime.py`, `scripts/build-helper.sh`, and `scripts/build-probes.sh` rebuild the local components from the prepared sources. Exit the game and helper before rebuilding. A changed helper binary may require macOS to authorize Keychain access again.
 
 The bottle lives under `bottles/Bedrock-Mac`; a symlink in the standard CrossOver Bottles directory makes it visible in CrossOver. Graphics is set to D3DMetal. The server files and worlds in the parent Bedrock directory are separate.
 
@@ -65,7 +65,7 @@ After staging the runtime, register the classes and install the bundled input co
 
 The MSI path above is for this Mac's existing Wine drive mapping. For another checkout, use that bottle's Windows path to the same bundled installer. Restart Minecraft after installation.
 
-`store-callback-probe.c` verifies that both thread-pool and manually dispatched completion queues receive exactly one callback, report the expected error, and leave the license output untouched. Both cases pass, including with the staged `wintypes` module.
+`probes/store-callback-probe.c` verifies that both thread-pool and manually dispatched completion queues receive exactly one callback, report the expected error, and leave the license output untouched. Both cases pass, including with the staged `wintypes` module.
 
 ## Sources and local changes
 

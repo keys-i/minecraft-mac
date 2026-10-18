@@ -2,7 +2,7 @@
 
 ## Start here
 
-Read [CONTEXT.md](CONTEXT.md) for the architecture and vocabulary, then the guide
+Read [CONTEXT.md](docs/CONTEXT.md) for the architecture and vocabulary, then the guide
 for the area you are changing. [README.md](README.md) is the documentation index.
 The current product is an open-source preview with a locally tested native Mac
 launcher; it is not a released, notarized consumer app.
@@ -25,7 +25,7 @@ launcher; it is not a released, notarized consumer app.
 
 Packaged app data lives in `~/Library/Application Support/Bedrock for Mac/`.
 Source development uses this checkout. Never confuse either with the older
-`bottles/Bedrock-Mac` CrossOver prefix. See [the data map](CONTEXT.md#data-and-process-ownership).
+`bottles/Bedrock-Mac` CrossOver prefix. See [the data map](docs/CONTEXT.md#data-and-process-ownership).
 
 - Preserve `game/`, `bottles/`, worlds, and Keychain entries. Repair by preserving
   conflicting files and giving a specific recovery path, not by resetting data.
@@ -48,7 +48,7 @@ Source development uses this checkout. Never confuse either with the older
 Author changes in tracked source files. `sources/` is generated from pinned
 upstream revisions; durable upstream fixes belong in `patches/` and the bootstrap
 configuration. `standalone-helper.rs` is copied into the Xodus example directory
-by `standalone-setup.py --build-helper`. `build-helper.sh` builds the older helper.
+by `standalone-setup.py --build-helper`. `scripts/build-helper.sh` builds the older helper.
 
 Retain upstream notices, real Microsoft ownership checks, the pinned Cargo
 lockfile, and exact download digest checks. Runtime and game payloads never go
@@ -76,7 +76,7 @@ Stage exact files, inspect the staged diff, and keep the working tree free of
 accidentally staged runtime data.
 
 Update the relevant user/developer guide with behavior changes and update
-`CONTEXT.md` when ownership, paths, interfaces, or architecture change. Keep the
+`docs/CONTEXT.md` when ownership, paths, interfaces, or architecture change. Keep the
 release evidence dated and distinguish outstanding work from completed checks.
 Do not rebuild or reinstall the live app for documentation-only changes.
 

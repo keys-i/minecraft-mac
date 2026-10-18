@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build an isolated diagnostic adapter. Staging is explicit and uses tested bytes.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT="$ROOT/build/dxmt-autorelease-shim"
 UPSTREAM="$ROOT/runtime/standalone/dxmt/x86_64-unix/winemetal.so"
 export LC_ALL=en_US.UTF-8
@@ -13,7 +13,7 @@ root, output, runtime = map(Path, sys.argv[1:])
 runtime = runtime.resolve()
 metadata = json.loads((output/'adapter-manifest.json').read_text())
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
-if digest(root/'standalone-dxmt-autorelease-shim.m') != metadata['source_sha256']:
+if digest(root/'probes/standalone-dxmt-autorelease-shim.m') != metadata['source_sha256']:
     raise SystemExit('Adapter source changed; rebuild and validate before staging')
 for filename in ('winemetal.so','winemetal-upstream.so'):
     if digest(output/filename) != metadata['files'][filename]:
@@ -70,7 +70,7 @@ shutil.copyfile(upstream, output/'winemetal-upstream.so')
 PY
 /usr/bin/clang -arch x86_64 -mmacosx-version-min=15.0 -fno-objc-arc \
   -fvisibility=hidden -O2 -Wall -Wextra -dynamiclib \
-  "$ROOT/standalone-dxmt-autorelease-shim.m" -framework Foundation \
+  "$ROOT/probes/standalone-dxmt-autorelease-shim.m" -framework Foundation \
   -Wl,-install_name,@rpath/winemetal.so -Wl,-rpath,@loader_path \
   -o "$OUTPUT/winemetal.so"
 /usr/bin/codesign --force --sign - "$OUTPUT/winemetal.so" >/dev/null 2>&1
@@ -80,7 +80,7 @@ from pathlib import Path
 root, output = map(Path,sys.argv[1:])
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 metadata = json.loads((output/'upstream-provenance.json').read_text())
-metadata.update(source_sha256=digest(root/'standalone-dxmt-autorelease-shim.m'),
+metadata.update(source_sha256=digest(root/'probes/standalone-dxmt-autorelease-shim.m'),
                 files={name:digest(output/name) for name in ('winemetal.so','winemetal-upstream.so')})
 (output/'adapter-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 PY

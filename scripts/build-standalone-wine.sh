@@ -1,7 +1,7 @@
 #!/bin/sh
 # Compile the patched WineGDK source without any CrossOver binaries.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD="$ROOT/build/standalone-wine"
 PREFIX="$ROOT/runtime/standalone/wine"
 JOBS=${STANDALONE_JOBS:-3}
@@ -128,7 +128,7 @@ manifest = {
     "required_portable_libraries": sorted(p.name for p in (prefix / "lib").glob("*.dylib")),
     "capabilities": {"win64": True, "win32": False, "macdriver": True, "coreaudio": True,
                      "gnutls": True, "freetype": True, "gstreamer": False, "vulkan": False},
-    "graphics": "Run build-standalone-graphics.sh --wine-runtime with this prefix after rebuilding Wine; validate graphics before gameplay."
+    "graphics": "Run scripts/build-standalone-graphics.sh --wine-runtime with this prefix after rebuilding Wine; validate graphics before gameplay."
 }
 (prefix / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PYMANIFEST

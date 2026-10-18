@@ -198,7 +198,8 @@ class IsolationTests(unittest.TestCase):
             (dxmt / 'x86_64-unix').mkdir(parents=True)
             (root / 'patches').mkdir()
             patch_file = root / 'patches/standalone-dxmt-memory-lifetime.patch'
-            trace = root / 'standalone-dxmt-display-trace.c'
+            trace = root / 'probes/standalone-dxmt-display-trace.c'
+            trace.parent.mkdir()
             patch_file.write_text('reviewed patch')
             trace.write_text('reviewed trace source')
             (dxmt / 'x86_64-unix/winemetal.so').write_bytes(b'upstream')

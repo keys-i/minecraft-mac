@@ -86,10 +86,10 @@ them with the checkout. It verifies the pinned base, preserved patch contents,
 and Xodus lockfile. It does not certify unrelated local edits, runtime binaries,
 or the complete Cargo dependency cache. `standalone-setup.py --build-helper`
 copies and builds the current standalone helper example with `--locked`.
-`build-helper.sh` builds the earlier CrossOver helper instead. The obsolete separate
+`scripts/build-helper.sh` builds the earlier CrossOver helper instead. The obsolete separate
 `prepare-game.rs` helper is intentionally not exported.
 
-`build-standalone-wine.sh` creates its own build copy of the prepared WineGDK tree
+`scripts/build-standalone-wine.sh` creates its own build copy of the prepared WineGDK tree
 and applies `patches/standalone-wine-dxmt-abi.patch`,
 `patches/standalone-wine-idl-list.patch`,
 `patches/standalone-wine-storage-linkage.patch`, and
@@ -100,7 +100,7 @@ include `patches/standalone-wine-xuser-z-device-auth.patch` for PS5 friend joini
 are not applied to the shared baseline checkout by the source bootstrap.
 The build also applies `patches/standalone-wine-ipv6.patch` to preserve adapter
 indices for IPv6 discovery
-`build-standalone-graphics.sh` retrieves pinned upstream DXMT binaries and notices;
+`scripts/build-standalone-graphics.sh` retrieves pinned upstream DXMT binaries and notices;
 see [the dependency provenance](../THIRD_PARTY.md#standalone-runtime-dependency-provenance).
 
 ## Release status and remaining setup

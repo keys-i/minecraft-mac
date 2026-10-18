@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 EXAMPLES="$ROOT/sources/xodus/crates/xodus-cli/examples"
 mkdir -p "$EXAMPLES/bedrock_helper_parts" "$ROOT/logs"
 cp "$ROOT/bedrock-helper.rs" "$EXAMPLES/bedrock_helper.rs"

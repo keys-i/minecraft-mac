@@ -28,7 +28,7 @@ shasum -a 256 -c SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 80 tests. Coverage includes source isolation,
+The Python suite currently has 81 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -49,13 +49,13 @@ exported source file changed, first regenerate `SOURCE-SHA256.txt` following
 Compile the interface on a Mac with Command Line Tools:
 
 ```sh
-./build-launcher.sh
+./scripts/build-launcher.sh
 ```
 
 Use local fixture status streams to inspect first-run, progress, cancellation,
 retry, error, and running-game states without touching a real account. Keep
 fixtures in ignored build output. A fixture proves UI behavior only. The worker
-protocol and ownership model are in [CONTEXT.md](../CONTEXT.md).
+protocol and ownership model are in [CONTEXT.md](CONTEXT.md).
 
 Prepare the current standalone helper example and run its tests after quitting
 Minecraft and letting its helper stop. The builder rejects any active
@@ -91,7 +91,7 @@ The graphics probe requires the owned game/runtime prerequisites and prepares
 the standalone game prefix; it is not a pure source test:
 
 ```sh
-./build-standalone-probes.sh
+./scripts/build-standalone-probes.sh
 python3 standalone.py probe graphics
 ```
 

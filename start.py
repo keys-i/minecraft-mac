@@ -145,7 +145,7 @@ class Steps:
 
 
 def setup(jobs, market):
-    run(['/bin/bash', str(ROOT / 'install-build-tools.sh')], 'Preparing build tools')
+    run(['/bin/bash', str(ROOT / 'scripts/install-build-tools.sh')], 'Preparing build tools')
     bootstrap = module('bootstrap-sources')
     for name, project in bootstrap.PROJECTS.items():
         if (ROOT / 'sources' / name).exists():
@@ -155,18 +155,18 @@ def setup(jobs, market):
     steps = Steps()
     wine = ROOT / 'runtime/standalone/wine'
     python = sys.executable
-    wine_inputs = ['build-standalone-wine.sh', 'bootstrap-sources.py']
+    wine_inputs = ['scripts/build-standalone-wine.sh', 'bootstrap-sources.py']
     wine_inputs += [str(p.relative_to(ROOT)) for p in (ROOT / 'patches').glob('*wine*.patch')]
     wine_inputs += ['patches/minecraft-store-callback.patch']
     steps.step('wine', 'Building the Windows compatibility runtime',
-        [['/bin/sh', str(ROOT / 'build-standalone-wine.sh')]], wine_inputs,
+        [['/bin/sh', str(ROOT / 'scripts/build-standalone-wine.sh')]], wine_inputs,
         ['runtime/standalone/wine/bin/wine', 'runtime/standalone/wine/build-manifest.json',
          'runtime/standalone/wine/lib/wine/x86_64-unix/ntdll.so',
          'runtime/standalone/wine/lib/wine/x86_64-windows/xgameruntime.dll'])
     graphics = [f'x86_64-windows/{name}.dll' for name in ('d3d11', 'dxgi', 'd3d10core', 'winemetal')]
     steps.step('graphics', 'Installing graphics support',
-        [['/bin/sh', str(ROOT / 'build-standalone-graphics.sh'), '--wine-runtime', str(wine)]],
-        ['build-standalone-graphics.sh'],
+        [['/bin/sh', str(ROOT / 'scripts/build-standalone-graphics.sh'), '--wine-runtime', str(wine)]],
+        ['scripts/build-standalone-graphics.sh'],
         ['runtime/standalone/dxmt/' + p for p in graphics + ['x86_64-unix/winemetal.so']]
         + ['runtime/standalone/wine/lib/wine/' + p for p in graphics])
     steps.step('helper', 'Building Microsoft sign-in',
@@ -177,14 +177,14 @@ def setup(jobs, market):
     probes = ['standalone-graphics-probe', 'standalone-graphics-shader-probe',
               'runtime-auth-probe', 'store-callback-probe', 'runtime-privilege-probe']
     steps.step('probes', 'Building graphics checks',
-        [['/bin/sh', str(ROOT / 'build-standalone-probes.sh')]],
-        ['build-standalone-probes.sh', 'tests/xuser-claims.c'] + [p + '.c' for p in probes],
+        [['/bin/sh', str(ROOT / 'scripts/build-standalone-probes.sh')]],
+        ['scripts/build-standalone-probes.sh', 'tests/xuser-claims.c'] + ['probes/' + p + '.c' for p in probes],
         ['runtime/standalone/probes/' + p + '.exe' for p in probes + ['xuser-claims-test']])
-    bridge = ['/bin/sh', str(ROOT / 'build-standalone-dxmt-unix.sh')]
+    bridge = ['/bin/sh', str(ROOT / 'scripts/build-standalone-dxmt-unix.sh')]
     steps.step('bridge', 'Building and testing the graphics memory fixes',
         [bridge, bridge + ['--validate'], bridge + ['--stage-existing-runtime', str(wine)]],
-        ['build-standalone-dxmt-unix.sh', 'standalone-dxmt-unix.py',
-         'standalone-dxmt-display-trace.c', 'standalone-dxmt-display-probe.m',
+        ['scripts/build-standalone-dxmt-unix.sh', 'standalone-dxmt-unix.py',
+         'probes/standalone-dxmt-display-trace.c', 'probes/standalone-dxmt-display-probe.m',
          'patches/standalone-dxmt-memory-lifetime.patch'],
         ['runtime/standalone/wine/dxmt-unix-bridge.json',
          'runtime/standalone/wine/lib/wine/x86_64-unix/winemetal.so',

@@ -67,7 +67,7 @@ class PackagingTests(unittest.TestCase):
                 'source_commit': '589adb780354b461645b29999cefaf533594ee99',
                 'files': {name: digest(libraries / name) for name in ('winemetal.so', 'winemetal-upstream.so')},
                 'patch_sha256': digest(packager.ROOT / 'patches/standalone-dxmt-memory-lifetime.patch'),
-                'trace_source_sha256': digest(packager.ROOT / 'standalone-dxmt-display-trace.c'),
+                'trace_source_sha256': digest(packager.ROOT / 'probes/standalone-dxmt-display-trace.c'),
             }
             (wine / 'dxmt-unix-bridge.json').write_text(json.dumps(metadata))
             with patch.dict(os.environ, {}, clear=True):
@@ -75,7 +75,7 @@ class PackagingTests(unittest.TestCase):
             resources = root / 'app/Contents/Resources'
             shutil.copytree(wine, resources / 'runtime/wine')
             shutil.copytree(dxmt, resources / 'runtime/dxmt')
-            for name in ('patches/standalone-dxmt-memory-lifetime.patch', 'standalone-dxmt-display-trace.c'):
+            for name in ('patches/standalone-dxmt-memory-lifetime.patch', 'probes/standalone-dxmt-display-trace.c'):
                 target = resources / 'scripts' / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(packager.ROOT / name, target)

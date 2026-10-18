@@ -2,7 +2,7 @@
 # Rebuild only DXMT's Cocoa/Metal bridge, using the pinned upstream shader compiler.
 # Does not install into a runtime. The C++ finish-thread patch is not built here.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT="$ROOT/build/dxmt-memory-unix"
 SOURCE="$ROOT/sources/dxmt"
 WINE_RUNTIME="${STANDALONE_WINE_RUNTIME:-$ROOT/runtime/standalone/wine}"
@@ -62,7 +62,7 @@ PY
   -I "$SOURCE/src/winemetal" -I "$SOURCE/src/airconv" \
   -c "$OUTPUT/source/src/winemetal/unix/winemetal_unix.c" -o "$OUTPUT/winemetal_unix_patched.o"
 /usr/bin/clang -arch x86_64 -mmacosx-version-min=15.0 -std=c11 -O2 -Wall -Wextra \
-  -c "$ROOT/standalone-dxmt-display-trace.c" -o "$OUTPUT/display-trace.o"
+  -c "$ROOT/probes/standalone-dxmt-display-trace.c" -o "$OUTPUT/display-trace.o"
 /usr/bin/clang -arch x86_64 -mmacosx-version-min=15.0 -dynamiclib \
   "$OUTPUT/winemetal_unix_patched.o" "$OUTPUT/display-trace.o" "$OUTPUT/winemetal-upstream.so" \
   "$WINE_RUNTIME/lib/wine/x86_64-unix/ntdll.so" "$WINE_RUNTIME/lib/wine/x86_64-unix/winemac.so" \
@@ -72,7 +72,7 @@ PY
   -id @rpath/winemetal.so "$OUTPUT/winemetal.so"
 /usr/bin/codesign --force --sign - "$OUTPUT/winemetal.so" >/dev/null 2>&1
 /usr/bin/clang -arch x86_64 -mmacosx-version-min=15.0 -std=gnu2x -fno-objc-arc -O2 -Wall -Wextra \
-  -I "$SOURCE/src/winemetal" "$ROOT/standalone-dxmt-display-probe.m" \
+  -I "$SOURCE/src/winemetal" "$ROOT/probes/standalone-dxmt-display-probe.m" \
   -framework Foundation -framework CoreGraphics -Wl,-rpath,@loader_path \
   -o "$OUTPUT/display-memory-probe"
 /usr/bin/python3 "$ROOT/standalone-dxmt-unix.py" manifest

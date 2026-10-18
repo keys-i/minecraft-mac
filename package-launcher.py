@@ -93,7 +93,7 @@ def main():
     if app.exists() or app.is_symlink():
         raise SystemExit('The packaged app already exists. Move it aside before making a new package.')
     bridge = verify_source_bridge(wine, dxmt)
-    subprocess.run([str(ROOT / 'build-launcher.sh')], check=True)
+    subprocess.run([str(ROOT / 'scripts/build-launcher.sh')], check=True)
     subprocess.run([str(required[-1]), '--noconfirm', '--clean', '--onedir',
                     '--name', 'BedrockWorker', '--distpath', str(ROOT / 'build/frozen'),
                     '--workpath', str(ROOT / 'build/pyinstaller'), '--specpath', str(ROOT / 'build'),
@@ -126,7 +126,7 @@ def main():
     for name in ('standalone.py', 'standalone-setup.py', 'standalone-gameinput.py', 'winrt.reg'):
         shutil.copy2(ROOT / name, resources / 'scripts' / name)
     if bridge is not None:
-        for name in ('patches/standalone-dxmt-memory-lifetime.patch', 'standalone-dxmt-display-trace.c'):
+        for name in ('patches/standalone-dxmt-memory-lifetime.patch', 'probes/standalone-dxmt-display-trace.c'):
             target = resources / 'scripts' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)

@@ -3,8 +3,8 @@
 This setup obtains each user's Windows Bedrock game through their own Microsoft account. It does not use CrossOver or distribute Minecraft, Microsoft runtime binaries, credentials, or licenses.
 
 This is the developer/reference CLI guide. Players should start with the
-[user guide](docs/USER_GUIDE.md); for a complete build from a fresh checkout,
-follow [local development](docs/DEVELOPMENT.md). Commands here use checkout data
+[user guide](USER_GUIDE.md); for a complete build from a fresh checkout,
+follow [local development](DEVELOPMENT.md). Commands here use checkout data
 unless `BEDROCK_HOME` is set; the packaged app has a separate data directory.
 
 From this directory:
@@ -51,7 +51,7 @@ Expired or incomplete user tokens trigger sign-in again. Expired device tokens a
 renewed using the existing device identity. Credential read failures preserve the
 saved account. The launcher recovers only its recorded dead helper's private,
 non-listening socket; unknown endpoints remain untouched. See
-[stability notes](docs/STABILITY.md) for Wine token refresh and friend joining.
+[stability notes](STABILITY.md) for Wine token refresh and friend joining.
 
 The native app menu includes **Sign Out of Microsoft…**. The helper’s `--sign-out GAME_DIR` mode removes only user tokens and user identity from the account item, keeps the device identity, and never changes game files or worlds. It refuses while an account service is active.
 

@@ -266,7 +266,7 @@ def prerequisites(game):
             verify_unix_bridge()
             continue
         if sha256(installed) != sha256(DXMT / relative):
-            raise RuntimeError('Reinstall DXMT with build-standalone-graphics.sh --wine-runtime ' + str(WINE))
+            raise RuntimeError('Reinstall DXMT with scripts/build-standalone-graphics.sh --wine-runtime ' + str(WINE))
     if sha256(ROOT / 'runtime/xgameruntime.dll.threading') != THREADING_HASH:
         raise RuntimeError('Microsoft threading DLL does not match the pinned official version.')
     with (game / 'Minecraft.Windows.exe').open('rb') as f:
@@ -302,7 +302,7 @@ def verify_unix_bridge():
         sources = Path(os.environ['BEDROCK_BUNDLE']) / 'scripts' if os.environ.get('BEDROCK_BUNDLE') else ROOT
         if metadata['patch_sha256'] != sha256(sources / 'patches/standalone-dxmt-memory-lifetime.patch'):
             raise ValueError('bridge patch changed')
-        if metadata['trace_source_sha256'] != sha256(sources / 'standalone-dxmt-display-trace.c'):
+        if metadata['trace_source_sha256'] != sha256(sources / 'probes/standalone-dxmt-display-trace.c'):
             raise ValueError('bridge source changed')
         for name, expected in files.items():
             if sha256(WINE / 'lib/wine/x86_64-unix' / name) != expected:

@@ -1,6 +1,6 @@
 # Local development
 
-Start with [CONTEXT.md](../CONTEXT.md) for component ownership and
+Start with [CONTEXT.md](CONTEXT.md) for component ownership and
 [CONTRIBUTING.md](../CONTRIBUTING.md) for the review workflow. All commands here
 run from the repository root on the local Mac. The standalone build does not
 require CrossOver or an Apple Developer membership.
@@ -63,8 +63,8 @@ Clone the repository into a directory you control, then run:
 git clone https://github.com/keys-i/minecraft-mac.git
 cd minecraft-mac
 python3 bootstrap-sources.py
-STANDALONE_JOBS=3 ./build-standalone-wine.sh
-./build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
+STANDALONE_JOBS=3 ./scripts/build-standalone-wine.sh
+./scripts/build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
 python3 standalone-setup.py --build-helper --jobs 4
 python3 -m venv build/packaging-env
 build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
@@ -98,12 +98,12 @@ The Wine and helper builders have active-process guards; still check which app
 copy and runtime you are testing.
 
 The optional memory-lifetime bridge can be built and validated following
-[the graphics notes](../standalone-graphics-notes.md) before packaging. Packaging
+[the graphics notes](GRAPHICS.md) before packaging. Packaging
 retains and verifies its provenance; see [stability notes](STABILITY.md).
 
 ## Iterate without losing a working build
 
-`./build-launcher.sh` creates `build/Bedrock for Mac.app`, a development front end
+`./scripts/build-launcher.sh` creates `build/Bedrock for Mac.app`, a development front end
 that points at this checkout and uses `/usr/bin/python3`. It is useful for Swift
 and worker changes after preparing the local runtime, but is not a portable app.
 `python3 launcher/setup.py --status` inspects its installation without sign-in.
@@ -123,7 +123,7 @@ subsequent edits in the checkout do not update that app. Repackage to test them.
 
 After a Wine rebuild, rerun graphics staging with `--wine-runtime`: Wine's
 installed D3D DLLs otherwise shadow DXMT. For helper source changes, use
-`standalone-setup.py --build-helper`; `build-helper.sh` compiles the historical
+`standalone-setup.py --build-helper`; `scripts/build-helper.sh` compiles the historical
 `bedrock_helper`, not the native launcher's `standalone_helper`.
 
 Rebuilding an ad-hoc helper can change Keychain authorization. To test remembered
@@ -161,14 +161,14 @@ in the same prepared prefix.
 For optional probes, after installing the owned game and runtime:
 
 ```sh
-./build-standalone-probes.sh
+./scripts/build-standalone-probes.sh
 python3 standalone.py probe graphics
 ```
 
 The graphics probe exercises the local Wine prefix. The `account`, `store`, and
 `privileges` probes also use the account helper and may prompt/contact Microsoft.
-See [STANDALONE-SETUP.md](../STANDALONE-SETUP.md),
-[graphics notes](../standalone-graphics-notes.md), and [testing](TESTING.md).
+See [STANDALONE-SETUP.md](SETUP.md),
+[graphics notes](GRAPHICS.md), and [testing](TESTING.md).
 
 ## Build failures
 

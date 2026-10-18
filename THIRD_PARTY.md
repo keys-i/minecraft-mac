@@ -74,7 +74,7 @@ and source requirements still need inventory before any binary bundle is shipped
 The archive, extracted libraries, and compiled Wine are excluded from this source
 release.
 
-`build-standalone-graphics.sh` retrieves a pinned official DXMT 0.80 binary release
+`scripts/build-standalone-graphics.sh` retrieves a pinned official DXMT 0.80 binary release
 for local use, verifies its SHA-256, and saves the source revision and notices.
 This is an open-source dependency built by upstream, not a DXMT build performed by
 this project. The source export contains only the retrieval script, probe source,

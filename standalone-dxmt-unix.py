@@ -48,7 +48,7 @@ def source_metadata():
     return {
         'source_commit': COMMIT,
         'patch_sha256': digest(ROOT / 'patches/standalone-dxmt-memory-lifetime.patch'),
-        'trace_source_sha256': digest(ROOT / 'standalone-dxmt-display-trace.c'),
+        'trace_source_sha256': digest(ROOT / 'probes/standalone-dxmt-display-trace.c'),
         'input_header_sha256': {name: digest(tree / name) for name in HEADERS},
         'upstream_source_sha256': digest(tree / source),
         'patched_source_sha256': digest(patched),

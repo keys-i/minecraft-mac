@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: '3.14'
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: ./build-launcher.sh
+      - run: ./scripts/build-launcher.sh
   account-helper:
     runs-on: macos-15
     timeout-minutes: 30
