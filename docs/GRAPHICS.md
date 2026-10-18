@@ -4,7 +4,7 @@ These are component notes and historical test observations. The current complete
 app's minimum OS and verified behavior are in [release status](RELEASE.md);
 the component's deployment target does not establish support for the whole app.
 
-`scripts/build-standalone-graphics.sh` stages the upstream DXMT v0.80 release into
+`tools/build/graphics.sh` stages the upstream DXMT v0.80 release into
 `runtime/standalone/dxmt/`. It checks the pinned SHA-256 before extracting only
 the four x64 graphics DLLs and `winemetal.so`. No CrossOver payload is used.
 The installer does not change a Wine prefix or game files.
@@ -18,8 +18,8 @@ that toolchain. Its release and source provenance are recorded in `manifest.json
 After building standalone Wine:
 
 ```sh
-./scripts/build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
-./scripts/build-standalone-probes.sh
+./tools/build/graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
+./tools/build/probes.sh
 ```
 
 The first command installs the five DXMT binaries into our standalone Wine's
@@ -42,7 +42,7 @@ The user confirmed it working on September 29, 2026. This was tested in the
 separate standalone prefix; the earlier CrossOver bottle remains intact.
 
 DXMT v0.80 expects a legacy Wine macOS window-data layout. Standalone Wine uses
-`patches/standalone-wine-dxmt-abi.patch` to export an adapter table with that layout,
+`vendor/patches/standalone-wine-dxmt-abi.patch` to export an adapter table with that layout,
 keeping Wine's own internal layout unchanged. Merely creating a D3D11 device
 does not exercise this window bridge.
 
@@ -81,8 +81,8 @@ Build the candidate separately, then explicitly stage its recorded bytes into
 a stopped test runtime:
 
 ```sh
-./scripts/build-standalone-dxmt-pool.sh
-./scripts/build-standalone-dxmt-pool.sh --stage-existing-runtime /absolute/path/to/test-wine
+./tools/build/pool.sh
+./tools/build/pool.sh --stage-existing-runtime /absolute/path/to/test-wine
 ```
 
 This does not run from the normal graphics installer. The builder pins the
@@ -105,12 +105,12 @@ the corrected source rebuild described below.
 
 The source audit also found unreleased ColorSync profiles/tags during DXGI
 output construction and no pool around the finish thread's Metal diagnostics.
-`patches/standalone-dxmt-memory-lifetime.patch` records source fixes for those
+`vendor/patches/standalone-dxmt-memory-lifetime.patch` records source fixes for those
 paths and the display query. The narrow adapter does not implement these
 additional fixes. A full DXMT rebuild needs LLVM 15 and Xcode's Metal toolchain;
 this machine currently has Command Line Tools and no `metal` executable.
 
-A partial rebuild is possible without those tools: `scripts/build-standalone-dxmt-unix.sh`
+A partial rebuild is possible without those tools: `tools/build/bridge.sh`
 compiles only `winemetal_unix.c` with the query/output pools and ColorSync releases.
 It links to the unchanged upstream library for its exported shader compiler and
 cache functions, preserving the upstream shader binaries. The C++ finish-thread
@@ -123,10 +123,10 @@ These source fixes are always enabled in the rebuilt bridge; the earlier
 The opt-in qualification and staging flow is:
 
 ```sh
-./scripts/build-standalone-dxmt-unix.sh
-./scripts/build-standalone-dxmt-unix.sh --validate
+./tools/build/bridge.sh
+./tools/build/bridge.sh --validate
 # After gameplay qualification, stop the target runtime before staging:
-./scripts/build-standalone-dxmt-unix.sh --stage-existing-runtime "$PWD/runtime/standalone/wine"
+./tools/build/bridge.sh --stage-existing-runtime "$PWD/runtime/standalone/wine"
 ```
 
 `--validate` makes a disposable APFS clone of standalone Wine and a private Wine
@@ -147,7 +147,7 @@ tests run without Wine using
 `python3 -m unittest discover -s tests -p test_standalone_dxmt_unix.py`.
 
 To restore the official graphics implementation, rerun
-`scripts/build-standalone-graphics.sh --wine-runtime <stopped runtime>`. It refuses mapped
+`tools/build/graphics.sh --wine-runtime <stopped runtime>`. It refuses mapped
 graphics files and clears optional bridge manifests only after all five official
 payloads pass hash verification. Displaced binaries remain backed up.
 

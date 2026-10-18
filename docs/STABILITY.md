@@ -71,17 +71,17 @@ fully explained, and a disconnect/rejoin cycle remains unverified.
 The monitor runs only when explicitly started; it does not upload diagnostics:
 
 ```sh
-python3 bedrock-monitor.py --help
-python3 standalone.py launch --network-diagnostics
+python3 minecraft.py monitor --help
+python3 minecraft.py runtime launch --network-diagnostics
 ```
 
 The second command launches the game and enables HTTP host/status diagnostics;
 it is not an offline test. Do not start it alongside a running game/helper.
-Use `Mark Problem.command` and `Stop Monitor.command` for an existing monitor
+Use `python3 minecraft.py monitor mark` and `python3 minecraft.py monitor stop` for an existing monitor
 session. Raw captures stay private in `logs/standalone/monitor/` and are excluded
 from source exports. Review excerpts before sharing them.
 
-`Start.command` and `start.py` retain the older source-building setup path for
+`tools/bootstrap.sh` and `tools/setup.py` retain the older source-building setup path for
 development. They reuse a completed installation, but do not update an installed
 game or runtime. The native app remains the documented player entry point.
 

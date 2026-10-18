@@ -70,6 +70,6 @@ def measure(source):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('runtime', type=Path, nargs='?',
-                        default=Path(__file__).resolve().parents[1] / 'standalone.py')
+                        default=Path(__file__).resolve().parents[1] / 'src/standalone.py')
     args = parser.parse_args()
     print(json.dumps(measure(args.runtime.resolve()), indent=2))

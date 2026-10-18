@@ -150,4 +150,4 @@ Report a reproducible problem with the
 Include macOS version, chip, app/source revision, game version, last visible
 stage, and whether this was a first install, retry, or update. Review excerpts
 before posting: omit passwords, tokens, email addresses, signed URLs, and full
-unreviewed logs. Use [SECURITY.md](../SECURITY.md) for security reports.
+unreviewed logs. Use [SECURITY.md](../.github/SECURITY.md) for security reports.

@@ -81,7 +81,7 @@ is made.
 - Inventory the bundled Python/PyInstaller, Rust, Wine dependency, and graphics
   components. Include their notices and matching source/build materials.
   The existing Wine dependency archive has not had a complete redistribution
-  inventory; see [THIRD_PARTY.md](../THIRD_PARTY.md).
+  inventory; see [THIRD_PARTY.md](../vendor/README.md).
 - Complete authentication/integrity verification for all game package sections.
   The current catalog may return Microsoft's HTTP CDN endpoints; existing
   segment checks do not authenticate every unencrypted section. Account and
@@ -106,14 +106,14 @@ preparing the current helper example, the core checks are:
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_*.py'
-python3 bootstrap-sources.py --check
-python3 export-source.py --check
-python3 package.py launcher
+python3 minecraft.py source verify
+python3 minecraft.py source check
+python3 minecraft.py build launcher
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 bash tests/run-xuser-tests.sh
 ```
 
-`package.py app` verifies the final bundle signature and records SHA-256
-hashes of bundled resource files. `package.py dmg` verifies the image after creating
+`tools/build.py app` verifies the final bundle signature and records SHA-256
+hashes of bundled resource files. `tools/build.py dmg` verifies the image after creating
 it. These integrity checks do not replace notarization or gameplay testing.

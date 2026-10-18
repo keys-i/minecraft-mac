@@ -1,7 +1,7 @@
 # Local development
 
 Start with [CONTEXT.md](CONTEXT.md) for component ownership and
-[CONTRIBUTING.md](../CONTRIBUTING.md) for the review workflow. All commands here
+[CONTRIBUTING.md](../.github/CONTRIBUTING.md) for the review workflow. All commands here
 run from the repository root on the local Mac. The standalone build does not
 require CrossOver or an Apple Developer membership.
 
@@ -62,14 +62,14 @@ Clone the repository into a directory you control, then run:
 ```sh
 git clone https://github.com/keys-i/minecraft-mac.git
 cd minecraft-mac
-python3 bootstrap-sources.py
-STANDALONE_JOBS=3 ./scripts/build-standalone-wine.sh
-./scripts/build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
-python3 standalone-setup.py --build-helper --jobs 4
+python3 minecraft.py source fetch
+STANDALONE_JOBS=3 ./tools/build/wine.sh
+./tools/build/graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
+python3 src/standalone-setup.py --build-helper --jobs 4
 python3 -m venv build/packaging-env
-build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
-python3 package.py app
-python3 package.py dmg
+build/packaging-env/bin/python -m pip install -r tools/requirements.txt
+python3 minecraft.py build app
+python3 minecraft.py build dmg
 ```
 
 Use a Python 3.12+ `python3` when creating `build/packaging-env`. If the venv
@@ -82,7 +82,7 @@ existing venv.
 | Bootstrap | Fetches pinned WineGDK and Xodus into `sources/`, applies tracked patches and Cargo lockfile; refuses an existing destination |
 | Wine build | Compiles WineGDK in `build/standalone-wine`, installs to `runtime/standalone/wine`; downloads a pinned archive for portable dependency dylibs |
 | Graphics staging | Downloads/verifies pinned DXMT, installs its Wine overlay, and records original DLL backups |
-| Helper build | Copies `standalone-helper.rs` into Xodus and builds its release example with the locked dependencies |
+| Helper build | Copies `src/standalone-helper.rs` into Xodus and builds its release example with the locked dependencies |
 | Package | Builds Swift/icon and frozen Python worker; copies runtime/helper, signs locally, records resource hashes and actual OS requirement |
 | DMG | Creates `build/Bedrock for Mac.dmg` containing the app and an Applications shortcut; verifies the image |
 
@@ -90,7 +90,7 @@ The complete app is `build/packaged/Bedrock for Mac.app`. It includes build
 outputs for the open-source runtime but no game, Microsoft DLLs, Keychain data,
 worlds, or development checkout. First Play obtains the required Microsoft
 component and owned game. Build scripts never imply that a binary is cleared for
-public redistribution; see [THIRD_PARTY.md](../THIRD_PARTY.md).
+public redistribution; see [THIRD_PARTY.md](../vendor/README.md).
 
 Do not run the Wine/graphics builds or replace an app while a game uses those
 components. Quit Minecraft normally and let its account helper finish first.
@@ -103,16 +103,16 @@ retains and verifies its provenance; see [stability notes](STABILITY.md).
 
 ## Iterate without losing a working build
 
-`python3 package.py launcher` creates `build/Bedrock for Mac.app`, a development front end
+`python3 minecraft.py build launcher` creates `build/Bedrock for Mac.app`, a development front end
 that points at this checkout and uses `/usr/bin/python3`. It is useful for Swift
 and worker changes after preparing the local runtime, but is not a portable app.
-`python3 launcher/setup.py --status` inspects its installation without sign-in.
+`python3 src/launcher/setup.py --status` inspects its installation without sign-in.
 
 The packager refuses to overwrite an existing output. Use a new output name:
 
 ```sh
-python3 package.py app --output 'build/iteration-2/Bedrock for Mac.app'
-python3 package.py dmg --app 'build/iteration-2/Bedrock for Mac.app' \
+python3 minecraft.py build app --output 'build/iteration-2/Bedrock for Mac.app'
+python3 minecraft.py build dmg --app 'build/iteration-2/Bedrock for Mac.app' \
   --output 'build/Bedrock for Mac-iteration-2.dmg'
 ```
 
@@ -123,7 +123,7 @@ subsequent edits in the checkout do not update that app. Repackage to test them.
 
 After a Wine rebuild, rerun graphics staging with `--wine-runtime`: Wine's
 installed D3D DLLs otherwise shadow DXMT. For helper source changes, use
-`standalone-setup.py --build-helper`; `scripts/build-helper.sh` compiles the historical
+`src/standalone-setup.py --build-helper`; `tools/legacy/build.sh helper` compiles the historical
 `bedrock_helper`, not the native launcher's `standalone_helper`.
 
 Rebuilding an ad-hoc helper can change Keychain authorization. To test remembered
@@ -137,7 +137,7 @@ of a packaged app's separate data directory. To read that installation's status:
 
 ```sh
 BEDROCK_HOME="$HOME/Library/Application Support/Bedrock for Mac" \
-  python3 standalone-setup.py --check
+  python3 src/standalone-setup.py --check
 ```
 
 `--check` is local and returns nonzero when installation is incomplete. It does
@@ -145,10 +145,10 @@ not access Microsoft or Keychain. `--dry-run` prints requested actions without
 performing them. For a source installation, these are the actual setup stages:
 
 ```sh
-python3 standalone-setup.py --threading
-python3 standalone-setup.py --download-game --game-dir "$PWD/game" --market CA
-python3 standalone.py prepare
-python3 standalone.py launch --market CA
+python3 src/standalone-setup.py --threading
+python3 src/standalone-setup.py --download-game --game-dir "$PWD/game" --market CA
+python3 minecraft.py runtime prepare
+python3 minecraft.py runtime launch --market CA
 ```
 
 Download and launch can sign in and contact Microsoft; they are not offline
@@ -161,8 +161,8 @@ in the same prepared prefix.
 For optional probes, after installing the owned game and runtime:
 
 ```sh
-./scripts/build-standalone-probes.sh
-python3 standalone.py probe graphics
+./tools/build/probes.sh
+python3 minecraft.py runtime probe graphics
 ```
 
 The graphics probe exercises the local Wine prefix. The `account`, `store`, and
@@ -174,8 +174,8 @@ See [STANDALONE-SETUP.md](SETUP.md),
 
 | Failure | Check |
 | --- | --- |
-| Bootstrap destination exists | Run `python3 bootstrap-sources.py --check`; preserve local changes before preparing a new source tree. Do not fetch a different branch into the pinned checkout to silence a mismatch. |
-| Cargo lock or source patch mismatch | Compare tracked patches, `patches/Cargo.lock`, and the pinned source check. Keep `--locked`; update provenance and checksums intentionally. |
+| Bootstrap destination exists | Run `python3 minecraft.py source verify`; preserve local changes before preparing a new source tree. Do not fetch a different branch into the pinned checkout to silence a mismatch. |
+| Cargo lock or source patch mismatch | Compare tracked patches, `vendor/patches/Cargo.lock`, and the pinned source check. Keep `--locked`; update provenance and checksums intentionally. |
 | `protoc` missing | Check the `protobuf` installation and PATH, or the intended `PROTOC` executable. |
 | Wine configure/compile/install failure | Read `build/standalone-wine/configure.log`, `build.log`, or `install.log`; confirm the required Homebrew paths and Rust toolchain. |
 | DXMT mismatch after runtime rebuild | Reapply the graphics overlay with `--wine-runtime` before preparing/launching. |

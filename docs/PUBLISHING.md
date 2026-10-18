@@ -5,36 +5,25 @@ Its upstream source is
 [1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac). The commands
 below prepare and verify source locally; they do not push or create a release
 Export only reviewed client source, not this entire development directory or
-any adjacent server repository. Read [THIRD_PARTY.md](../THIRD_PARTY.md) for
+any adjacent server repository. Read [THIRD_PARTY.md](../vendor/README.md) for
 component notices and [RELEASE.md](RELEASE.md) for binary release gates.
 
 ## Update the source inventory
 
 Every new public file, including documentation and `AGENTS.md`, must be added
-individually to `ALLOWED_FILES` in `export-source.py`. Check its contents before
-adding it. The tracked `SOURCE-SHA256.txt` lists those files; it does not include
+individually to `ALLOWED_FILES` in `tools/source.py`. Check its contents before
+adding it. The tracked `tools/SOURCE-SHA256.txt` lists those files; it does not include
 itself, generated output, or private data. CI verifies it, so regenerate it after
 the last source/documentation edit:
 
 ```sh
-python3 - <<'PY'
-from pathlib import Path
-import hashlib, os, runpy
-collect = runpy.run_path('export-source.py')['collect_sources']
-files = collect(Path.cwd())
-temporary = Path('SOURCE-SHA256.txt.new')
-with temporary.open('x', encoding='utf-8') as output:
-    for name, contents, _mode in files:
-        output.write(f'{hashlib.sha256(contents).hexdigest()}  {name}\n')
-os.replace(temporary, 'SOURCE-SHA256.txt')
-print('Inventoried source files:', len(files))
-PY
-shasum -a 256 -c SOURCE-SHA256.txt
+python3 minecraft.py source inventory
+shasum -a 256 -c tools/SOURCE-SHA256.txt
 ```
 
 If `.new` already exists, inspect and preserve it before retrying. Do not use
 recursive filesystem hashing: it can enumerate account data, worlds, binaries,
-or ignored logs. `--check` validates source boundaries but does not refresh the
+or ignored logs. `source check` validates source boundaries but does not refresh the
 tracked inventory. An export generates its own inventory in the destination.
 
 ## Validate and export
@@ -44,15 +33,15 @@ From the client directory:
 ```sh
 python3 -m unittest discover -s tests -p 'test_export_source.py'
 python3 -m unittest discover -s tests -p 'test_bootstrap_sources.py'
-python3 export-source.py --check
-python3 export-source.py --list
-shasum -a 256 -c SOURCE-SHA256.txt
-python3 export-source.py ../minecraft-mac-source
+python3 minecraft.py source check
+python3 minecraft.py source list
+shasum -a 256 -c tools/SOURCE-SHA256.txt
+python3 minecraft.py source export ../minecraft-mac-source
 ```
 
 The destination must not exist. The exporter creates an independent source-only
 directory and a SHA-256 inventory. It reads individual paths from `ALLOWED_FILES`
-in `export-source.py`; it never traverses ignored directories. Symlinks, missing
+in `tools/source.py`; it never traverses ignored directories. Symlinks, missing
 files, and binary replacements in text entries are rejected. The individually
 listed JPEG/WebP README images have container-header checks and a 2 MiB limit.
 Review and add each new standalone script, patch, test, and notice to that
@@ -71,39 +60,39 @@ The exported directory includes the patches, exact Cargo lockfile, original
 license texts, and a pinned source bootstrap:
 
 ```sh
-python3 bootstrap-sources.py
-python3 bootstrap-sources.py --check
+python3 minecraft.py source fetch
+python3 minecraft.py source verify
 ```
 
 The first command fetches the exact Xodus, WineGDK, and DXMT commits listed in
-`bootstrap-sources.py`, applies the reference patches before the Bedrock-specific
-patches, and installs `patches/Cargo.lock` into Xodus. DXMT is kept unmodified for
+`tools/source.py`, applies the reference patches before the Bedrock-specific
+patches, and installs `vendor/patches/Cargo.lock` into Xodus. DXMT is kept unmodified for
 the optional native graphics rebuild. It refuses to overwrite any existing
 checkout. Use `--project xodus`, `--project winegdk`, or `--project dxmt` for one tree, or
 `--destination /an/empty/source-directory` for a separate copy. Fetching needs Git
-and network access; `--check` is offline and does not modify the source trees.
+and network access; `source verify` is offline and does not modify the source trees.
 
 The check rebuilds the expected patched files in a temporary directory and compares
 them with the checkout. It verifies the pinned base, preserved patch contents,
 and Xodus lockfile. It does not certify unrelated local edits, runtime binaries,
-or the complete Cargo dependency cache. `standalone-setup.py --build-helper`
+or the complete Cargo dependency cache. `src/standalone-setup.py --build-helper`
 copies and builds the current standalone helper example with `--locked`.
-`scripts/build-helper.sh` builds the earlier CrossOver helper instead. The obsolete separate
+`tools/legacy/build.sh helper` builds the earlier CrossOver helper instead. The obsolete separate
 `prepare-game.rs` helper is intentionally not exported.
 
-`scripts/build-standalone-wine.sh` creates its own build copy of the prepared WineGDK tree
-and applies `patches/standalone-wine-dxmt-abi.patch`,
-`patches/standalone-wine-idl-list.patch`,
-`patches/standalone-wine-storage-linkage.patch`, and
-`patches/standalone-wine-user-privileges.patch`, followed by
-`patches/standalone-wine-xuser-realms.patch` and
-`patches/standalone-wine-xuser-token-refresh.patch` there. These additional patches
-include `patches/standalone-wine-xuser-z-device-auth.patch` for PS5 friend joining and
+`tools/build/wine.sh` creates its own build copy of the prepared WineGDK tree
+and applies `vendor/patches/standalone-wine-dxmt-abi.patch`,
+`vendor/patches/standalone-wine-idl-list.patch`,
+`vendor/patches/standalone-wine-storage-linkage.patch`, and
+`vendor/patches/standalone-wine-user-privileges.patch`, followed by
+`vendor/patches/standalone-wine-xuser-realms.patch` and
+`vendor/patches/standalone-wine-xuser-token-refresh.patch` there. These additional patches
+include `vendor/patches/standalone-wine-xuser-z-device-auth.patch` for PS5 friend joining and
 are not applied to the shared baseline checkout by the source bootstrap.
-The build also applies `patches/standalone-wine-ipv6.patch` to preserve adapter
+The build also applies `vendor/patches/standalone-wine-ipv6.patch` to preserve adapter
 indices for IPv6 discovery
-`scripts/build-standalone-graphics.sh` retrieves pinned upstream DXMT binaries and notices;
-see [the dependency provenance](../THIRD_PARTY.md#standalone-runtime-dependency-provenance).
+`tools/build/graphics.sh` retrieves pinned upstream DXMT binaries and notices;
+see [the dependency provenance](../vendor/README.md#standalone-runtime-dependency-provenance).
 
 ## Release status and remaining setup
 
@@ -155,7 +144,7 @@ GitHub prerelease; it does not build or publish the DMG
 
 [Dependabot](../.github/dependabot.yml) checks GitHub Actions and Python
 packaging dependencies weekly. Review each update and regenerate
-`SOURCE-SHA256.txt` on its branch before merging, as required for any exported
+`tools/SOURCE-SHA256.txt` on its branch before merging, as required for any exported
 file change. The checksum check intentionally rejects a stale inventory.
 Pinned Wine, DXMT and Xodus revisions and the patched Cargo lockfile require
 manual review and runtime validation

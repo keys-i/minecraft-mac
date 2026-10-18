@@ -10,8 +10,8 @@ unless `BEDROCK_HOME` is set; the packaged app has a separate data directory.
 From this directory:
 
 ```sh
-./standalone-setup.py --check
-./standalone-setup.py --dry-run --threading --build-helper --download-game
+./src/standalone-setup.py --check
+./src/standalone-setup.py --dry-run --threading --build-helper --download-game
 ```
 
 Both commands are offline. They do not read Keychain or modify the current game. `--check` returns a nonzero status when required setup files are missing.
@@ -19,8 +19,8 @@ Both commands are offline. They do not read Keychain or modify the current game.
 To prepare a new installation:
 
 ```sh
-./standalone-setup.py --threading --build-helper
-./standalone-setup.py --download-game --game-dir "$PWD/game" --market CA
+./src/standalone-setup.py --threading --build-helper
+./src/standalone-setup.py --download-game --game-dir "$PWD/game" --market CA
 ```
 
 The source build requires Git, Rust 1.98.0, Protocol Buffers (`protoc`), and the macOS Command Line Tools. Setup downloads only the required 197 MB Gaming Services member from Microsoft's pinned GDK archive; Minecraft needs several additional gigabytes. The setup checks available space. `--jobs 4` is the default build parallelism.
@@ -74,7 +74,7 @@ These constants were extracted from the full archive after validating its pinned
 | `GDK_2604.4.7897.zip` | `3da3f104fa66bb3ee1299b3dc8c0a3ecac1cb56a4cf04136b8595942272017eb` |
 | `xgameruntime.dll.threading` | `aa611155057ebd01cf315ad702a4b5725aa9d5e6fad87732c956fe0a1e5fcfba` |
 
-The helper uses Xodus commit `0670e25aeb0e0e9f800f8f2f4968ae3b681842a7` with the source patches and dependency lockfile in `patches/`. The game download uses Microsoft's package metadata and owner license, downloads into a private temporary directory, checks paths and file sizes, prepares encrypted executables using that license, and promotes the directory only after preparation succeeds.
+The helper uses Xodus commit `0670e25aeb0e0e9f800f8f2f4968ae3b681842a7` with the source patches and dependency lockfile in `vendor/patches/`. The game download uses Microsoft's package metadata and owner license, downloads into a private temporary directory, checks paths and file sizes, prepares encrypted executables using that license, and promotes the directory only after preparation succeeds.
 
 The account/catalog/license client requires HTTPS. Game bytes use a separate client without account headers or cookies, preserving the URL supplied by the authenticated catalog. HTTP is accepted only for `assets1.xboxlive.com` and `assets2.xboxlive.com` on port 80, including redirects. Those Microsoft CDN names do not currently provide matching HTTPS certificates; rewriting their scheme causes setup to fail. TLS certificate validation remains enabled for HTTPS URLs. The package parser's existing segment checks do not provide complete verification of every unencrypted package section.
 
@@ -82,16 +82,16 @@ Verified locally: owner-account download and preparation on the development Mac,
 
 ## Native GameInput installation
 
-The current Microsoft GameInput MSI stalls in its service configuration custom action under the standalone Wine build. `standalone-gameinput.py` reads the owned game's MSI directly, verifies its pinned checksum, and extracts four exact native x64 files by checksum. It emits a registry file for the launcher to import, including both `RedistDir` views and the real demand-start `GameInputRedistService` executable. It does not execute MSI custom actions or report registry installation as complete before import.
+The current Microsoft GameInput MSI stalls in its service configuration custom action under the standalone Wine build. `src/standalone-gameinput.py` reads the owned game's MSI directly, verifies its pinned checksum, and extracts four exact native x64 files by checksum. It emits a registry file for the launcher to import, including both `RedistDir` views and the real demand-start `GameInputRedistService` executable. It does not execute MSI custom actions or report registry installation as complete before import.
 
 The launcher must stop only its separate Wine prefix before extraction:
 
 ```sh
-./standalone-gameinput.py --prefix "$PWD/bottles/Bedrock-Standalone" \
+./src/standalone-gameinput.py --prefix "$PWD/bottles/Bedrock-Standalone" \
   --msi "$PWD/game/Installers/GameInputRedist.msi" \
   --wineserver "$PWD/runtime/standalone/wine/bin/wineserver"
 ```
 
-It refuses busy prefixes, CrossOver bottles, symbolic-link destinations, conflicting installed files, and unknown MSI versions. Import the emitted `bottles/Bedrock-Standalone/.standalone-gameinput.reg` using that prefix's Wine, then stop that prefix's server to flush its registry. Run the same command with `--check` for read-only verification of installed hashes and persisted registry entries; `--wineserver` is optional for this check. `--verify-payload` validates extraction entirely in memory.
+It refuses busy prefixes, CrossOver bottles, symbolic-link destinations, conflicting installed files, and unknown MSI versions. Import the emitted `bottles/Bedrock-Standalone/.standalone-tools/legacy/gameinput.reg` using that prefix's Wine, then stop that prefix's server to flush its registry. Run the same command with `--check` for read-only verification of installed hashes and persisted registry entries; `--wineserver` is optional for this check. `--verify-payload` validates extraction entirely in memory.
 
 The OLE/MSZIP parser is adapted from [BedrockOnLinux](https://github.com/Wyze3306/BedrockOnLinux) commit `7a315c836b7ae8068042bc466b0540c16ffe3a5e`; the script contains its full MIT copyright and license notice. Microsoft payload bytes are never included in the source release.

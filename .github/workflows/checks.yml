@@ -23,8 +23,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests -p 'test_*.py'
-      - run: python export-source.py --check
-      - run: sha256sum --check --quiet SOURCE-SHA256.txt
+      - run: python minecraft.py source check
+      - run: sha256sum --check --quiet tools/SOURCE-SHA256.txt
   native-launcher:
     runs-on: macos-15
     timeout-minutes: 10
@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: '3.14'
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: python3 package.py launcher
+      - run: python3 minecraft.py build launcher
   account-helper:
     runs-on: macos-15
     timeout-minutes: 30
@@ -43,10 +43,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
-      - run: python3 bootstrap-sources.py --project xodus
+      - run: python3 minecraft.py source fetch --project xodus
       - run: command -v protoc || brew install protobuf
       - run: rustup toolchain install 1.98.0 --profile minimal
       - run: |
           mkdir -p sources/xodus/crates/xodus-cli/examples
-          cp standalone-helper.rs sources/xodus/crates/xodus-cli/examples/standalone_helper.rs
+          cp src/standalone-helper.rs sources/xodus/crates/xodus-cli/examples/standalone_helper.rs
           cargo +1.98.0 test --locked --manifest-path sources/xodus/Cargo.toml -p xodus-cli --example standalone_helper

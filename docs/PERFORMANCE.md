@@ -26,7 +26,7 @@ Reproduce the comparison from this repository, which retains upstream history
 
 ```sh
 mkdir -p work
-git show 99fc9aa:standalone.py > work/before.py
+git show 99fc9aa:src/standalone.py > work/before.py
 python3 -B tests/benchmark.py work/before.py
 python3 -B tests/benchmark.py
 ```

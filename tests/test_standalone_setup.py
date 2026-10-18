@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def module(name, filename):
-    spec = importlib.util.spec_from_file_location(name, ROOT / filename)
+    spec = importlib.util.spec_from_file_location(name, ROOT / 'src' / filename)
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result

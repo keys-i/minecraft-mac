@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 
-spec = importlib.util.spec_from_file_location("export_source", Path(__file__).resolve().parents[1] / "export-source.py")
+spec = importlib.util.spec_from_file_location("export_source", Path(__file__).resolve().parents[1] / "tools/source.py")
 export = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(export)
 
@@ -29,9 +29,10 @@ class ExportTests(unittest.TestCase):
             (private / "private-data").write_text("must not leave this machine")
         count = export.export_sources(self.source, self.destination, ("README.md",))
         self.assertEqual(count, 1)
-        self.assertEqual({p.name for p in self.destination.iterdir()}, {"README.md", "SOURCE-SHA256.txt"})
+        self.assertEqual({p.relative_to(self.destination).as_posix() for p in self.destination.rglob('*') if p.is_file()},
+                         {"README.md", "tools/SOURCE-SHA256.txt"})
         digest = hashlib.sha256(b"Reviewed source\n").hexdigest()
-        self.assertEqual((self.destination / "SOURCE-SHA256.txt").read_text(), f"{digest}  README.md\n")
+        self.assertEqual((self.destination / "tools/SOURCE-SHA256.txt").read_text(), f"{digest}  README.md\n")
 
     def test_symlink_leaf_is_rejected(self):
         private = self.base / "private"

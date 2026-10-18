@@ -17,14 +17,14 @@ The combined `bedrock_helper` owns Microsoft login, executable preparation, and 
 
 ## Earlier CrossOver launcher
 
-Double-click **Launch Bedrock.command**. It starts or reuses the local account helper, waits for it to be ready, and launches the game. This launch path has reached gameplay with the existing signed-in helper; a new helper session can still require Keychain approval. Use this launcher so the required runtime overrides and game working directory are applied.
+Double-click **python3 minecraft.py legacy**. It starts or reuses the local account helper, waits for it to be ready, and launches the game. This launch path has reached gameplay with the existing signed-in helper; a new helper session can still require Keychain approval. Use this launcher so the required runtime overrides and game working directory are applied.
 
 Client worlds are stored under `bottles/Bedrock-Mac/drive_c/users/crossover/AppData/Roaming/Minecraft Bedrock/`, inside the account's `games/com.mojang/minecraftWorlds` directory. They are separate from the dedicated server's worlds.
 
 To check the installation without launching:
 
 ```sh
-./launch.py --check
+./tools/legacy/launch.py --check
 ```
 
 ## Diagnostic commands
@@ -39,33 +39,33 @@ XODUS_LOG=off RUST_LOG=off ./sources/xodus/target/release/examples/bedrock_helpe
 Once `/tmp/xodus.sock` exists and the helper reports that preparation finished:
 
 ```sh
-./run-windows.sh "$PWD/game/runtime-auth-probe.exe"
-./run-windows.sh "$PWD/game/Minecraft.Windows.exe"
+./tools/legacy/run-windows.sh "$PWD/game/runtime-auth-probe.exe"
+./tools/legacy/run-windows.sh "$PWD/game/Minecraft.Windows.exe"
 ```
 
 Stop the helper with Ctrl-C after closing the game. Do not run multiple account helpers at once.
 
-`scripts/build-runtime.sh`, `stage-runtime.py`, `scripts/build-helper.sh`, and `scripts/build-probes.sh` rebuild the local components from the prepared sources. Exit the game and helper before rebuilding. A changed helper binary may require macOS to authorize Keychain access again.
+`tools/legacy/build.sh runtime`, `tools/legacy/stage-runtime.py`, `tools/legacy/build.sh helper`, and `tools/legacy/build.sh probes` rebuild the local components from the prepared sources. Exit the game and helper before rebuilding. A changed helper binary may require macOS to authorize Keychain access again.
 
 The bottle lives under `bottles/Bedrock-Mac`; a symlink in the standard CrossOver Bottles directory makes it visible in CrossOver. Graphics is set to D3DMetal. The server files and worlds in the parent Bedrock directory are separate.
 
 ## Startup fixes
 
-- Native overrides for WineGDK's `twinapi.appcore`, `windows.ui.core.textinput`, `windows.web`, and `wintypes`, with the activation mappings in `winrt.reg`. The `wintypes` capability query avoids the fatal `E_NOTIMPL` at 82%.
+- Native overrides for WineGDK's `twinapi.appcore`, `windows.ui.core.textinput`, `windows.web`, and `wintypes`, with the activation mappings in `src/winrt.reg`. The `wintypes` capability query avoids the fatal `E_NOTIMPL` at 82%.
 - `minecraft-store-callback.patch` completes the unsupported game-license query with `E_NOTIMPL` on the caller's task queue. The previous immediate stub stranded Minecraft at 41%. This reports a missing Store capability; it does not fabricate ownership or alter the game's licensing checks. The executable is prepared using the account's real Microsoft license.
-- Microsoft's bundled GameInput redistributable and the missing directory registration in `gameinput.reg`.
+- Microsoft's bundled GameInput redistributable and the missing directory registration in `tools/legacy/gameinput.reg`.
 
 After staging the runtime, register the classes and install the bundled input component:
 
 ```sh
-./run-windows.sh reg import "$PWD/winrt.reg"
-./run-windows.sh msiexec /i 'Y:\git\minecraft\bedrock\macos-client\game\Installers\GameInputRedist.msi' /qn /norestart
-./run-windows.sh reg import "$PWD/gameinput.reg"
+./tools/legacy/run-windows.sh reg import "$PWD/src/winrt.reg"
+./tools/legacy/run-windows.sh msiexec /i 'Y:\git\minecraft\bedrock\macos-client\game\Installers\GameInputRedist.msi' /qn /norestart
+./tools/legacy/run-windows.sh reg import "$PWD/tools/legacy/gameinput.reg"
 ```
 
 The MSI path above is for this Mac's existing Wine drive mapping. For another checkout, use that bottle's Windows path to the same bundled installer. Restart Minecraft after installation.
 
-`probes/store-callback-probe.c` verifies that both thread-pool and manually dispatched completion queues receive exactly one callback, report the expected error, and leave the license output untouched. Both cases pass, including with the staged `wintypes` module.
+`tools/probes/store-callback-probe.c` verifies that both thread-pool and manually dispatched completion queues receive exactly one callback, report the expected error, and leave the license output untouched. Both cases pass, including with the staged `wintypes` module.
 
 ## Sources and local changes
 
@@ -75,6 +75,6 @@ The MSI path above is for this Mac's existing Wine drive mapping. For another ch
 - CrossOver 26.3 official trial archive SHA-256: `8688e0848c4e5f79f1cc351cb52d32447da00c6c00cfd3b4bb2d164d44589a26`.
 - Microsoft GDK `2604.4.7897` Gaming Services runtime provides the threading DLL. SHA-256: `aa611155057ebd01cf315ad702a4b5725aa9d5e6fad87732c956fe0a1e5fcfba`.
 
-Apply the reference patches in `patches/` to their pinned source trees, then `minecraft-store-callback.patch` to WineGDK and `keychain-cache.patch` and `unified-helper.patch` to Xodus; use `patches/Cargo.lock`. The source clones, game, binaries, bottle, and private logs are ignored. `runtime/staged-hashes.json` records staged runtime hashes.
+Apply the reference patches in `vendor/patches/` to their pinned source trees, then `minecraft-store-callback.patch` to WineGDK and `keychain-cache.patch` and `unified-helper.patch` to Xodus; use `vendor/patches/Cargo.lock`. The source clones, game, binaries, bottle, and private logs are ignored. `runtime/staged-hashes.json` records staged runtime hashes.
 
 The credential-cache tests cover concurrent reads, persistent updates, failed writes, and deletion. Logs in `logs/` record the actual runtime and graphics checks. Store/account success alone does not establish multiplayer support.

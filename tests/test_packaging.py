@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('packager', Path(__file__).resolve().parents[1] / 'package.py')
+spec = importlib.util.spec_from_file_location('packager', Path(__file__).resolve().parents[1] / 'tools/build.py')
 packager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packager)
 
@@ -112,8 +112,8 @@ class PackagingTests(unittest.TestCase):
                 'version': 'v0.80',
                 'source_commit': '589adb780354b461645b29999cefaf533594ee99',
                 'files': {name: digest(libraries / name) for name in ('winemetal.so', 'winemetal-upstream.so')},
-                'patch_sha256': digest(packager.ROOT / 'patches/standalone-dxmt-memory-lifetime.patch'),
-                'trace_source_sha256': digest(packager.ROOT / 'probes/standalone-dxmt-display-trace.c'),
+                'patch_sha256': digest(packager.ROOT / 'vendor/patches/standalone-dxmt-memory-lifetime.patch'),
+                'trace_source_sha256': digest(packager.ROOT / 'tools/probes/standalone-dxmt-display-trace.c'),
             }
             (wine / 'dxmt-unix-bridge.json').write_text(json.dumps(metadata))
             with patch.dict(os.environ, {}, clear=True):
@@ -121,7 +121,7 @@ class PackagingTests(unittest.TestCase):
             resources = root / 'app/Contents/Resources'
             shutil.copytree(wine, resources / 'runtime/wine')
             shutil.copytree(dxmt, resources / 'runtime/dxmt')
-            for name in ('patches/standalone-dxmt-memory-lifetime.patch', 'probes/standalone-dxmt-display-trace.c'):
+            for name in ('vendor/patches/standalone-dxmt-memory-lifetime.patch', 'tools/probes/standalone-dxmt-display-trace.c'):
                 target = resources / 'scripts' / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(packager.ROOT / name, target)
@@ -132,7 +132,7 @@ class PackagingTests(unittest.TestCase):
             packager.record_packaged_bridge(resources, metadata)
             recorded = json.loads((resources / 'runtime/wine/dxmt-unix-bridge.json').read_text())
             self.assertEqual(recorded['source_files'], metadata['files'])
-            spec = importlib.util.spec_from_file_location('bridge_runtime', packager.ROOT / 'standalone.py')
+            spec = importlib.util.spec_from_file_location('bridge_runtime', packager.ROOT / 'src/standalone.py')
             runtime = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(runtime)
             runtime.ROOT = root / 'player-data-without-sources'

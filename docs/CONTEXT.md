@@ -13,18 +13,36 @@ CrossOver work is documented in [docs/LEGACY.md](LEGACY.md).
 
 ## Components
 
+The repository root exposes one command, `minecraft.py`, alongside its README,
+licence and Git configuration. App code lives in `src/`, developer tools and
+native probes in `tools/`, and preserved upstream patches/notices in `vendor/`
+Installed app script names and the player's data directories retain their
+existing contracts
+
+| Command | Purpose |
+| --- | --- |
+| `python3 minecraft.py play` | Build missing source components and launch with monitoring |
+| `python3 minecraft.py runtime --help` | Prepare, inspect, probe or launch an existing runtime |
+| `python3 minecraft.py build --help` | Build the launcher, bundle the app or create a DMG |
+| `python3 minecraft.py source --help` | Fetch/verify pinned upstreams, export source and manage checksums |
+| `python3 minecraft.py monitor --help` | Inspect a session, mark a problem or stop the owned monitor |
+| `python3 minecraft.py legacy --help` | Historical CrossOver launch/check path |
+
+Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
+`bash tools/bootstrap.sh` preserves the interactive prerequisites setup
+
 | Component | Responsibility | Source of truth |
 | --- | --- | --- |
-| Native launcher | Window, Play/Cancel, status rendering, sign-out menu, worker lifetime | `launcher/BedrockLauncher.swift` |
-| Worker | Installation checks, bundle wiring, setup lock, one account session, structured status | `launcher/setup.py` |
-| Session runtime | Prefix preparation, account helper ownership, Wine environment, game launch | `standalone.py` |
-| Account helper | Keychain cache, Microsoft login and license, game download, Xbox IPC | `standalone-helper.rs` and pinned Xodus patches |
-| Acquisition tools | Helper compilation and verified Microsoft threading component | `standalone-setup.py` |
-| GameInput preparation | Verify/extract known MSI files and prepare registry entries | `standalone-gameinput.py` |
-| Windows compatibility | WineGDK with local GDK, Store, privilege, and Realms patches | `bootstrap-sources.py`, `patches/standalone-wine-*.patch` |
-| Graphics | Pinned upstream DXMT and optional verified display-lifetime bridge | `scripts/build-standalone-graphics.sh` |
-| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `package.py` |
-| Source distribution | Explicit reviewed file allowlist and checksum inventory | `export-source.py`, `SOURCE-SHA256.txt` |
+| Native launcher | Window, Play/Cancel, status rendering, sign-out menu, worker lifetime | `src/launcher/BedrockLauncher.swift` |
+| Worker | Installation checks, bundle wiring, setup lock, one account session, structured status | `src/launcher/setup.py` |
+| Session runtime | Prefix preparation, account helper ownership, Wine environment, game launch | `src/standalone.py` |
+| Account helper | Keychain cache, Microsoft login and license, game download, Xbox IPC | `src/standalone-helper.rs` and pinned Xodus patches |
+| Acquisition tools | Helper compilation and verified Microsoft threading component | `src/standalone-setup.py` |
+| GameInput preparation | Verify/extract known MSI files and prepare registry entries | `src/standalone-gameinput.py` |
+| Windows compatibility | WineGDK with local GDK, Store, privilege, and Realms patches | `tools/source.py`, `vendor/patches/standalone-wine-*.patch` |
+| Graphics | Pinned upstream DXMT and optional verified display-lifetime bridge | `tools/build/graphics.sh` |
+| Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
+| Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
 The [stability notes](STABILITY.md) describe token renewal, device/title
 authentication, recorded dead-socket recovery, and the optional graphics bridge.
@@ -48,7 +66,7 @@ Direct3D 11; the launcher disables Direct3D 12 for the tested game path.
 4. New or changed runtime setup acquires the verified threading DLL and prepares
    the separate Wine prefix, including GameInput. A setup signature makes
    unchanged preparation reusable.
-5. `standalone.py launch` reuses the account service and runs
+5. `src/standalone.py launch` reuses the account service and runs
    `G:\\Minecraft.Windows.exe` in Wine. The outer worker keeps the helper alive.
 6. Normal game exit returns the launcher to Play and stops the owned helper.
    Failure and cancellation unwind owned subprocesses; cancelled setup can be
@@ -106,7 +124,7 @@ client without account headers/cookies; it currently permits the two catalog
 HTTP CDN hosts documented in [STANDALONE-SETUP.md](SETUP.md).
 Some unencrypted package sections lack complete integrity authentication. This
 is an unresolved release gate, not a claim that host allowlisting authenticates
-HTTP downloads. See [SECURITY.md](../SECURITY.md).
+HTTP downloads. See [SECURITY.md](../.github/SECURITY.md).
 
 App resource checksums, a valid ad-hoc bundle signature, source checksums, and
 notarization serve different purposes. None substitutes for game-package

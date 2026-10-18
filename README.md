@@ -55,27 +55,26 @@ gameplay FPS or a faster-than-Windows result
 ## Find your way around
 
 ```text
-launcher/   Native Mac app and setup worker
-scripts/    Build tools and runtime assembly
-probes/     Native graphics and networking diagnostics
-patches/    Pinned WineGDK, DXMT and Xodus fixes
+src/        Native Mac app, worker and runtime source
+tools/      Build, packaging, diagnostics and source tooling
+vendor/     Preserved upstream patches and licences
 tests/      Offline checks and focused fixtures
 docs/       Setup, architecture and release evidence
 assets/     README artwork and real launcher capture
-package.py  Launcher, app and DMG subcommands
+minecraft.py  One CLI with subcommands and arguments
 ```
 
 [Architecture](docs/CONTEXT.md) · [Build guide](docs/DEVELOPMENT.md) ·
-[Tests & CI](docs/TESTING.md) · [Contribute](CONTRIBUTING.md) ·
+[Tests & CI](docs/TESTING.md) · [Contribute](.github/CONTRIBUTING.md) ·
 [Source releases](docs/PUBLISHING.md)
 
 <details>
 <summary>One command for building and packaging</summary>
 
 ```sh
-python3 package.py launcher
-python3 package.py app --output 'build/packaged/Bedrock for Mac.app'
-python3 package.py dmg --output 'build/Minecraft-Mac-preview.dmg'
+python3 minecraft.py build launcher
+python3 minecraft.py build app --output 'build/packaged/Bedrock for Mac.app'
+python3 minecraft.py build dmg --output 'build/Minecraft-Mac-preview.dmg'
 ```
 
 The app command uses prebuilt runtime components; follow the
@@ -121,6 +120,6 @@ contain buildable source, not an installed Mac app
 
 Derived from [1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac)
 with upstream history retained · [GPLv3](LICENSE) ·
-[Third-party notices](THIRD_PARTY.md) · [Security](SECURITY.md)
+[Third-party notices](vendor/README.md) · [Security](.github/SECURITY.md)
 
 <sub>Unofficial project, not affiliated with Mojang or Microsoft</sub>

@@ -20,12 +20,12 @@ jobs:
       - name: Verify source
         run: |
           python -m unittest discover -s tests -p 'test_*.py'
-          python export-source.py --check
-          sha256sum --check --quiet SOURCE-SHA256.txt
+          python minecraft.py source check
+          sha256sum --check --quiet tools/SOURCE-SHA256.txt
       - name: Package reviewed source
         run: |
           mkdir -p outputs
-          python export-source.py outputs/minecraft-mac
+          python minecraft.py source export outputs/minecraft-mac
           tar -C outputs -czf outputs/minecraft-mac-source.tar.gz minecraft-mac
           cd outputs
           sha256sum minecraft-mac-source.tar.gz > SHA256SUMS

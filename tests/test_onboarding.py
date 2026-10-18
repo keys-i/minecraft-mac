@@ -15,10 +15,10 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-spec = importlib.util.spec_from_file_location('onboarding', Path(__file__).resolve().parents[1] / 'launcher/setup.py')
+spec = importlib.util.spec_from_file_location('onboarding', Path(__file__).resolve().parents[1] / 'src/launcher/setup.py')
 worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
-runtime_spec = importlib.util.spec_from_file_location('session_runtime', Path(__file__).resolve().parents[1] / 'standalone.py')
+runtime_spec = importlib.util.spec_from_file_location('session_runtime', Path(__file__).resolve().parents[1] / 'src/standalone.py')
 runtime = importlib.util.module_from_spec(runtime_spec)
 runtime_spec.loader.exec_module(runtime)
 
@@ -38,7 +38,7 @@ class OnboardingTests(unittest.TestCase):
             helper = root / 'helper'
             helper.touch()
             state, endpoint = root / 'session.json', root / 'account.sock'
-            started, commands = [], []
+            started, commands, scripts = [], [], []
 
             class Helper:
                 pid = 32123
@@ -63,6 +63,7 @@ class OnboardingTests(unittest.TestCase):
 
             def command(command, *_args, **_kwargs):
                 commands.append(command[-1])
+                scripts.append(command[1])
                 if command[-1] == 'prepare' and fail_prepare:
                     raise RuntimeError('Preparation failed')
                 if command[-1] in ('--download-game', 'launch'):
@@ -96,6 +97,7 @@ class OnboardingTests(unittest.TestCase):
             self.assertIn('--download', started[0])
             self.assertIn('--serve-after', started[0])
             self.assertEqual(commands, ['--threading', 'prepare'] + ([] if fail_prepare else ['launch']))
+            self.assertTrue(all(script.parent == root / 'src' for script in scripts))
             self.assertFalse(endpoint.exists())
             self.assertFalse(state.exists())
 
@@ -131,6 +133,7 @@ class OnboardingTests(unittest.TestCase):
             with patch.object(worker, 'ROOT', home), patch.object(worker, 'BUNDLE', bundle):
                 worker.initialize_bundle()
                 worker.initialize_bundle()
+                self.assertEqual(worker.installed_script('standalone.py'), home / 'standalone.py')
             moved = folder / 'moved-app'
             bundle.rename(moved)
             with patch.object(worker, 'ROOT', home), patch.object(worker, 'BUNDLE', moved):

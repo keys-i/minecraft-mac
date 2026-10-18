@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('start', Path(__file__).resolve().parents[1] / 'start.py')
+spec = importlib.util.spec_from_file_location('start', Path(__file__).resolve().parents[1] / 'tools/setup.py')
 start = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(start)
 
@@ -108,7 +108,8 @@ class StartTests(unittest.TestCase):
 
     def test_fresh_checkout_check_does_not_even_write_python_cache(self):
         source = Path(__file__).resolve().parents[1]
-        (self.root / 'standalone.py').write_bytes((source / 'standalone.py').read_bytes())
+        (self.root / 'src').mkdir()
+        (self.root / 'src/standalone.py').write_bytes((source / 'src/standalone.py').read_bytes())
         before = set(self.root.rglob('*'))
         self.assertEqual(start.main(['--check']), 1)
         self.assertEqual(set(self.root.rglob('*')), before)
@@ -134,9 +135,9 @@ class StartTests(unittest.TestCase):
     def test_source_release_includes_start_and_console_authentication(self):
         source = Path(__file__).resolve().parents[1]
         with patch.object(start, 'ROOT', source):
-            exporter = start.module('export-source')
-        for name in ('Start.command', 'start.py', 'scripts/install-build-tools.sh',
-                     'tests/test_start.py', 'patches/standalone-wine-xuser-z-device-auth.patch'):
+            exporter = start.module('tools/source.py')
+        for name in ('minecraft.py', 'tools/setup.py', 'tools/build/install.sh',
+                     'tests/test_start.py', 'vendor/patches/standalone-wine-xuser-z-device-auth.patch'):
             self.assertIn(name, exporter.ALLOWED_FILES)
 
     def test_setup_inputs_exist_in_the_organised_source_checkout(self):
@@ -163,7 +164,7 @@ chmod +x "$(dirname "$0")/../opt/rustup/bin/rustup"
 ''')
         brew.chmod(0o755)
         script = self.root / 'tools.sh'
-        script.write_text((source / 'scripts/install-build-tools.sh').read_text()
+        script.write_text((source / 'tools/build/install.sh').read_text()
                           .replace('/opt/homebrew', str(brew_root))
                           .replace('/usr/bin/arch', '/usr/bin/true'))
         result = subprocess.run(['/bin/bash', str(script)],

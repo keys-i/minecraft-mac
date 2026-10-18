@@ -23,12 +23,12 @@ These checks do not use the user's account, Keychain, or game data:
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_*.py'
-python3 export-source.py --check
-shasum -a 256 -c SOURCE-SHA256.txt
+python3 minecraft.py source check
+shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 86 tests. Coverage includes source isolation,
+The Python suite currently has 89 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -37,11 +37,11 @@ snapshot, not a requirement to keep it fixed.
 After fetching upstream sources, verify their pinned patched state:
 
 ```sh
-python3 bootstrap-sources.py --check
+python3 minecraft.py source verify
 ```
 
-That check is offline; the initial `bootstrap-sources.py` fetch is not. If an
-exported source file changed, first regenerate `SOURCE-SHA256.txt` following
+That check is offline; the initial `tools/source.py` fetch is not. If an
+exported source file changed, first regenerate `tools/SOURCE-SHA256.txt` following
 [PUBLISHING.md](PUBLISHING.md#update-the-source-inventory).
 
 ## Native app and helper
@@ -49,7 +49,7 @@ exported source file changed, first regenerate `SOURCE-SHA256.txt` following
 Compile the interface on a Mac with Command Line Tools:
 
 ```sh
-python3 package.py launcher
+python3 minecraft.py build launcher
 ```
 
 Use local fixture status streams to inspect first-run, progress, cancellation,
@@ -62,7 +62,7 @@ Minecraft and letting its helper stop. The builder rejects any active
 `standalone_helper`, including one in a packaged app:
 
 ```sh
-python3 standalone-setup.py --build-helper
+python3 src/standalone-setup.py --build-helper
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 ```
@@ -91,8 +91,8 @@ The graphics probe requires the owned game/runtime prerequisites and prepares
 the standalone game prefix; it is not a pure source test:
 
 ```sh
-./scripts/build-standalone-probes.sh
-python3 standalone.py probe graphics
+./tools/build/probes.sh
+python3 minecraft.py runtime probe graphics
 ```
 
 Expected graphics evidence includes successful HRESULTs and
@@ -101,9 +101,9 @@ Microsoft. Never run those under the assumption that all probes are offline.
 
 ## Verify a packaged artifact
 
-`package.py app` verifies the final bundle signature and records hashes of
+`minecraft.py build app` verifies the final bundle signature and records hashes of
 regular resource files in `Contents/Resources/payload-sha256.json`.
-`package.py dmg` verifies the DMG. To check an existing default artifact:
+`minecraft.py build dmg` verifies the DMG. To check an existing default artifact:
 
 ```sh
 codesign --verify --deep --strict 'build/packaged/Bedrock for Mac.app'
