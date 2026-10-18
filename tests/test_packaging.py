@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import tempfile
 import unittest
@@ -17,6 +18,23 @@ spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_launcher_bundles_artwork_and_keeps_existing_installation_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'assets').mkdir()
+            (root / 'assets/poster.webp').write_bytes(b'fixture artwork')
+            with patch.object(packager, 'ROOT', root), \
+                    patch.object(packager.subprocess, 'run'), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                app = packager.build_launcher()
+            self.assertEqual(app.name, 'Minecraft for MacOS.app')
+            self.assertEqual((app / 'Contents/Resources/poster.webp').read_bytes(), b'fixture artwork')
+            with (app / 'Contents/Info.plist').open('rb') as file:
+                info = plistlib.load(file)
+            self.assertEqual(info['CFBundleDisplayName'], 'Minecraft for MacOS')
+            self.assertEqual(info['CFBundleIdentifier'], 'local.bedrock.mac.launcher')
+            self.assertEqual(info['BedrockProjectPath'], str(root))
+
     def test_dmg_stages_only_the_app_and_removes_temporary_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

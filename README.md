@@ -1,116 +1,103 @@
-# Minecraft Bedrock for Mac
-
-![Bedrock on your Mac — original voxel-world poster with a laptop portal, waterfalls and block-built lettering](assets/poster.webp)
-
-**Your Windows Bedrock game, on Apple Silicon** — a native macOS launcher with
-Metal graphics through WineGDK and DXMT
-
-[![Source checks](https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml)
-[![Source release](https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml)
-[![Security](https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml)
-
-**[Build the Mac app →](docs/DEVELOPMENT.md)** · **[Install & play](docs/USER_GUIDE.md)** · **[Release status](docs/RELEASE.md)**
-
-> **Source preview** · Runtime-included local DMG built and tested · Public notarised installer pending
-
-## Windows Bedrock → macOS
+<h1 align="center">Minecraft for MacOS</h1>
 
 <p align="center">
-  <img src="assets/launcher.jpg" width="420" alt="Real native Bedrock for Mac launcher showing Minecraft is running on macOS" />
+  <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml/badge.svg?branch=main" alt="Build and test checks" /></a>
+  <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml/badge.svg?branch=main" alt="Source release checks" /></a>
+  <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml/badge.svg?branch=main" alt="Python security analysis" /></a>
 </p>
 
-| Mac | Your account | Setup |
-| --- | --- | --- |
-| Apple Silicon · macOS 27+ · Rosetta | Owned Minecraft for Windows | Microsoft sign-in · Internet · 8 GB free |
+![Minecraft Bedrock on a Mac — a block-built world, waterfalls and a laptop portal](assets/poster.webp)
 
-```mermaid
-flowchart LR
-    A["Open the app"] --> B["Install & Play"]
-    B --> C["Microsoft sign-in"]
-    C --> D["Minecraft Bedrock"]
-    classDef grass fill:#285c32,stroke:#8ecb65,color:#fff,stroke-width:2px
-    classDef stone fill:#34444c,stroke:#a9bcc6,color:#fff,stroke-width:2px
-    class A,B,D grass
-    class C stone
-```
+<p align="center">
+  <strong>Play Minecraft Bedrock on your Mac</strong><br />
+  An unofficial launcher for the Windows edition, with familiar controls and a native Mac window
+</p>
 
-The app obtains your licensed game separately · Worlds stay outside the app ·
-Credentials stay in macOS Keychain · Next time, press **Play**
+<p align="center">
+  <a href="docs/build.md#build-a-complete-local-app"><strong>Build the preview</strong></a>
+  &nbsp;&nbsp; <a href="docs/play.md">Player guide</a>
+  &nbsp;&nbsp; <a href="docs/status.md">Release progress</a>
+</p>
 
-## One command, a cleaner build
+> [!IMPORTANT]
+> **There isn't a public DMG to download yet**
+> You can build the preview from source today. The [release page](docs/status.md#before-publishing-a-binary-preview) explains what's left before an installer can be shared
 
-```sh
-python3 minecraft.py --help
-```
+## Before you start
 
-| `src/` | `tools/` | `vendor/` |
-| --- | --- | --- |
-| Launcher & runtime | Build, source & diagnostics | Upstream patches & licences |
+- [ ] An **Apple Silicon Mac** running **macOS 27 or later**
+- [ ] [Rosetta installed](https://support.apple.com/en-us/102527)
+- [ ] A Microsoft account that owns **Minecraft for Windows**[^ownership]
+- [ ] Internet access and at least **8 GB free** for game setup
 
-[Architecture](docs/CONTEXT.md) · [Checks & CI](docs/TESTING.md) ·
-[Contribute](.github/CONTRIBUTING.md) · [Security policy](.github/SECURITY.md)
+## Your first launch
+
+Once you've [built the app](docs/build.md#build-a-complete-local-app):
+
+1. Drag **Minecraft for MacOS** into **Applications** and open it
+2. Choose **Install & Play** and sign in with your Microsoft account
+3. Let the game download, then choose **Sign in now** if Minecraft asks
+
+After setup, choose **Play** to open Minecraft again
+
+> [!TIP]
+> You can press <kbd>Return</kbd> to activate the launcher's main button. Quit Minecraft normally when you're finished so your world can save
+
+## Questions
 
 <details>
-<summary>Build, package and inspect from the same CLI</summary>
+<summary><strong>Can I play with friends on Xbox or PlayStation?</strong></summary>
+
+Earlier builds joined a featured server and a PS5 friend's world, and displayed
+the joined-Realms list. Multiplayer still needs more testing with the current
+launcher, including joining an active Realm. Check the
+[tested scenarios](docs/status.md#earlier-gameplay-results) before relying on a
+particular setup
+
+</details>
+
+<details>
+<summary><strong>Is this Java Edition or an official Mac version?</strong></summary>
+
+It's the Windows **Bedrock Edition**, running through WineGDK, Rosetta and DXMT.
+The launcher is native macOS; the game uses compatibility layers. This project
+isn't affiliated with Mojang or Microsoft
+
+</details>
+
+<details>
+<summary><strong>Where are my worlds, and how do I back them up?</strong></summary>
+
+Your worlds are kept outside the app. Follow the
+[backup and update steps](docs/play.md#your-files-backups-and-updates) before
+replacing a build. Signing out keeps your game and worlds
+
+</details>
+
+<details>
+<summary><strong>I want to build or contribute</strong></summary>
+
+Start with the [build guide](docs/build.md). Once the runtime and packaging
+environment are prepared, the same CLI builds the app and DMG:
 
 ```sh
-python3 minecraft.py source fetch
-python3 minecraft.py build launcher
 python3 minecraft.py build app
-python3 minecraft.py build dmg --output 'build/Minecraft-Mac-preview.dmg'
-python3 minecraft.py source check
-python3 minecraft.py monitor status
+python3 minecraft.py build dmg
 ```
 
-App/DMG packaging uses prepared runtime components and the packaging environment.
-Follow the [complete build guide](docs/DEVELOPMENT.md) on a fresh checkout.
-Use `COMMAND --help` for subcommands and arguments
+| Working on | Guide |
+| --- | --- |
+| Building or packaging | [Build guide](docs/build.md) |
+| Launcher, runtime or sign-in | [Architecture](docs/architecture.md) |
+| Verifying a change | [Testing](docs/test.md) |
+| Submitting a change | [Contributing](.github/CONTRIBUTING.md) |
 
 </details>
 
-<details>
-<summary>Minecraft Bedrock on Mac — compatibility, cross-play and download FAQ</summary>
+Need a hand? [Read the player guide](docs/play.md#troubleshooting) or
+[report a problem](https://github.com/keys-i/minecraft-mac/issues/new?template=bug_report.yml)
 
-### Can you play Minecraft Bedrock on a Mac?
-
-This unofficial project runs **Minecraft for Windows (Bedrock Edition)** on
-Apple Silicon Macs using WineGDK, Rosetta and DXMT's Direct3D 11-to-Metal
-translation. The current complete bundle requires macOS 27+; the recorded test
-machine is an M3 Pro
-
-### Is Minecraft Bedrock native on macOS?
-
-The launcher is native macOS. The game remains the Windows edition running
-through compatibility and translation layers. No Windows installation or
-CrossOver subscription is needed
-
-### Does Xbox, PlayStation, server and Realms cross-play work?
-
-Earlier builds reached a featured server, the joined-Realm list and a PS5
-friend world. See the [dated multiplayer evidence](docs/STABILITY.md) for the
-specific builds and scenarios checked. Active Realm entry and complete
-multiplayer validation on the combined launcher build remain open
-
-### Do I need to own Minecraft for Windows?
-
-Yes. Microsoft sign-in verifies real Windows Bedrock ownership. A console or
-mobile licence alone does not establish PC ownership. No game, account or
-saved world is included in this repository
-
-### Where is the Mac DMG download?
-
-A runtime-included local preview exists. Public binary distribution awaits
-[signing, notarisation, clean-Mac testing and the remaining release gates](docs/RELEASE.md).
-GitHub source archives contain buildable source; they are not an installed app
-
-### Is it faster than Windows or native Minecraft?
-
-No controlled gameplay comparison establishes that claim. Recorded changes
-include a **155.7 → 127.2 MB DMG** and **259 → 164 ms median helper handoff**.
-See the [measurement methods and limits](docs/PERFORMANCE.md)
-
-</details>
-
+[Accessibility](docs/accessibility.md) · [Security](.github/SECURITY.md) ·
 [Third-party notices](vendor/README.md)
 
-<sub>Unofficial project, not affiliated with Mojang or Microsoft</sub>
+[^ownership]: Owning Minecraft only on a phone or console doesn't establish a Windows licence. The launcher checks Windows ownership when you sign in

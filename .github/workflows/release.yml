@@ -58,4 +58,4 @@ jobs:
           sha256sum --check SHA256SUMS
           gh release create "$RELEASE_TAG" minecraft-mac-source.tar.gz SHA256SUMS \
             --verify-tag --prerelease --latest=false --title "$RELEASE_TAG" \
-            --notes 'Reviewed source preview with SHA-256 checksums. Build instructions and binary release limits are in docs/RELEASE.md inside the archive. The game and runtime binaries are obtained separately'
+            --notes 'Reviewed source preview with SHA-256 checksums. Build instructions and binary release limits are in docs/status.md inside the archive. The game and runtime binaries are obtained separately'

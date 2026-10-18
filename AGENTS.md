@@ -2,7 +2,7 @@
 
 ## Start here
 
-Read [CONTEXT.md](docs/CONTEXT.md) for the architecture and vocabulary, then the guide
+Read [Architecture](docs/architecture.md) for the architecture and vocabulary, then the guide
 for the area you are changing. [README.md](README.md) is the documentation index.
 The current product is an open-source preview with a locally tested native Mac
 launcher; it is not a released, notarized consumer app.
@@ -25,7 +25,7 @@ launcher; it is not a released, notarized consumer app.
 
 Packaged app data lives in `~/Library/Application Support/Bedrock for Mac/`.
 Source development uses this checkout. Never confuse either with the older
-`bottles/Bedrock-Mac` CrossOver prefix. See [the data map](docs/CONTEXT.md#data-and-process-ownership).
+`bottles/Bedrock-Mac` CrossOver prefix. See [the data map](docs/architecture.md#data-and-process-ownership).
 
 - Preserve `game/`, `bottles/`, worlds, and Keychain entries. Repair by preserving
   conflicting files and giving a specific recovery path, not by resetting data.
@@ -53,12 +53,12 @@ by `src/standalone-setup.py --build-helper`. `tools/legacy/build.sh helper` buil
 Retain upstream notices, real Microsoft ownership checks, the pinned Cargo
 lockfile, and exact download digest checks. Runtime and game payloads never go
 into source commits. The unresolved binary release gates are in
-[docs/RELEASE.md](docs/RELEASE.md); do not turn an untested assumption into a
+[Release status](docs/status.md); do not turn an untested assumption into a
 supported-platform or security claim.
 
 ## Validation and documentation
 
-Use [docs/TESTING.md](docs/TESTING.md) to select checks appropriate to the change.
+Use [Testing](docs/test.md) to select checks appropriate to the change.
 The common source checks are:
 
 ```sh
@@ -69,14 +69,14 @@ git diff --check
 ```
 
 After changing an exported file, regenerate `tools/SOURCE-SHA256.txt` using the recipe
-in [docs/PUBLISHING.md](docs/PUBLISHING.md#update-the-source-inventory) before
+in [Source releases](docs/build.md#update-the-source-inventory) before
 running the checksum check. Add new public source/docs to `ALLOWED_FILES` in
 `tools/source.py` explicitly; never broaden it to recursively copy directories.
 Stage exact files, inspect the staged diff, and keep the working tree free of
 accidentally staged runtime data.
 
 Update the relevant user/developer guide with behavior changes and update
-`docs/CONTEXT.md` when ownership, paths, interfaces, or architecture change. Keep the
+`docs/architecture.md` when ownership, paths, interfaces, or architecture change. Keep the
 release evidence dated and distinguish outstanding work from completed checks.
 Do not rebuild or reinstall the live app for documentation-only changes.
 

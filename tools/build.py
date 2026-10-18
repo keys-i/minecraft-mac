@@ -13,7 +13,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / 'build/packaged/Bedrock for Mac.app'
+NAME = 'Minecraft for MacOS'
+APP = ROOT / 'build/packaged' / f'{NAME}.app'
 
 
 MACHO_MAGICS = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf'}
@@ -90,13 +91,13 @@ def assemble(args):
     if app.exists() or app.is_symlink():
         raise SystemExit('The packaged app already exists. Move it aside before making a new package.')
     bridge = verify_source_bridge(wine, dxmt)
-    build_launcher()
+    launcher = build_launcher()
     subprocess.run([str(required[-1]), '--noconfirm', '--clean', '--onedir',
                     '--name', 'BedrockWorker', '--distpath', str(ROOT / 'build/frozen'),
                     '--workpath', str(ROOT / 'build/pyinstaller'), '--specpath', str(ROOT / 'build'),
                     str(ROOT / 'src/launcher/setup.py')], check=True)
     app.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(ROOT / 'build/Bedrock for Mac.app', app)
+    shutil.copytree(launcher, app)
     resources = app / 'Contents/Resources'
     resources.mkdir(exist_ok=True)
     shutil.copytree(ROOT / 'build/frozen/BedrockWorker', resources / 'worker', symlinks=True)
@@ -155,12 +156,13 @@ def assemble(args):
 
 def build_launcher():
     """Build the native development app without touching the installed game"""
-    app = ROOT / 'build/Bedrock for Mac.app'
+    app = ROOT / 'build' / f'{NAME}.app'
     resources = app / 'Contents/Resources'
     executable = app / 'Contents/MacOS/BedrockLauncher'
     cache = ROOT / 'build/swift-module-cache'
     executable.parent.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / 'assets/poster.webp', resources / 'poster.webp')
     cache.mkdir(parents=True, exist_ok=True)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-O', '-target',
                     'arm64-apple-macos15.0', '-module-cache-path', str(cache),
@@ -173,11 +175,12 @@ def build_launcher():
     subprocess.run(['iconutil', '-c', 'icns', str(iconset), '-o', str(resources / 'AppIcon.icns')], check=True)
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
-            CFBundleName='Bedrock for Mac', CFBundleDisplayName='Bedrock for Mac',
+            CFBundleName=NAME, CFBundleDisplayName=NAME,
             CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='2', CFBundleShortVersionString='0.2.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)
+    return app
 
 
 def disk_image(args):
@@ -195,7 +198,7 @@ def disk_image(args):
         shutil.copytree(app, stage / app.name, symlinks=True)
         (stage / 'Applications').symlink_to('/Applications', target_is_directory=True)
         subprocess.run(['hdiutil', 'create', '-srcfolder', str(stage), '-volname',
-                        'Bedrock for Mac', '-format', 'ULFO', '-ov', str(output)], check=True)
+                        NAME, '-format', 'ULFO', '-ov', str(output)], check=True)
     subprocess.run(['hdiutil', 'verify', str(output)], check=True)
     print(output)
     print('Local test image. Developer ID signing and notarization are separate release steps.')
@@ -209,7 +212,7 @@ def main(argv=None):
     app.add_argument('--output', type=Path, default=APP)
     dmg = commands.add_parser('dmg', help='Create a verified drag-to-Applications DMG')
     dmg.add_argument('--app', type=Path, default=APP)
-    dmg.add_argument('--output', type=Path, default=ROOT / 'build/Minecraft-Mac-preview.dmg')
+    dmg.add_argument('--output', type=Path, default=ROOT / 'build/Minecraft-for-MacOS-preview.dmg')
     args = parser.parse_args(argv)
     if args.command == 'launcher':
         build_launcher()

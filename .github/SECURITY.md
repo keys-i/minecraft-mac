@@ -2,7 +2,7 @@
 
 This repository is an experimental source preview. No public binary release or
 supported security-maintenance schedule is established. The latest source and
-the known release gates are documented in [docs/RELEASE.md](../docs/RELEASE.md).
+the known release gates are documented in [Release status](../docs/status.md).
 
 ## Reporting a security issue
 
@@ -68,5 +68,5 @@ Never include a game, user data, Microsoft payloads, or raw local logs.
 
 A binary release additionally needs the dependency/notices/corresponding-source
 inventory in [THIRD_PARTY.md](../vendor/README.md) and every gate in
-[docs/RELEASE.md](../docs/RELEASE.md). This document records outstanding risks; it
+[Release status](../docs/status.md). This document records outstanding risks; it
 does not claim that public binary distribution is ready.

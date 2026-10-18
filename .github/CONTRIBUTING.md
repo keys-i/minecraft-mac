@@ -4,8 +4,8 @@ Use local development for app testing. Keep game downloads, worlds, credentials,
 logs, and compiled dependencies out of commits. The source exporter uses an
 explicit allowlist; add each new source file to it.
 
-Read [CONTEXT.md](../docs/CONTEXT.md) for the architecture and [AGENTS.md](../AGENTS.md) for
-repository conventions. The [development guide](../docs/DEVELOPMENT.md) documents
+Read [Architecture](../docs/architecture.md) for the architecture and [AGENTS.md](../AGENTS.md) for
+repository conventions. The [development guide](../docs/build.md) documents
 the complete local build. Use a descriptive branch; do not use `Codex/*` or
 `codex/*` branch names.
 
@@ -20,7 +20,7 @@ the complete local build. Use a descriptive branch; do not use `Codex/*` or
    ignored `sources/` or `build/` directories are not reproducible contributions.
 4. Run the relevant checks below and update the user/developer documentation.
 5. Add new public source/docs to `ALLOWED_FILES` and regenerate the checked-in
-   checksum inventory using [this recipe](../docs/PUBLISHING.md#update-the-source-inventory).
+   checksum inventory using [this recipe](../docs/build.md#update-the-source-inventory).
 6. Inspect the staged diff and open a pull request describing the problem,
    resulting behavior, validation, and remaining limits. Verify CI on its final
    commit before merging. A source merge does not publish an app release.
@@ -35,7 +35,7 @@ python3 minecraft.py source verify  # after fetching the pinned sources
 python3 minecraft.py build launcher                 # macOS with Command Line Tools
 ```
 
-Use [the testing guide](../docs/TESTING.md) for which checks a change needs, exact
+Use [the testing guide](../docs/test.md) for which checks a change needs, exact
 artifact checks, CI scope, and the manual test matrix. Documentation-only work
 does not require rebuilding/replacing the live app.
 

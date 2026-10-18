@@ -28,7 +28,7 @@ shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 89 tests. Coverage includes source isolation,
+The Python suite currently has 90 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -42,7 +42,7 @@ python3 minecraft.py source verify
 
 That check is offline; the initial `tools/source.py` fetch is not. If an
 exported source file changed, first regenerate `tools/SOURCE-SHA256.txt` following
-[PUBLISHING.md](PUBLISHING.md#update-the-source-inventory).
+[Source releases](build.md#update-the-source-inventory).
 
 ## Native app and helper
 
@@ -55,7 +55,13 @@ python3 minecraft.py build launcher
 Use local fixture status streams to inspect first-run, progress, cancellation,
 retry, error, and running-game states without touching a real account. Keep
 fixtures in ignored build output. A fixture proves UI behavior only. The worker
-protocol and ownership model are in [CONTEXT.md](CONTEXT.md).
+protocol and ownership model are in [Architecture](architecture.md).
+
+For the redesigned window, also check narrow and wide sizes, long errors,
+Return/Escape, visible keyboard focus, light/dark appearance and Reduced Motion
+with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
+The October 19 interface build compiled locally, but Computer Use denied access
+to its disposable preview, so these visible checks remain unverified
 
 Prepare the current standalone helper example and run its tests after quitting
 Minecraft and letting its helper stop. The builder rejects any active
@@ -106,13 +112,13 @@ regular resource files in `Contents/Resources/payload-sha256.json`.
 `minecraft.py build dmg` verifies the DMG. To check an existing default artifact:
 
 ```sh
-codesign --verify --deep --strict 'build/packaged/Bedrock for Mac.app'
-hdiutil verify 'build/Minecraft-Mac-preview.dmg'
-shasum -a 256 'build/Minecraft-Mac-preview.dmg'
+codesign --verify --deep --strict 'build/packaged/Minecraft for MacOS.app'
+hdiutil verify 'build/Minecraft-for-MacOS-preview.dmg'
+shasum -a 256 'build/Minecraft-for-MacOS-preview.dmg'
 python3 - <<'PY'
 from pathlib import Path
 import hashlib, json, plistlib
-app = Path('build/packaged/Bedrock for Mac.app')
+app = Path('build/packaged/Minecraft for MacOS.app')
 resources = app / 'Contents/Resources'
 inventory = json.loads((resources / 'payload-sha256.json').read_text())
 for name, expected in inventory.items():
@@ -153,7 +159,7 @@ state, action, observed result, and any reviewed diagnostic excerpt.
 | Multiplayer | Separately record server entry, Realm listing, active Realm entry, and friend-session joining |
 
 These are acceptance criteria, not claims that each row has passed. Put observed
-results in [RELEASE.md](RELEASE.md), including failures and untested cases.
+results in [Release status](status.md), including failures and untested cases.
 
 ## Continuous integration
 

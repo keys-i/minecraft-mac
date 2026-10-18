@@ -1,9 +1,9 @@
-# Using Bedrock for Mac
+# Using Minecraft for MacOS
 
 This is an open-source preview. There is no public notarized installer yet.
 The steps below describe a complete local app built from this repository;
 GitHub's **Download ZIP** contains source, not an installable app. Developers can
-follow [the build guide](DEVELOPMENT.md).
+follow [the build guide](build.md).
 
 ## Before you start
 
@@ -24,9 +24,9 @@ developers can select a different two-letter market through the CLI.
 
 ## Install, sign in, and play
 
-1. Open your locally built `.dmg` and drag **Bedrock for Mac** onto its
+1. Open your locally built `.dmg` and drag **Minecraft for MacOS** onto its
    **Applications** shortcut. Eject the disk image after copying finishes.
-2. Open **Bedrock for Mac** from Applications and click **Install & Play**.
+2. Open **Minecraft for MacOS** from Applications and click **Install & Play**.
 3. Complete Microsoft sign-in with the account that owns the Windows game.
 4. Let setup download Minecraft and the required Microsoft component. There
    are no separate Homebrew, Python, compiler, Wine, or DXMT installs for players
@@ -64,18 +64,18 @@ promise of zero prompts after every update would be inaccurate.
 
 ## Accounts and game features
 
-Use **Bedrock for Mac → Sign Out of Microsoft…** while the game is closed to
+Use **Minecraft for MacOS → Sign Out of Microsoft…** while the game is closed to
 change accounts. Sign-out keeps the game and worlds. The next Play action asks
 for Microsoft sign-in and checks the new account's ownership.
 
 This is a compatibility project, not an official Microsoft Mac edition.
 Local gameplay, a featured-server lobby, and listing joined Realms have been
 observed. Xbox and PS5 friend-world play were also confirmed on the earlier
-standalone stability build; see [the dated evidence](STABILITY.md). Active Realm
+standalone stability build; see [the dated evidence](status.md#stability-fixes-and-earlier-gameplay-evidence). Active Realm
 entry, combined native-build multiplayer, and every Marketplace feature remain
 unverified. Keep Xbox permissions and game versions in mind
 when reporting multiplayer issues; do not assume a visible server or Realm list
-proves a successful online session. See [the current evidence](RELEASE.md).
+proves a successful online session. See [the current evidence](status.md).
 
 ## Your files, backups, and updates
 
@@ -92,6 +92,9 @@ In Finder, choose **Go → Go to Folder…** and enter:
 | `logs/standalone` | Setup, account, prefix, and game diagnostics |
 | `runtime`, `sources` | Runtime links, helper link, and session records |
 | `downloads` | Locally acquired component downloads, if present |
+
+The data folder retains its earlier name so existing installations keep using the
+same worlds and settings
 
 Worlds are inside the prefix's `drive_c/users/<wine-user>/AppData/Roaming/Minecraft Bedrock/`
 tree, under the account's `games/com.mojang/minecraftWorlds` directory. The Wine
@@ -146,7 +149,7 @@ Use **Help → Open Setup Logs** (or **Open Setup Log** on an error screen).
 Logs are local and are not automatically submitted as bug reports.
 
 Report a reproducible problem with the
-[GitHub bug template](https://github.com/1JRobertson/bedrock-mac/issues/new?template=bug_report.yml).
+[GitHub bug template](https://github.com/keys-i/minecraft-mac/issues/new?template=bug_report.yml).
 Include macOS version, chip, app/source revision, game version, last visible
 stage, and whether this was a first install, retry, or update. Review excerpts
 before posting: omit passwords, tokens, email addresses, signed URLs, and full

@@ -186,12 +186,12 @@ def validate_install():
     if platform.machine() != 'arm64' or version(platform.mac_ver()[0] or '0') < version(minimum):
         raise RuntimeError(f'This build requires an Apple Silicon Mac with macOS {minimum} or later.')
     if subprocess.run(['/usr/bin/arch', '-x86_64', '/usr/bin/true'], capture_output=True).returncode:
-        raise RuntimeError('Rosetta is required to run Minecraft. See Bedrock for Mac Help in the Help menu for Apple’s setup instructions.')
+        raise RuntimeError('Rosetta is required to run Minecraft. See Minecraft for MacOS Help in the Help menu for Apple’s setup instructions.')
     required = (ROOT / 'runtime/standalone/wine/build-manifest.json',
                 ROOT / 'runtime/standalone/dxmt/manifest.json',
                 ROOT / 'sources/xodus/target/release/examples/standalone_helper')
     if not all(path.is_file() for path in required):
-        raise RuntimeError('This app is missing its bundled runtime. Use a complete build of Bedrock for Mac.')
+        raise RuntimeError('This app is missing its bundled runtime. Use a complete build of Minecraft for MacOS.')
     if not (ROOT / 'game/Minecraft.Windows.exe').is_file() and shutil.disk_usage(ROOT).free < 8 * 1024**3:
         raise RuntimeError('Free up at least 8 GB for Minecraft, then try again.')
 
@@ -230,7 +230,7 @@ def main():
                 return
             validate_install()
             if (ROOT / 'game').exists() and not (ROOT / 'game/Minecraft.Windows.exe').is_file():
-                raise RuntimeError('The existing game installation is incomplete. Your files were kept. See Bedrock for Mac Help for recovery steps.')
+                raise RuntimeError('The existing game installation is incomplete. Your files were kept. See Minecraft for MacOS Help for recovery steps.')
             runtime = load('standalone_session', 'standalone.py')
             event('busy', 'Signing you in' if ready else 'Sign in to Microsoft',
                   '' if ready else 'Use the account that owns Minecraft for Windows.', 0.2)

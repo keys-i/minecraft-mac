@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, inspect and run Minecraft Bedrock for Mac from one entry point"""
+"""Build, inspect and run Minecraft for MacOS from one entry point"""
 import argparse
 from pathlib import Path
 import runpy
