@@ -95,7 +95,7 @@ class ExportTests(unittest.TestCase):
 
     def test_reviewed_readme_images_survive_source_export(self):
         repository = Path(__file__).resolve().parents[1]
-        for name in ("assets/hero.webp", "assets/launcher.jpg"):
+        for name in ("assets/poster.webp", "assets/launcher.jpg"):
             with self.subTest(name=name):
                 target = self.source / name
                 target.parent.mkdir(exist_ok=True)
@@ -105,7 +105,7 @@ class ExportTests(unittest.TestCase):
                 self.assertEqual((destination / name).read_bytes(), target.read_bytes())
 
     def test_binary_payload_cannot_masquerade_as_a_readme_image(self):
-        for name in ("assets/hero.webp", "assets/launcher.jpg"):
+        for name in ("assets/poster.webp", "assets/launcher.jpg"):
             with self.subTest(name=name):
                 target = self.source / name
                 target.parent.mkdir(exist_ok=True)
@@ -115,11 +115,11 @@ class ExportTests(unittest.TestCase):
                 self.assertFalse(self.destination.exists())
 
     def test_readme_images_are_bounded_before_reading(self):
-        target = self.source / "assets/hero.webp"
+        target = self.source / "assets/poster.webp"
         target.parent.mkdir()
         target.write_bytes(b"\0" * (2 * 1024 * 1024 + 1))
         with self.assertRaisesRegex(ValueError, "exceeds 2 MiB"):
-            export.export_sources(self.source, self.destination, ("assets/hero.webp",))
+            export.export_sources(self.source, self.destination, ("assets/poster.webp",))
         self.assertFalse(self.destination.exists())
 
     def test_real_allowlist_has_no_private_entries_or_duplicates(self):

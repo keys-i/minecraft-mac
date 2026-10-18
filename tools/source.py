@@ -25,7 +25,7 @@ ALLOWED_FILES = (
     '.gitattributes',
     'README.md',
     'assets/README.md',
-    'assets/hero.webp',
+    'assets/poster.webp',
     'assets/launcher.jpg',
     'AGENTS.md',
     'docs/CONTEXT.md',

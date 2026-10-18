@@ -15,7 +15,7 @@ CrossOver work is documented in [docs/LEGACY.md](LEGACY.md).
 
 The repository root exposes one command, `minecraft.py`, alongside its README,
 licence and Git configuration. App code lives in `src/`, developer tools and
-native probes in `tools/`, and preserved upstream patches/notices in `vendor/`
+native probes in `tools/`, and preserved upstream patches/notices in `vendor/`.
 Installed app script names and the player's data directories retain their
 existing contracts
 
