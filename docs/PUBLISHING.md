@@ -142,11 +142,11 @@ Running it manually on `main` creates a downloadable Actions artifact without
 creating a release. Pushing a reviewed `v*` tag publishes the same files as a
 GitHub prerelease; it does not build or publish the DMG
 
-[Security](../.github/workflows/security.yml) runs CodeQL for Python and a real
-Swift launcher build on pushes, pull requests and a weekly schedule. Analysis
-has only repository-read and security-event upload permissions; it does not
-fetch the game or access a Microsoft account. CodeQL does not cover the Rust
-helper or patched Wine/DXMT sources
+[Security](../.github/workflows/security.yml) runs Python CodeQL on pushes, pull
+requests and a weekly schedule. Analysis has repository-read and security-event
+upload permissions; it does not fetch the game or access a Microsoft account
+Native Swift compilation and Rust helper tests remain in source/release checks
+The [security policy](../.github/SECURITY.md) records the analysis scope and gaps
 
 [Dependabot](../.github/dependabot.yml) checks GitHub Actions and Python
 packaging dependencies weekly. Review each update and regenerate

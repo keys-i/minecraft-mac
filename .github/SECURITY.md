@@ -20,13 +20,15 @@ signed download URL. Review logs before sharing excerpts.
 ## Current boundaries and known gaps
 
 The [security workflow](workflows/security.yml) runs GitHub CodeQL analysis for
-Python and Swift on every pull request, `main` push and weekly schedule. It
-builds the real Swift launcher; no credentials or game installation are used.
-Dependabot checks Actions and the packaging requirements weekly
+Python on every pull request, `main` push and weekly schedule. Dependabot checks
+Actions and the packaging requirements weekly. Secret scanning, push protection
+and private vulnerability reporting are enabled on the public repository
 
-Rust helper tests run in [source checks](workflows/checks.yml). CodeQL does not
-analyse Rust, the upstream Wine/DXMT source trees or proprietary game bytes.
-Automated checks do not resolve the game-download integrity gap below
+Native Swift compilation and Rust helper tests run in
+[source checks](workflows/checks.yml). Swift CodeQL analysis remains unverified:
+its traced build did not complete during validation, while native builds passed
+CodeQL does not cover Swift, Rust, upstream Wine/DXMT sources or game bytes
+These checks do not resolve the game-download integrity gap below
 
 - Microsoft user/device credentials are kept in macOS Keychain. The account
   helper caches one saved item per process and uses direct Keychain writes.
