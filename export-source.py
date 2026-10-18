@@ -29,6 +29,7 @@ ALLOWED_FILES = (
     "docs/DEVELOPMENT.md",
     "docs/TESTING.md",
     "docs/STABILITY.md",
+    "docs/PERFORMANCE.md",
     "docs/LEGACY.md",
     "launcher/Icon.swift",
     "LICENSE",
@@ -109,6 +110,7 @@ ALLOWED_FILES = (
     "tests/test_standalone.py",
     "tests/test_onboarding.py",
     "tests/test_packaging.py",
+    "tests/benchmark.py",
     "tests/test_threading_download.py",
 
     "tests/test_start.py",
@@ -127,7 +129,7 @@ ALLOWED_FILES = (
 )
 PRIVATE_ROOTS = frozenset({
     "sources", "downloads", "runtime", "logs", "bottles", "build", "game",
-    ".git", "__pycache__", "exports",
+    ".git", "__pycache__", "exports", "work", "outputs",
 })
 
 

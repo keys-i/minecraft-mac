@@ -15,6 +15,42 @@ spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_graphics_links_stay_inside_a_movable_bundle(self):
+        for bridge in (None, {'version': 'v0.80'}):
+            with self.subTest(bridge=bridge), tempfile.TemporaryDirectory() as temporary:
+                resources = Path(temporary) / 'original/Contents/Resources'
+                wine = resources / 'runtime/wine/lib/wine'
+                dxmt = resources / 'runtime/dxmt'
+                names = ['x86_64-windows/' + name for name in
+                         ('d3d11.dll', 'dxgi.dll', 'd3d10core.dll', 'winemetal.dll')]
+                for name in names + ['x86_64-unix/winemetal.so']:
+                    target = wine / name
+                    if name.endswith('.so') and bridge is not None:
+                        target = target.with_name('winemetal-upstream.so')
+                    source = dxmt / name
+                    for path in (source, target):
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(name.encode())
+                packager.link_graphics(resources, bridge)
+                moved = Path(temporary) / 'moved'
+                resources.parents[1].rename(moved)
+                for name in names + ['x86_64-unix/winemetal.so']:
+                    path = moved / 'Contents/Resources/runtime/dxmt' / name
+                    self.assertTrue(path.is_symlink())
+                    self.assertTrue(path.resolve().is_relative_to(moved.resolve()))
+                    self.assertEqual(path.read_bytes(), name.encode())
+
+    def test_graphics_mismatch_preserves_the_reference(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            resources = Path(temporary)
+            for name, data in [('wine/lib/wine', b'wrong overlay'), ('dxmt', b'original')]:
+                path = resources / 'runtime' / name / 'x86_64-windows/d3d11.dll'
+                path.parent.mkdir(parents=True)
+                path.write_bytes(data)
+            with self.assertRaisesRegex(RuntimeError, 'overlay differs'):
+                packager.link_graphics(resources, None)
+            self.assertEqual((resources / 'runtime/dxmt/x86_64-windows/d3d11.dll').read_bytes(), b'original')
+
     def test_signed_bridge_retains_provenance_and_checks_packaged_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

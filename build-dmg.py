@@ -28,7 +28,7 @@ def main():
         shutil.copytree(app, stage / app.name, symlinks=True)
         (stage / 'Applications').symlink_to('/Applications', target_is_directory=True)
         subprocess.run(['hdiutil', 'create', '-srcfolder', str(stage), '-volname',
-                        'Bedrock for Mac', '-format', 'UDZO', '-ov', str(output)], check=True)
+                        'Bedrock for Mac', '-format', 'ULFO', '-ov', str(output)], check=True)
     subprocess.run(['hdiutil', 'verify', str(output)], check=True)
     print(output)
     print('Local test image. Developer ID signing and notarization are separate release steps.')

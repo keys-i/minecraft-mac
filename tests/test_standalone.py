@@ -15,6 +15,26 @@ spec.loader.exec_module(standalone)
 
 
 class IsolationTests(unittest.TestCase):
+    def test_owned_helper_readiness_checks_its_child_without_process_discovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'account.sock'
+            owner = Mock()
+            owner.poll.return_value = None
+            with socket.socket(socket.AF_UNIX) as connection:
+                connection.bind(str(path))
+                path.chmod(0o600)
+                with patch.object(standalone, 'SOCKET', path), \
+                        patch.object(standalone, 'account_pid') as lookup:
+                    self.assertTrue(standalone.account_ready(owner))
+                    lookup.assert_not_called()
+                    path.chmod(0o666)
+                    with self.assertRaisesRegex(RuntimeError, 'permissions'):
+                        standalone.account_ready(owner)
+                    path.chmod(0o600)
+                    owner.poll.return_value = 0
+                    with self.assertRaisesRegex(RuntimeError, 'unrecognized'):
+                        standalone.account_ready(owner)
+
     def test_network_diagnostics_are_explicit_and_do_not_enable_http_payload_tracing(self):
         with patch.dict(os.environ, {'WINEDEBUG': '+all', 'WINEGDK_HTTP_STATUS_TRACE': '1'}):
             normal = standalone.environment()

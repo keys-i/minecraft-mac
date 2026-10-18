@@ -69,14 +69,16 @@ def account_pid():
     return None
 
 
-def account_ready():
+def account_ready(owner=None):
+    """Validate the socket, using the child only when this session started it"""
     try:
         info = SOCKET.lstat()
     except FileNotFoundError:
         return False
     if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise RuntimeError('The account socket has unexpected ownership or permissions.')
-    if not account_pid():
+    running = owner.poll() is None if owner is not None else account_pid() is not None
+    if not running:
         raise RuntimeError('An unrecognized account helper owns the socket; close it first.')
     return True
 
@@ -172,14 +174,15 @@ def account(game, market='CA', *, download=False, progress=None, timeout=None):
             STATE.chmod(0o600)
         while True:
             read_output()
-            if account_ready():
+            if account_ready(process):
                 break
-            if (process and process.poll() is not None) or not account_pid():
+            stopped = process.poll() is not None if process is not None else not account_pid()
+            if stopped:
                 read_output()  # Drain an error written immediately before exit.
                 raise AccountError(failure_code)
             if time.monotonic() >= deadline:
                 raise AccountError('account_timeout')
-            time.sleep(0.25)
+            time.sleep(0.05)
         yield
     finally:
         if output:

@@ -60,6 +60,23 @@ def record_packaged_bridge(resources, original):
     (wine / 'dxmt-unix-bridge.json').write_text(json.dumps(metadata, indent=2) + '\n')
 
 
+def link_graphics(resources, bridge):
+    """Keep one signed copy of each graphics library inside the app bundle"""
+    wine = resources / 'runtime/wine/lib/wine'
+    dxmt = resources / 'runtime/dxmt'
+    names = ['x86_64-windows/' + name for name in
+             ('d3d11.dll', 'dxgi.dll', 'd3d10core.dll', 'winemetal.dll')]
+    for name in names + ['x86_64-unix/winemetal.so']:
+        source = dxmt / name
+        target = wine / name
+        if name == 'x86_64-unix/winemetal.so' and bridge is not None:
+            target = target.with_name('winemetal-upstream.so')
+        if hashlib.sha256(source.read_bytes()).digest() != hashlib.sha256(target.read_bytes()).digest():
+            raise RuntimeError('The Wine graphics overlay differs from DXMT: ' + name)
+        source.unlink()
+        source.symlink_to(os.path.relpath(target, source.parent))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=APP)
@@ -116,6 +133,7 @@ def main():
     shutil.copytree(ROOT / 'LICENSES', resources / 'LICENSES')
     for name in ('LICENSE', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / name, resources / name)
+    link_graphics(resources, bridge)
     # Sign nested binaries before hashing: signing modifies their bytes.
     subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
     record_packaged_bridge(resources, bridge)
