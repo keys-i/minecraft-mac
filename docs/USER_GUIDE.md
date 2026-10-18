@@ -8,8 +8,8 @@ follow [the build guide](DEVELOPMENT.md).
 ## Before you start
 
 - An Apple Silicon Mac. Intel Macs are not supported by the current launcher.
-- macOS 26 or newer for the current local bundle. A component targeting an
-  older OS does not mean the whole app can run there.
+- macOS 27 or newer for the current local bundle. A component targeting an
+  older OS does not mean the whole app can run there
 - Rosetta, which runs the Intel-based Wine and graphics components. Follow
   [Apple's Rosetta instructions](https://support.apple.com/en-us/102527).
 - An internet connection and a Microsoft account that owns **Minecraft for

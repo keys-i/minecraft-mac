@@ -1,8 +1,9 @@
 # Preparing a source release
 
-The public source repository is
+The source repository is [keys-i/minecraft-mac](https://github.com/keys-i/minecraft-mac).
+Its upstream source is
 [1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac). The commands
-below prepare and verify source locally; they do not push or create a release.
+below prepare and verify source locally; they do not push or create a release
 Export only reviewed client source, not this entire development directory or
 any adjacent server repository. Read [THIRD_PARTY.md](../THIRD_PARTY.md) for
 component notices and [RELEASE.md](RELEASE.md) for binary release gates.
@@ -46,7 +47,7 @@ python3 -m unittest discover -s tests -p 'test_bootstrap_sources.py'
 python3 export-source.py --check
 python3 export-source.py --list
 shasum -a 256 -c SOURCE-SHA256.txt
-python3 export-source.py ../bedrock-mac-source
+python3 export-source.py ../minecraft-mac-source
 ```
 
 The destination must not exist. The exporter creates an independent source-only
@@ -97,6 +98,8 @@ and applies `patches/standalone-wine-dxmt-abi.patch`,
 `patches/standalone-wine-xuser-token-refresh.patch` there. These additional patches
 include `patches/standalone-wine-xuser-z-device-auth.patch` for PS5 friend joining and
 are not applied to the shared baseline checkout by the source bootstrap.
+The build also applies `patches/standalone-wine-ipv6.patch` to preserve adapter
+indices for IPv6 discovery
 `build-standalone-graphics.sh` retrieves pinned upstream DXMT binaries and notices;
 see [the dependency provenance](../THIRD_PARTY.md#standalone-runtime-dependency-provenance).
 

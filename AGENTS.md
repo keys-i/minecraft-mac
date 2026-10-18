@@ -82,7 +82,7 @@ Do not rebuild or reinstall the live app for documentation-only changes.
 
 ## Issues and reviews
 
-Track work in [GitHub Issues](https://github.com/1JRobertson/bedrock-mac/issues)
+Track work in [GitHub Issues](https://github.com/keys-i/minecraft-mac/issues)
 and review changes through pull requests. Use the existing bug template. Inspect
 the repository's labels before assigning them; no custom triage state machine
 is configured by these instructions. Report review findings with a concrete

@@ -3,7 +3,7 @@
 Run checks from the repository root. Prefer tests that reproduce a failure at
 its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
-Test counts below describe the October 5, 2026 source snapshot.
+Test counts below describe the October 19, 2026 source snapshot
 
 ## Choose the relevant checks
 
@@ -28,7 +28,7 @@ shasum -a 256 -c SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 77 tests. Coverage includes source isolation,
+The Python suite currently has 80 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated

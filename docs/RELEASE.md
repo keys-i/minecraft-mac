@@ -1,14 +1,36 @@
 # Release readiness
 
-This is a source preview. A local development DMG exists, but it is not a signed,
-notarized, or clean-Mac-verified public binary release. Apple Developer membership
-is not required to publish the source or an explicitly unsigned preview.
+This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
+notarization and clean-Mac installation have not been verified. Apple Developer
+membership is not required to publish source or build a local preview
 
-Status snapshot: October 2, 2026. The native launcher source was merged in
+Status snapshot: October 19, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [TESTING.md](TESTING.md) for the manual
 test matrix and artifact checks; use [PUBLISHING.md](PUBLISHING.md) for source
-inventories and exports.
+inventories and exports
+
+## October 19 candidate
+
+The `minecraft-mac` candidate includes the open-source runtime and preserves
+the existing account helper bytes. The app is 355,041,701 bytes in regular
+files; its LZFSE DMG is 127,182,005 bytes. It contains no game, account or world
+
+The Python suite passes 80 tests. The image was verified, mounted read-only,
+and checked against all 1,047 resource hashes and the complete app signature.
+Relocation and graphics mismatch tests cover the shared graphics libraries;
+see [Performance](PERFORMANCE.md) for the method and measured handoff results
+
+The image checksum is
+
+```text
+6fb9c63cd79347b363361e69d37a76b9fa3d7d991cb5fff09681e3c3bbe88835
+```
+
+The candidate was installed over the existing local app and launched with the
+existing account and game. On October 19, the user confirmed that Marketplace
+and skin changes both opened quickly. This is a single-session functional
+check; controlled loading and gameplay performance comparisons remain unverified
 
 ## Verified behavior
 
@@ -40,10 +62,10 @@ particular number of macOS security prompts.
 
 | Area | Status |
 | --- | --- |
-| Local packaged app | Apple Silicon, Rosetta, macOS 26 minimum for the assembled components |
+| Local packaged app | Apple Silicon, Rosetta, macOS 27 minimum for the assembled components |
 | Swift / pinned DXMT targets | macOS 15; this does not establish support for the complete bundle |
 | Game version observed | Windows Bedrock 1.26.5203.0; Microsoft's catalog selects the version for a new download |
-| Distribution | Public source; local ad-hoc signed app/DMG; no public notarized installer |
+| Distribution | GitHub source repository; local ad-hoc signed app/DMG; no public notarised installer |
 | Updates | Manual app replacement; existing game reused; no automatic game updater |
 | Offline launch / native market selector | Not implemented; native setup uses `CA`, CLI accepts a market argument |
 | Gameplay evidence | Local gameplay, featured-server lobby, joined-Realm listing observed; active Realm entry and PS5 friend sessions unverified |
@@ -68,8 +90,8 @@ is made.
   fresh owner sign-in, declined Keychain access, cancellation, retry, successful
   launch, world save/reopen, sign-out, and replacement with an updated app.
 - Record the actual minimum macOS version of **all** bundled Mach-O binaries.
-  Current locally built Wine/Python components require macOS 26. Changing the
-  front end's deployment target or just swapping Python is insufficient.
+  Current locally built Wine/Python components require macOS 27. Changing the
+  front end's deployment target or just swapping Python is insufficient
 - Verify quit/reopen and upgrade Keychain behavior. Ad-hoc rebuilds can change the
   helper's signing identity; no zero-prompt update claim is made.
 - Include checksums and tested limitations in release notes. Use a GitHub

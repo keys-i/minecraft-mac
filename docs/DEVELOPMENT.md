@@ -8,8 +8,8 @@ require CrossOver or an Apple Developer membership.
 ## Prerequisites
 
 The documented build host is Apple Silicon. The currently tested complete bundle
-requires macOS 26. Swift/DXMT target macOS 15, but the minimum OS of the assembled
-app depends on every native binary, including Python and Wine dependencies.
+requires macOS 27. Swift/DXMT target macOS 15, but the minimum OS of the assembled
+app depends on every native binary, including Python and Wine dependencies
 
 Install Apple's Command Line Tools and Rosetta, Git, a Python 3.12+ interpreter
 for packaging, Rust/rustup, and Homebrew under `/opt/homebrew`. The source tools
@@ -60,8 +60,8 @@ minimum build-space requirement or build-time guarantee is established.
 Clone the repository into a directory you control, then run:
 
 ```sh
-git clone https://github.com/1JRobertson/bedrock-mac.git
-cd bedrock-mac
+git clone https://github.com/keys-i/minecraft-mac.git
+cd minecraft-mac
 python3 bootstrap-sources.py
 STANDALONE_JOBS=3 ./build-standalone-wine.sh
 ./build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"

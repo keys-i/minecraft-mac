@@ -97,8 +97,8 @@ CrossOver prefix is `bottles/Bedrock-Mac`; it is not migrated automatically.
 ## Build and trust boundaries
 
 Swift and the pinned DXMT target macOS 15, but the current local Wine/Python
-bundle requires macOS 26. The packager scans native load commands and records
-the highest minimum OS; a UI deployment target alone cannot establish support.
+bundle requires macOS 27. The packager scans native load commands and records
+the highest minimum OS; a UI deployment target alone cannot establish support
 Wine and DXMT are x86-64 and require Rosetta; the native launcher is arm64.
 
 Account and license traffic uses verified HTTPS. Game bytes use a separate

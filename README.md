@@ -1,7 +1,12 @@
-# Bedrock for Mac
+# minecraft-mac
 
 Play your owned Windows edition of Minecraft Bedrock on an Apple Silicon Mac.
-Built with WineGDK, DXMT, and Xodus. No CrossOver subscription.
+Built with WineGDK, DXMT, and Xodus. No CrossOver subscription
+
+The app is named **Bedrock for Mac** and retains its existing data location and
+account helper. This source tree adds a faster account handoff and a smaller
+runtime bundle; measured results and their limits are in
+[Performance](docs/PERFORMANCE.md)
 
 **Open-source preview.** The native app works on the development Mac; a public,
 notarized app is not available yet. This repository contains the source and build
@@ -39,8 +44,8 @@ lets you change accounts without deleting your game or worlds.
 
 Requirements: Apple Silicon, Rosetta, an internet connection, a Minecraft for
 Windows license, and at least 8 GB free for setup. The current local packaged
-build requires **macOS 26 or later**. The Swift interface and DXMT target macOS
-15; every binary must meet that target before an older-macOS package is advertised.
+build requires **macOS 27 or later**. The Swift interface and DXMT target macOS
+15; every binary must meet that target before an older-macOS package is advertised
 
 For now, developers can build the app below. These steps are build instructions,
 not extra tools that users of a packaged app need to install.
@@ -52,8 +57,8 @@ Homebrew `llvm`, `bison`, `gnutls`, `freetype`, and `protobuf`. The scripts curr
 expect Homebrew at `/opt/homebrew`. Python **3.12+** is required for packaging.
 
 ```sh
-git clone https://github.com/1JRobertson/bedrock-mac.git
-cd bedrock-mac
+git clone https://github.com/keys-i/minecraft-mac.git
+cd minecraft-mac
 python3 bootstrap-sources.py
 ./build-standalone-wine.sh
 ./build-standalone-graphics.sh --wine-runtime "$PWD/runtime/standalone/wine"
@@ -61,10 +66,10 @@ python3 standalone-setup.py --build-helper
 python3 -m venv build/packaging-env
 build/packaging-env/bin/python -m pip install -r packaging-requirements.txt
 python3 package-launcher.py
-python3 build-dmg.py
+python3 build-dmg.py --output 'build/Minecraft-Mac-preview.dmg'
 ```
 
-The output is `build/Bedrock for Mac.dmg`. The app includes its Python worker,
+The output is `build/Minecraft-Mac-preview.dmg`. The app includes its Python worker,
 Wine, DXMT, and account helper. It never installs Homebrew, downloads compilers,
 or builds source on a player's Mac. Game files, Microsoft DLLs, accounts, and
 worlds are **not** included. They are obtained or created on the user's Mac.
@@ -119,6 +124,9 @@ updater or supported offline-launch mode.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and bug reports,
 [docs/PUBLISHING.md](docs/PUBLISHING.md) for reviewed source exports, and
 [docs/LEGACY.md](docs/LEGACY.md) for the earlier CrossOver implementation.
+
+Derived from [1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac)
+with upstream history and notices retained
 
 Original project code is **GPLv3**. Upstream components retain their licenses;
 see [THIRD_PARTY.md](THIRD_PARTY.md). Built on
