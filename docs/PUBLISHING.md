@@ -53,9 +53,11 @@ python3 export-source.py ../minecraft-mac-source
 The destination must not exist. The exporter creates an independent source-only
 directory and a SHA-256 inventory. It reads individual paths from `ALLOWED_FILES`
 in `export-source.py`; it never traverses ignored directories. Symlinks, missing
-files, and binary replacements are rejected. Review and add each new standalone
-script, patch, test, and notice to that allowlist before exporting a later version.
-Do not replace it with a recursive copy or an extension glob.
+files, and binary replacements in text entries are rejected. The individually
+listed JPEG/WebP README images have container-header checks and a 2 MiB limit.
+Review and add each new standalone script, patch, test, and notice to that
+allowlist before exporting a later version. Do not replace it with a recursive
+copy or an extension glob
 
 The package omits game assets/executables, downloaded archives, source checkouts,
 compiled binaries, Wine prefixes and worlds, Keychain data, helper session files,

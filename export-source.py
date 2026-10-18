@@ -17,6 +17,9 @@ ALLOWED_FILES = (
     ".gitignore",
     ".gitattributes",
     "README.md",
+    "assets/README.md",
+    "assets/hero.webp",
+    "assets/launcher.jpg",
     "AGENTS.md",
     "docs/CONTEXT.md",
     "SECURITY.md",
@@ -146,6 +149,7 @@ def checked_relative(name):
 def read_source(root, name):
     """Reject symlinks in every component, not just symlinks at the leaf."""
     relative = checked_relative(name)
+    image = relative.suffix in (".jpg", ".webp")
     current = root
     for part in relative.parts:
         current = current / part
@@ -170,13 +174,24 @@ def read_source(root, name):
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("Refusing non-regular source file: " + name)
+        if image and info.st_size > 2 * 1024 * 1024:
+            raise ValueError("README image exceeds 2 MiB: " + name)
         content = stream.read()
-    try:
-        content.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError("Refusing non-text source file: " + name) from exc
-    if b"\0" in content:
-        raise ValueError("Refusing binary source file: " + name)
+    if image:
+        jpeg = (relative.suffix == ".jpg" and content.startswith(b"\xff\xd8\xff")
+                and content.endswith(b"\xff\xd9"))
+        webp = (relative.suffix == ".webp" and content[:4] == b"RIFF"
+                and content[8:12] == b"WEBP" and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
+                and int.from_bytes(content[4:8], "little") == len(content) - 8)
+        if not jpeg and not webp:
+            raise ValueError("Invalid README image format: " + name)
+    else:
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Refusing non-text source file: " + name) from exc
+        if b"\0" in content:
+            raise ValueError("Refusing binary source file: " + name)
     return content, 0o755 if info.st_mode & 0o111 else 0o644
 
 

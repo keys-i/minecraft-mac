@@ -92,6 +92,35 @@ class ExportTests(unittest.TestCase):
         export.export_sources(self.source, self.destination, ("launcher.sh",))
         self.assertEqual((self.destination / "launcher.sh").stat().st_mode & 0o777, 0o755)
 
+    def test_reviewed_readme_images_survive_source_export(self):
+        repository = Path(__file__).resolve().parents[1]
+        for name in ("assets/hero.webp", "assets/launcher.jpg"):
+            with self.subTest(name=name):
+                target = self.source / name
+                target.parent.mkdir(exist_ok=True)
+                target.write_bytes((repository / name).read_bytes())
+                destination = self.base / target.stem
+                export.export_sources(self.source, destination, (name,))
+                self.assertEqual((destination / name).read_bytes(), target.read_bytes())
+
+    def test_binary_payload_cannot_masquerade_as_a_readme_image(self):
+        for name in ("assets/hero.webp", "assets/launcher.jpg"):
+            with self.subTest(name=name):
+                target = self.source / name
+                target.parent.mkdir(exist_ok=True)
+                target.write_bytes(b"MZ\0executable")
+                with self.assertRaisesRegex(ValueError, "image format"):
+                    export.export_sources(self.source, self.destination, (name,))
+                self.assertFalse(self.destination.exists())
+
+    def test_readme_images_are_bounded_before_reading(self):
+        target = self.source / "assets/hero.webp"
+        target.parent.mkdir()
+        target.write_bytes(b"\0" * (2 * 1024 * 1024 + 1))
+        with self.assertRaisesRegex(ValueError, "exceeds 2 MiB"):
+            export.export_sources(self.source, self.destination, ("assets/hero.webp",))
+        self.assertFalse(self.destination.exists())
+
     def test_real_allowlist_has_no_private_entries_or_duplicates(self):
         self.assertEqual(len(export.ALLOWED_FILES), len(set(export.ALLOWED_FILES)))
         for name in export.ALLOWED_FILES:

@@ -28,7 +28,7 @@ shasum -a 256 -c SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 83 tests. Coverage includes source isolation,
+The Python suite currently has 86 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
