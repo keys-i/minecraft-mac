@@ -111,9 +111,6 @@ See the [measurement methods and limits](docs/PERFORMANCE.md)
 
 </details>
 
-<sub>Original AI-generated poster · [Artwork & screenshot sources](assets/README.md)</sub>
-
-Derived from [1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac)
-with upstream history retained · [GPLv3](LICENSE) · [Third-party notices](vendor/README.md)
+[Third-party notices](vendor/README.md)
 
 <sub>Unofficial project, not affiliated with Mojang or Microsoft</sub>

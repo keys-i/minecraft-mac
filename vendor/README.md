@@ -1,5 +1,9 @@
 # Licensing and upstream work
 
+This project is derived from
+[1JRobertson/bedrock-mac](https://github.com/1JRobertson/bedrock-mac), with upstream
+history retained
+
 The original scripts, documentation, probes, and Xodus helper additions in this
 source package are offered under GNU GPL version 3; see [LICENSE](../LICENSE).
 The WineGDK patches are covered by GNU LGPL version 2.1 or later, preserving their
@@ -44,7 +48,8 @@ licensing.
 
 The WineGDK startup fixes reuse its `windows.web`, `twinapi.appcore`,
 `windows.ui.core.textinput`, and `wintypes` implementations. Their full source
-and notices are in the pinned WineGDK tree fetched by `tools/bootstrap.py`.
+and notices are in the pinned WineGDK tree fetched by
+`python3 minecraft.py source fetch`
 
 No license in this package grants rights to Minecraft, its assets or trademarks,
 Microsoft's GDK/GameInput DLLs, CrossOver, D3DMetal, Apple SDKs, or Rosetta. These
@@ -83,3 +88,10 @@ Additional [embedded upstream notices](licenses/DXMT-embedded-NOTICES.txt) ident
 the Microsoft DXBC parser and utilities credited to Philip Rebohle and Alexander
 Bessonov. This collection preserves known attribution; it is not a completed
 license audit of a future binary bundle.
+
+## Artwork and screenshots
+
+The README poster is original AI-generated project artwork. The launcher image
+is an unaltered screenshot of the locally running native launcher, captured on
+October 19, 2026. The [artwork prompt and screenshot sources](../assets/README.md)
+are recorded separately
