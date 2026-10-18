@@ -164,3 +164,8 @@ and exclusive-rename tests run on macOS and are skipped on Linux. Actions and th
 toolchain are pinned. CI does not package Wine, run Minecraft, access Keychain,
 or certify that the full app supports macOS 15. Confirm checks belong to the
 exact PR commit before merging.
+
+The [source-release workflow](../.github/workflows/release.yml) runs source
+checks again before creating the allowlisted archive. A manual run exercises
+packaging without a GitHub release; a `v*` tag additionally publishes a source
+prerelease. Neither path builds or publishes a runtime DMG

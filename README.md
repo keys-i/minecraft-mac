@@ -1,5 +1,7 @@
 # minecraft-mac
 
+[![Source checks](https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml/badge.svg)](https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml)
+
 Play your owned Windows edition of Minecraft Bedrock on an Apple Silicon Mac.
 Built with WineGDK, DXMT, and Xodus. No CrossOver subscription
 
@@ -73,6 +75,11 @@ The output is `build/Minecraft-Mac-preview.dmg`. The app includes its Python wor
 Wine, DXMT, and account helper. It never installs Homebrew, downloads compilers,
 or builds source on a player's Mac. Game files, Microsoft DLLs, accounts, and
 worlds are **not** included. They are obtained or created on the user's Mac.
+
+GitHub Actions checks source, the native launcher and the account helper.
+The **Source release** workflow prepares a reviewed source archive and
+checksums; `v*` tags publish it as a source prerelease. DMG publication still
+requires the checks in [Release readiness](docs/RELEASE.md)
 
 The default package destination must not already exist. Pass
 `--output /path/to/Bedrock\ for\ Mac.app` to build another app without replacing a

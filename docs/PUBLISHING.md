@@ -138,3 +138,22 @@ corresponding source for the exact components distributed.
 5. Do not upload the development DMG as a public installer until the gates in
    [RELEASE.md](RELEASE.md) are satisfied. Once a binary preview is ready, label
    its signing/notarization status and tested platforms explicitly.
+
+## GitHub automation
+
+[Source checks](../.github/workflows/checks.yml) runs on pushes to `main`, pull
+requests and manual dispatch. It checks the supported Python source versions,
+the native launcher and the pinned account helper without using a real account
+
+[Source release](../.github/workflows/release.yml) verifies the source tests,
+allowlist and inventory before packaging an archive and SHA-256 checksums.
+Running it manually on `main` creates a downloadable Actions artifact without
+creating a release. Pushing a reviewed `v*` tag publishes the same files as a
+GitHub prerelease; it does not build or publish the DMG
+
+[Dependabot](../.github/dependabot.yml) checks GitHub Actions and Python
+packaging dependencies weekly. Review each update and regenerate
+`SOURCE-SHA256.txt` on its branch before merging, as required for any exported
+file change. The checksum check intentionally rejects a stale inventory.
+Pinned Wine, DXMT and Xodus revisions and the patched Cargo lockfile require
+manual review and runtime validation
