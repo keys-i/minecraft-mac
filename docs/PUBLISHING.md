@@ -144,7 +144,7 @@ GitHub prerelease; it does not build or publish the DMG
 
 [Security](../.github/workflows/security.yml) runs Python CodeQL on pushes, pull
 requests and a weekly schedule. Analysis has repository-read and security-event
-upload permissions; it does not fetch the game or access a Microsoft account
+upload permissions; it does not fetch the game or access a Microsoft account.
 Native Swift compilation and Rust helper tests remain in source/release checks
 The [security policy](../.github/SECURITY.md) records the analysis scope and gaps
 

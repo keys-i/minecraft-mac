@@ -27,7 +27,8 @@ and private vulnerability reporting are enabled on the public repository
 Native Swift compilation and Rust helper tests run in
 [source checks](workflows/checks.yml). Swift CodeQL analysis remains unverified:
 its traced build did not complete during validation, while native builds passed
-CodeQL does not cover Swift, Rust, upstream Wine/DXMT sources or game bytes
+
+CodeQL does not cover Swift, Rust, upstream Wine/DXMT sources or game bytes.
 These checks do not resolve the game-download integrity gap below
 
 - Microsoft user/device credentials are kept in macOS Keychain. The account
