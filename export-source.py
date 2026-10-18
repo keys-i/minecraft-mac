@@ -94,6 +94,7 @@ ALLOWED_FILES = (
     "patches/standalone-dxmt-memory-lifetime.patch",
     "patches/standalone-wine-storage-linkage.patch",
     "patches/standalone-wine-idl-list.patch",
+    "patches/standalone-wine-ipv6.patch",
     "patches/standalone-wine-user-privileges.patch",
     "patches/standalone-wine-xuser-realms.patch",
     "patches/standalone-wine-xuser-token-refresh.patch",

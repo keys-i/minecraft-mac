@@ -30,6 +30,19 @@ new library hashes after ad-hoc signing. The launcher checks those packaged
 bytes against the manifest. This preserves validation despite signature changes;
 it does not establish a new graphics or gameplay test result.
 
+## Local networking check, October 19, 2026
+
+The standalone Wine patch `standalone-wine-ipv6.patch` populates the IPv6
+interface index returned by `GetAdaptersAddresses`, using the same native
+interface index as the other Wine network APIs
+
+On the M3 Pro test Mac, all 11 active IPv6 adapters previously returned index
+zero; the rebuilt DLL returned a nonzero index for all 11, and the isolated
+zero-byte and one-byte loopback send/receive checks passed
+
+This API correction alone does not establish that Minecraft's synchronous
+loopback-send hang or Marketplace responsiveness is fixed
+
 ## Earlier gameplay results
 
 These observations belong to the September 30, 2026 standalone development build

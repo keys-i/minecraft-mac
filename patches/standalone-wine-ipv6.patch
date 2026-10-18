@@ -1,0 +1,23 @@
+--- a/dlls/iphlpapi/iphlpapi_main.c
++++ b/dlls/iphlpapi/iphlpapi_main.c
+@@ -1283,6 +1283,7 @@
+     {
+         aa[i].Length = sizeof(*aa);
+         aa[i].IfIndex = stat[i].if_index;
++        aa[i].Ipv6IfIndex = stat[i].if_index;
+         if (i < *count - 1) aa[i].Next = aa + i + 1;
+         ConvertInterfaceLuidToGuid( luids + i, &guid );
+         ConvertGuidToStringA( &guid, str_ptr, CHARS_IN_GUID );
+--- a/dlls/iphlpapi/tests/iphlpapi.c
++++ b/dlls/iphlpapi/tests/iphlpapi.c
+@@ -2115,7 +2115,10 @@
+             if(ua->Address.lpSockaddr->sa_family == AF_INET)
+                 ok(aa->Ipv4Enabled == TRUE, "expected Ipv4Enabled flag to be set in interface %ls\n", aa->FriendlyName);
+             else if(ua->Address.lpSockaddr->sa_family == AF_INET6)
++            {
+                 ok(aa->Ipv6Enabled == TRUE, "expected Ipv6Enabled flag to be set in interface %ls\n", aa->FriendlyName);
++                ok(aa->Ipv6IfIndex, "expected nonzero IPv6 interface index in interface %ls\n", aa->FriendlyName);
++            }
+ 
+             ua = ua->Next;
+         }
