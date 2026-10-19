@@ -19,7 +19,7 @@ enum Species: String, CaseIterable {
 final class Mobs {
     let assets: Assets
     private var models: [String: SCNNode] = [:]
-    private var speeds: [Species:Double] = [:]
+    private var locomotions: [Species:(speed:Double,width:Double,height:Double)] = [:]
     private var classics: [Species:SCNNode] = [:]
 
     init(assets: Assets) { self.assets = assets }
@@ -96,23 +96,64 @@ final class Mobs {
         return model.clone()
     }
 
+    func locomotion(_ species: Species) throws -> (speed:Double,width:Double,height:Double) {
+        if let found = locomotions[species] { return found }
+        let aliases: [Species:String] = [.ironGolem:"iron_golem",.glowsquid:"glow_squid",.magma:"magma_cube",
+            .illager:"pillager",.polarBear:"polar_bear",.witherSkeleton:"wither_skeleton",.piglinBrute:"piglin_brute",
+            .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish",.villager:"villager_v2",
+            .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast"]
+        let path = "entities/"+(aliases[species] ?? species.rawValue)+".json"
+        let data: Data
+        do { data = try assets.file(path,behaviour:true) }
+        catch AssetError.missing {
+            let fallback = (speed:0.8,width:0.6,height:1.8)
+            locomotions[species] = fallback
+            return fallback
+        }
+        guard data.count <= 2*1024*1024,
+              let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String:Any],
+              let entity = object["minecraft:entity"] as? [String:Any],
+              var components = entity["components"] as? [String:Any] else { throw AssetError.model }
+        if let raw = entity["component_groups"] {
+            guard let groups = raw as? [String:Any] else { throw AssetError.model }
+            let active: [Species:String] = [.enderman:"minecraft:enderman_calm",.armadillo:"minecraft:unrolled",.happyGhast:"minecraft:adult_mobile"]
+            for name in ["adult","minecraft:adult",active[species]].compactMap({ $0 }) {
+                if let raw = groups[name] {
+                    guard let group = raw as? [String:Any] else { throw AssetError.model }
+                    components.merge(group) { _,new in new }
+                }
+            }
+        }
+        func number(_ component: String, _ field: String, fallback: Double) throws -> Double {
+            guard let raw = components[component] else { return fallback }
+            guard let attributes = raw as? [String:Any] else { throw AssetError.model }
+            guard let value = attributes[field] else { return fallback }
+            if component == "minecraft:movement", let range = value as? [String:Any] {
+                guard let lower = range["range_min"] as? NSNumber, let upper = range["range_max"] as? NSNumber,
+                      CFGetTypeID(lower) != CFBooleanGetTypeID(), CFGetTypeID(upper) != CFBooleanGetTypeID(),
+                      lower.doubleValue.isFinite, upper.doubleValue.isFinite,
+                      (0...16).contains(lower.doubleValue), (lower.doubleValue...16).contains(upper.doubleValue) else { throw AssetError.model }
+                return (lower.doubleValue+upper.doubleValue)/2
+            }
+            guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite else { throw AssetError.model }
+            return number.doubleValue
+        }
+        let movement = try number("minecraft:movement","value",fallback:0.25)
+        let multiplier = try number("minecraft:behavior.random_stroll","speed_multiplier",fallback:1)
+        let width = try number("minecraft:collision_box","width",fallback:0.6)
+        let height = try number("minecraft:collision_box","height",fallback:1.8)
+        guard (0...16).contains(movement), (0...16).contains(multiplier),
+              (0.01...16).contains(width), (0.01...16).contains(height) else { throw AssetError.model }
+        let result = (speed:min(2,movement*multiplier*4),width:width,height:height)
+        locomotions[species] = result
+        return result
+    }
+
+    // shortcut: original dimensions and calm speed guide scenery routes, use the game engine for full behaviour
     func wander(_ actor: SCNNode, model: SCNNode, species: Species, area: Biome, seed: Int,
                 root: SCNNode, point: (Double,Double) -> SCNVector3) throws {
-        let terrain = Terrain(biome:area), origin = actor.position
-        if speeds[species] == nil {
-            let aliases: [Species:String] = [.ironGolem:"iron_golem",.glowsquid:"glow_squid",.magma:"magma_cube",
-                .illager:"pillager",.polarBear:"polar_bear",.witherSkeleton:"wither_skeleton",.piglinBrute:"piglin_brute",
-                .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish"]
-            var speed = 0.8
-            if let data = try? assets.file("entities/"+(aliases[species] ?? species.rawValue)+".json",behaviour:true), data.count <= 2*1024*1024,
-               let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String:Any],
-               let entity = object["minecraft:entity"] as? [String:Any], let components = entity["components"] as? [String:Any] {
-                let movement = components["minecraft:movement"] as? [String:Any]
-                let stroll = components["minecraft:behavior.random_stroll"] as? [String:Any]
-                speed = (movement?["value"] as? Double ?? 0.25)*(stroll?["speed_multiplier"] as? Double ?? 0.8)*4
-            }
-            speeds[species] = min(2,max(0.3,speed))
-        }
+        let terrain = Terrain(biome:area), origin = actor.position, motion = try locomotion(species)
+        guard motion.speed > 0 else { return }
         var legs: [(SCNNode,SCNVector3,Double)] = []
         model.enumerateChildNodes { node,_ in
             let name = node.name?.lowercased() ?? ""
@@ -131,8 +172,6 @@ final class Mobs {
             }
         }
         var steps: [SCNAction] = [], start = origin, visited = [origin]
-        let bounds = model.boundingBox
-        let radius = min(1.8,max(0.2,(bounds.max.x-bounds.min.x)/2)), tall = max(0.4,bounds.max.y-bounds.min.y)
         for index in 0..<12 {
             var end = index >= 6 ? visited[11-index] : start
             for attempt in 0..<(index < 6 ? 12 : 0) {
@@ -140,7 +179,7 @@ final class Mobs {
                 let distance = 1+Terrain.random(seed,index*12+attempt,seed:86)*4
                 let candidate = point(origin.x+cos(angle)*distance,origin.z+sin(angle)*distance)
                 if Self.walkable(from:start,to:candidate,species:species,terrain:terrain)
-                    && Collision.clear(root,from:start,to:candidate,radius:radius,height:tall) { end = candidate; break }
+                    && Collision.clear(root,from:start,to:candidate,radius:motion.width/2,height:motion.height) { end = candidate; break }
             }
             if index < 6 { visited.append(end) }
             let length = hypot(end.x-start.x,end.z-start.z)
@@ -148,7 +187,7 @@ final class Mobs {
             if length>0.1 {
                 let heading = atan2(end.x-start.x,end.z-start.z)
                 steps.append(.rotateTo(x:0,y:heading,z:0,duration:0.35,usesShortestUnitArc:true))
-                let a = start, b = end, duration = length/speeds[species]!
+                let a = start, b = end, duration = length/motion.speed
                 let hopping = [.rabbit,.frog,.slime,.magma].contains(species)
                 steps.append(.customAction(duration:duration) { node,time in
                     let t = min(1,Double(time)/duration)
@@ -183,7 +222,7 @@ final class Mobs {
                 if ground >= min(start.y,end.y)-0.5 { return false }
             } else if !species.flying && species != .strider {
                 let bridge = [.witherSkeleton].contains(species)
-                if ground < 0.9 || !bridge && abs(ground-start.y)>1 { return false }
+                if terrain.biome.passage == nil && ground < 0.9 || !bridge && abs(ground-start.y)>1 { return false }
             }
         }
         return true

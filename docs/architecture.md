@@ -59,7 +59,7 @@ Action headings/buttons now use pixel type. The hotbar has no extra backing
 The splash overlaps the title; the bottom corners hold a native developer Link
 and the actual launcher bundle version. Scenery motion controls remain in Settings/View
 The top-left biome name opens the searchable picker; native menus also give direct access
-The bottom-right eye control or ⌘L enters spectator flight in `FlightView`
+The corner spyglass control or ⌘L enters spectator flight in `FlightView`
 Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
 arrows turn, captured relative mouse movement aims, and scrolling changes speed
 between 2 and 32 blocks/s. Control doubles travel speed while held
@@ -94,7 +94,7 @@ structures; the archive reader supports the game's versioned `.brarchive` packs
 Newer packs override older packs in numeric version order, and empty archive
 stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`Biome.swift` defines 40 selectable habitats and landmark visits across four realms
+`Biome.swift` defines 42 selectable habitats and landmark visits across four realms
 `Landscape.swift` builds one complete habitat per selection, replacing the former
 three-biome strips. `Terrain.swift` owns deterministic interpolated noise, ground
 height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
@@ -118,7 +118,8 @@ frames at 20 fps for water / 10 fps for lava, without doubled lava emission
 batched stars and once-per-second lighting/fog updates. A shared asset epoch
 preserves time between areas; motion gates pause visible updates. Nether, End
 and underground scenes retain their environmental lighting
-Idle camera routes form a continuous twelve-second hover loop
+Idle camera routes form a continuous twelve-second hover loop with an explicit
+world-up vector, preventing accumulated camera roll
 Original block materials supply strata, vegetation, roots, fungi, chorus plants,
 waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
 particles move independently of the camera
@@ -140,6 +141,9 @@ variants. Variant-specific geometry now takes precedence over default geometry
 Residents use unsynchronised bounded strolls, original movement/stroll attributes
 where available, sampled terrain/water bounds, diagonal gait timing, sheep
 grazing and species-specific hops. Flying hero actors follow circular paths
+Original behaviour collision boxes bound resident clearance rather than visual
+limbs or Blaze rods. Adult/calm component groups provide movement attributes;
+the midpoint represents original movement ranges in this scenery simulation
 Four eligible classic species use base-pack models at a daylight-dependent
 10–15% launcher-only chance, selected once during scene construction
 Classic prototypes stay within the current scene factory; no old-version
@@ -163,10 +167,16 @@ for every block and its neighbours
 Code-generated temples, huts, fortresses and passages use installed block textures
 Some partial blocks and structure entities remain simplified; the launcher does
 not reproduce world generation, the game renderer or its Molang interpreter
+The importer reads banner mounting, facing, base dye and up to six saved pattern
+layers, with the original captain-banner skin reserved for captain banners
+Brewing stands render the saved bottle slots; doors, trapdoors and ladders use
+their saved orientation and open state. These are rendered states, not brewing
+or block-interaction simulations. Authored jungle/desert temples and the ocean
+monument use wall/roof shells with reachable interiors
 
 | Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | 23 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, lush/dripstone caves, Trial Chamber and Ancient City |
+| Overworld | 25 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, caves, Trial Chamber, Ancient City, mineshaft and stronghold |
 | Nether | All five biomes | Piglins, brutes, Hoglins, Striders, Ghasts, Blazes, Wither Skeletons and magma cubes; fortress, bastion and fossils |
 | End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; caged crystals, chorus branches, gateway, city towers, bridges and ship |
 | Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
@@ -177,6 +187,11 @@ cobwebs, a minecart and bats, then crosses a 4 × 5 obsidian portal into a lava/
 fortress vista. The 28-second End entry descends over forty blocks into an Overworld stronghold, passes
 side libraries and a Silverfish spawner, then approaches a raised 12-frame portal
 Sift has a 16-second explicitly artistic rift approach
+The mineshaft and stronghold are also persistent picker destinations sharing
+their passage geometry. Terrain is carved around the mine branch and library
+rooms; rock above their ceilings closes the surrounding surface. Mine branches
+have end caps, broken rail junctions, timber supports and embedded ore veins
+Passage residents use the same collision-checked strolls as habitat residents
 Portal surfaces fill the departing camera before a colour-matched dimension
 transition. Destinations start beside a corresponding portal or End spawn
 platform, then join the existing hover path without a visible camera reset

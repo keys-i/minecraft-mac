@@ -86,6 +86,14 @@ struct Journey {
 extension Passage {
     func scene(assets: Assets) throws -> SCNScene {
         let scene = SCNScene(), factory = Mobs(assets:assets)
+        var residents: [(SCNNode,SCNNode,Species)] = []
+        func resident(_ species: Species, at point: SCNVector3) throws {
+            let actor = SCNNode(), model = try factory.make(species)
+            actor.name = "passage-resident-\(residents.count)"; actor.position = point
+            model.position.y = -model.boundingBox.min.y
+            actor.addChildNode(model); scene.rootNode.addChildNode(actor)
+            residents.append((actor,model,species))
+        }
         scene.background.contents = Landscape.colour(self == .mine ? 0x9EC9DF : self == .rift ? 0x829EA8 : 0x263039)
         scene.fogColor = Landscape.colour(self == .rift ? 0x829EA8 : 0x263039)
         scene.fogStartDistance = 45; scene.fogEndDistance = 120
@@ -95,9 +103,9 @@ extension Passage {
         camera.camera?.bloomIntensity = 0.15; camera.camera?.bloomThreshold = 1.2
         camera.camera?.screenSpaceAmbientOcclusionIntensity = 0.7
         scene.rootNode.addChildNode(camera)
-        let start = pose(at:0); camera.position = start.eye; camera.look(at:start.aim)
+        let start = pose(at:0); camera.position = start.eye; camera.look(at:start.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         camera.runAction(.customAction(duration:Double(duration)) { node,elapsed in
-            let pose = self.pose(at:Double(elapsed)); node.position = pose.eye; node.look(at:pose.aim)
+            let pose = self.pose(at:Double(elapsed)); node.position = pose.eye; node.look(at:pose.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         },forKey:"passage")
         let fill = SCNNode(); fill.light = SCNLight(); fill.light?.type = .ambient
         fill.light?.intensity = self == .rift ? 500 : 380; scene.rootNode.addChildNode(fill)
@@ -108,8 +116,11 @@ extension Passage {
         func sprite(_ name: String, _ at: SCNVector3, size: Double = 1) throws {
             let material = try assets.texture("textures/blocks/"+name)
             let uv = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
+            let first = mesh.vertices.count
             mesh.cube(.init(size,size,0),at:at,material:material,faces:1,textureUV:uv)
             mesh.cube(.init(0,size,size),at:at,material:material,faces:2,textureUV:uv)
+            let turn = SCNNode(); turn.position = at; turn.eulerAngles.y = .pi/4
+            mesh.transform(from:first,origin:at,by:turn)
         }
         func lamp(_ at: SCNVector3, soul: Bool = false) throws {
             let light = SCNNode(); light.name = "passage-light"; light.light = SCNLight(); light.light?.type = .omni
@@ -146,17 +157,16 @@ extension Passage {
             try Structures.portal(scene.rootNode,at:.init(0,2,-14),assets:assets,sift:true)
             let ruin = try Structures.template("ruined_portal/portal_3",assets:assets); ruin.position = .init(-13,2,-20); scene.rootNode.addChildNode(ruin)
             for index in 0..<6 {
-                let mob = try factory.make(index%2 == 0 ? .allay : .illager)
                 let x = Double(index%2 == 0 ? -5 : 6), z = Double(index)*6-21
-                mob.position = .init(x,index%2 == 0 ? 7 : terrain.height(x,z)-mob.boundingBox.min.y,z)
-                if index%2 == 0 { mob.runAction(.repeatForever(.sequence([.moveBy(x:0.4,y:0.4,z:0,duration:3),.moveBy(x:-0.4,y:-0.4,z:0,duration:3)]))) }
-                scene.rootNode.addChildNode(mob)
+                try resident(index%2 == 0 ? .allay : .illager,at:.init(x,index%2 == 0 ? 7 : terrain.height(x,z),z))
             }
         } else {
             let mine = self == .mine
             let terrain = Terrain(biome:.forest)
             let approach = try terrain.node(assets:assets,x:-64..<64,z:-16..<(mine ? 96 : 128)) { x,z in
                 if abs(x)<4 && z<(mine ? 42 : 95) { return -100 }
+                if abs(x)<(mine ? 16 : 13) && abs(z+(mine ? 12 : 0))<(mine ? 4 : 6) { return -100 }
+                if !mine && abs(x)<8 && z < -9 { return -100 }
                 return max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
             }
             scene.rootNode.addChildNode(approach)
@@ -177,7 +187,7 @@ extension Passage {
                 let index = Int((mine ? 34 : 90)-z)
                 let floor = mine ? max(0,ceil((z+12)/4)) : max(0,ceil((z-2)/2))
                 let chamber = mine ? z < -22 : z < -9
-                let radius = chamber ? (mine ? 6.0 : 7) : 3.0
+                let radius = chamber ? (mine ? 6.0 : 7) : mine ? 2 : 3
                 let stone = mine ? (z < -10 ? "deepslate" : "stone") : index%7 == 0 ? "mossy_stone_bricks" : index%5 == 0 ? "cracked_stone_bricks" : "stone_bricks"
                 try cube(.init(radius*2+1,1,1),.init(0,floor-0.5,z),stone)
                 for side in [-1.0,1] {
@@ -187,9 +197,15 @@ extension Passage {
                             try cube(.init(2,2.5,1),.init(side*(radius+1),floor+1.25,z),stone)
                             try cube(.init(2,3.5,1),.init(side*(radius+1),floor+6.25,z),stone)
                             try cube(.init(1,8,3),.init(side*(radius+4),floor+4,z),stone)
+                        } else if mine {
+                            for level in 0..<(chamber ? 8 : 5) {
+                                let vein = Terrain.noise(z,Double(level),scale:2.5,seed:24)>0.35
+                                let ore = z < -20 ? "diamond_ore" : z < -10 ? "gold_ore" : z < 10 ? "iron_ore" : "coal_ore"
+                                let block = vein ? (z < -10 ? "deepslate_" : "")+ore : stone
+                                try cube(.init(2,1,1),.init(side*(radius+1),floor+Double(level)+0.5,z),block)
+                            }
                         } else { try cube(.init(2,chamber ? 8 : 5,1),.init(side*(radius+1),floor+(chamber ? 4 : 2.5),z),stone) }
                     }
-                    if mine && index%5 == 0 { try cube(.init(0.02,1,1),.init(side*(radius-0.01),floor+1.5,z),["coal_ore","iron_ore","copper_ore","gold_ore","diamond_ore"][index/5%5]) }
                 }
                 if z < (mine ? 22 : 86) {
                     let ceiling = floor+(chamber ? 8 : 5), roof = mine ? ceiling+1 : max(45,ceiling+1)
@@ -197,8 +213,8 @@ extension Passage {
                 }
                 if mine {
                     if index%5 == 0 && !chamber {
-                        for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(side*2,floor+1.5,z),"oak_fence") }
-                        try cube(.init(5,1,1),.init(0,floor+3.5,z),"oak_planks")
+                        for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(side*1.5,floor+1.5,z),"oak_fence") }
+                        try cube(.init(3.375,1,1),.init(0,floor+3.5,z),"oak_planks")
                         if index%10 == 0 { try sprite("web",.init(1.5,floor+2.8,z),size:1.5) }
                     }
                     if z > -29 {
@@ -220,13 +236,25 @@ extension Passage {
             }
             if mine {
                 for x in -14...14 {
-                    try cube(.init(1,1,5),.init(Double(x),0,-12),"oak_planks")
-                    try cube(.init(1,1,7),.init(Double(x),5,-12),"stone")
+                    try cube(.init(1,1,5),.init(Double(x),-0.5,-12),"oak_planks")
+                    try cube(.init(1,9,7),.init(Double(x),9,-12),"stone")
                     if abs(x)>3 { for side in [-1.0,1] { try cube(.init(1,5,1),.init(Double(x),2,side*3-12),"stone") } }
-                    if x%4 == 0 { for side in [-1.0,1] { try cube(.init(0.4,3,0.4),.init(Double(x),2,side*2-12),"oak_fence") } }
+                    if abs(x)>2 {
+                        let rail = try assets.texture("textures/blocks/rail_normal"), first = mesh.vertices.count
+                        mesh.cube(.init(1,0,1),at:.init(Double(x),0.02,-12),material:rail,faces:16)
+                        let turn = SCNNode(); turn.position = .init(Double(x),0.02,-12); turn.eulerAngles.y = .pi/2
+                        mesh.transform(from:first,origin:turn.position,by:turn)
+                    }
+                    if x%4 == 0 {
+                        for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(Double(x),1.5,side*2-12),"oak_fence") }
+                        try cube(.init(1,1,4.375),.init(Double(x),3.5,-12),"oak_planks")
+                    }
                 }
-                for (x,z) in [(-2.0,-13.0),(2,-19)] { try cube(.init(1,1,1),.init(x,0.5,z),"barrel") }
-                let cart = try factory.actor("minecart"); cart.position = .init(5,1,-12); scene.rootNode.addChildNode(cart)
+                for side in [-1.0,1] { try cube(.init(1,14,7),.init(side*15,6.5,-12),"stone") }
+                for (x,z) in [(-2.0,-13.0),(1,-19)] { try cube(.init(1,1,1),.init(x,0.5,z),"barrel") }
+                let cart = try factory.actor("minecart"); cart.position = .init(5,0.02-cart.boundingBox.min.y,-12); cart.eulerAngles.y = .pi/2; scene.rootNode.addChildNode(cart)
+                try sprite("web",.init(13,3.5,-10),size:1.5)
+                try sprite("web",.init(-13,3.5,-14),size:1.5)
                 for side in [-1.0,1] { try cube(.init(4,8,1),.init(side*4,4,-34),"deepslate") }
                 try cube(.init(4,3,1),.init(0,6.5,-34),"deepslate")
                 try Structures.portal(scene.rootNode,at:.init(0,0,-34),assets:assets)
@@ -242,14 +270,10 @@ extension Passage {
                 let fortress = try Structures.build(.wastes,x:0,y:2,assets:assets); fortress.position.z -= 62
                 scene.rootNode.addChildNode(fortress)
                 for index in 0..<4 {
-                    let actor = try factory.make(index == 0 ? .ghast : .strider)
-                    actor.position = .init(Double(index*9-15),index == 0 ? 16 : 0,-Double(index)*8-60)
-                    scene.rootNode.addChildNode(actor)
+                    try resident(index == 0 ? .ghast : .strider,at:.init(Double(index*9-15),index == 0 ? 16 : -1,-Double(index)*8-60))
                 }
                 for index in 0..<5 {
-                    let bat = try factory.make(.bat); bat.position = .init(Double(index%3-1),3.1,-Double(index)*5-8)
-                    bat.runAction(.repeatForever(.sequence([.moveBy(x:0.3,y:0.2,z:-1,duration:3),.moveBy(x:-0.3,y:-0.2,z:1,duration:3)])))
-                    scene.rootNode.addChildNode(bat)
+                    try resident(.bat,at:.init(Double(index%3-1),3.1,-Double(index)*5-8))
                 }
             } else {
                 try cube(.init(17,9,2),.init(0,4,-31),"stone_bricks")
@@ -257,7 +281,7 @@ extension Passage {
                 for side in [-1.0,1] {
                     try cube(.init(8,1,13),.init(side*8,-0.5,0),"oak_planks")
                     try cube(.init(1,7,13),.init(side*12,3,0),"stone_bricks")
-                    try cube(.init(8,1,13),.init(side*8,7,0),"stone_bricks")
+                    try cube(.init(8,39,13),.init(side*8,26,0),"stone_bricks")
                     for z in -5...5 where z%3 != 0 { for level in [0.0,1,2,4,5] { try cube(.init(1,1,1),.init(side*10,level+0.5,Double(z)),"bookshelf") } }
                     for z in [-5.0,5] {
                         try cube(.init(8,7,1),.init(side*8,3,z),"oak_planks")
@@ -274,12 +298,20 @@ extension Passage {
                 try Structures.endPortal(scene.rootNode,at:.init(0,2.5,-21),assets:assets)
                 try cube(.init(1,1,1),.init(0,0.5,-10),"mob_spawner")
                 for index in 0..<3 {
-                    let silverfish = try factory.make(.silverfish); silverfish.position = .init(Double(index-1),0,-8-Double(index))
-                    scene.rootNode.addChildNode(silverfish)
+                    try resident(.silverfish,at:.init(Double(index-1),0,-8-Double(index)))
                 }
             }
         }
         scene.rootNode.addChildNode(mesh.node("passage-masonry"))
+        let renderer = SCNRenderer(device:nil,options:nil); renderer.scene = scene
+        guard renderer.prepare(scene,shouldAbortBlock:nil) else { throw AssetError.model }
+        let area: Biome = self == .mine ? .mine : self == .stronghold ? .stronghold : .valley
+        for (index,resident) in residents.enumerated() {
+            let (actor,model,species) = resident, y = actor.position.y
+            try factory.wander(actor,model:model,species:species,area:area,seed:1700+index,root:scene.rootNode) { x,z in
+                .init(x,species.flying || species == .strider ? y : Terrain(biome:area).height(x,z),z)
+            }
+        }
         return scene
     }
 }

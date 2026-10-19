@@ -518,6 +518,44 @@ extension Assets {
         return tiles
     }
 
+    func banner(_ name: String, data: [String:Any]) throws -> SCNMaterial {
+        if name.contains("illager_captain") { return try texture("textures/entity/banner/banner_illager") }
+        let dyes: [(String,UInt32)] = [("black",0x1D1D21),("red",0xB02E26),("green",0x5E7C16),("brown",0x835432),
+            ("blue",0x3C44AA),("purple",0x8932B8),("cyan",0x169C9C),("light_gray",0x9D9D97),
+            ("gray",0x474F52),("pink",0xF38BAA),("lime",0x80C71F),("yellow",0xFED83D),
+            ("light_blue",0x3AB3DA),("magenta",0xC74EBD),("orange",0xF9801D),("white",0xF9FFFE)]
+        let base = data["Base"] as? Int ?? dyes.firstIndex { name == $0.0+"_banner" || name == $0.0+"_wall_banner" } ?? 15
+        let patterns = data["Patterns"] as? [[String:Any]] ?? []
+        guard dyes.indices.contains(base), patterns.count <= 6 else { throw AssetError.model }
+        let names = ["b":"base","bl":"square_bottom_left","br":"square_bottom_right","tl":"square_top_left","tr":"square_top_right",
+            "bs":"stripe_bottom","ts":"stripe_top","ls":"stripe_left","rs":"stripe_right","cs":"stripe_center","ms":"stripe_middle",
+            "drs":"stripe_downright","dls":"stripe_downleft","ss":"small_stripes","cr":"cross","sc":"straight_cross",
+            "bt":"triangle_bottom","tt":"triangle_top","bts":"triangles_bottom","tts":"triangles_top",
+            "ld":"diagonal_left","rd":"diagonal_right","lud":"diagonal_up_left","rud":"diagonal_up_right",
+            "mc":"circle","mr":"rhombus","vh":"half_vertical","hh":"half_horizontal","vhr":"half_vertical_right","hhb":"half_horizontal_bottom",
+            "bo":"border","cbo":"curly_border","gra":"gradient","gru":"gradient_up","bri":"bricks","cre":"creeper",
+            "sku":"skull","flo":"flower","moj":"mojang","glb":"globe","pig":"piglin","flw":"flow","gus":"guster"]
+        var layers = [("base",base)]
+        for pattern in patterns {
+            guard let code = pattern["Pattern"] as? String, let path = names[code],
+                  let dye = pattern["Color"] as? Int, dyes.indices.contains(dye) else { throw AssetError.model }
+            layers.append((path,dye))
+        }
+        let key = "banner-"+layers.map { $0.0+String($0.1) }.joined(separator:"-")
+        if let found = materials[key] { return found }
+        guard let context = CGContext(data:nil,width:64,height:64,bitsPerComponent:8,bytesPerRow:256,
+            space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
+        context.interpolationQuality = .none
+        for (path,dye) in layers {
+            let layer = try texture("textures/entity/banner/banner_"+path,tint:dyes[dye].1)
+            context.draw(layer.diffuse.contents as! CGImage,in:CGRect(x:0,y:0,width:64,height:64))
+        }
+        guard let image = context.makeImage() else { throw AssetError.image }
+        let material = try texture("textures/entity/banner/banner_base").copy() as! SCNMaterial
+        material.name = key; material.diffuse.contents = image; materials[key] = material
+        return material
+    }
+
     private func resolve(_ name: String, states: [String: String]) throws -> [SCNMaterial] {
         var name = name.replacingOccurrences(of:"minecraft:",with:"")
         if ["wheat","carrots","potatoes","beetroots"].contains(name) {
@@ -526,7 +564,6 @@ extension Assets {
             return Array(repeating:try texture("textures/blocks/"+name+"_stage_\(stage)"),count:6)
         }
         if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
-        if name.contains("banner") { return Array(repeating:try texture("textures/entity/banner/banner_illager"),count:6) }
         if name == "planks" { name = (states["variant"] ?? "oak")+"_planks" }
         if name == "wooden_door" { name = "oak_door" }
         if name == "red_mushroom_block" || name == "brown_mushroom_block" {

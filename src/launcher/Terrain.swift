@@ -42,6 +42,7 @@ struct Terrain {
         if biome == .meadow {
             return plots.contains { $0.insetBy(dx:-2,dy:-2).contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<3 && (-48...20).contains(z)
         }
+        if biome == .city && [CGRect(x:-30,y:-53,width:23,height:38),.init(x:18,y:-40,width:21,height:39)].contains(where: { $0.contains(CGPoint(x:x,y:z)) }) { return true }
         let footprint: (Double,Double,Double)
         switch biome {
         case .meadow,.snow,.savanna: footprint = (26,-39,0)
@@ -56,7 +57,7 @@ struct Terrain {
         default: footprint = (7,-26,-10)
         }
         let structure = abs(x)<footprint.0 && (footprint.1...footprint.2).contains(z)
-        let route = biome == .mansion ? abs(x-5)<6 && (15...40).contains(z) : abs(x-3)<3 && (-2...25).contains(z)
+        let route = biome == .mansion ? abs(x-5)<6 && (15...40).contains(z) : biome == .city ? abs(x-8)<5 && (-8...28).contains(z) : abs(x-3)<3 && (-2...25).contains(z)
         return structure || route
     }
 
@@ -92,6 +93,8 @@ struct Terrain {
             return floor(max(1,4+wave*relief))
         }
         switch biome {
+        case .mine: return min(13,max(0,ceil((z+12)/4)))
+        case .stronghold: return min(45,max(0,ceil((z-2)/2)))
         case .reef: return floor(-7+broad*2+fine)
         case .monument: return floor(-24+broad*2)
         case .coast:

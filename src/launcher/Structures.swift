@@ -9,6 +9,14 @@ enum Structures {
             let tiles = try assets.tiles(block)
             mesh.cube(size,at:p,material:tiles[0],faceMaterials:tiles)
         }
+        func ring(_ size: SCNVector3, _ p: SCNVector3, _ block: String, opening: Double = 0) throws {
+            for side in [-1.0,1] {
+                try cube(.init(1,size.y,size.z),.init(p.x+side*(size.x-1)/2,p.y,p.z),block)
+                let width = (size.x-2-opening)/2
+                if width>0 { try cube(.init(width,size.y,1),.init(p.x+side*(opening+width)/2,p.y,p.z+(size.z-1)/2),block) }
+            }
+            try cube(.init(size.x-2,size.y,1),.init(p.x,p.y,p.z-(size.z-1)/2),block)
+        }
         func place(_ name: String, _ p: SCNVector3 = .init(0,0,0), turn: Double = 0) throws {
             let wrapper = SCNNode(); wrapper.position = p; wrapper.eulerAngles.y = turn
             if biome == .meadow { wrapper.position.y += Terrain(biome:biome).height(p.x,p.z-18)-y-1 }
@@ -113,7 +121,7 @@ enum Structures {
             try cube(.init(58,1,58),.init(0,0.5,0),"prismarine")
             for tier in 0..<9 {
                 let width = Double(56-tier*4)
-                try cube(.init(width,1,width),.init(0,Double(tier)+1.5,-2),tier%3 == 0 ? "prismarine_bricks" : "prismarine")
+                try ring(.init(width,1,width),.init(0,Double(tier)+1.5,-2),tier%3 == 0 ? "prismarine_bricks" : "prismarine",opening:tier<4 ? 5 : 0)
             }
             for side in [-1.0,1] {
                 for x in stride(from:7.0,through:27,by:4) {
@@ -131,32 +139,31 @@ enum Structures {
             try cube(.init(12,2,4),.init(0,10.5,20),"dark_prismarine")
             for tier in 0..<7 {
                 let width = Double(20-tier*2)
-                try cube(.init(width,1,width),.init(0,Double(tier)+10.5,-9),"prismarine_bricks")
+                try ring(.init(width,1,width),.init(0,Double(tier)+10.5,-9),"prismarine_bricks")
                 for side in [-1.0,1] { try cube(.init(1,1,width),.init(side*(width/2-1),Double(tier)+10.5,-9),"dark_prismarine") }
             }
+            try cube(.init(6,1,6),.init(0,16.5,-9),"prismarine_bricks")
             for side in [-1.0,1] { try cube(.init(2,3,2),.init(side*5,18,-9),"sea_lantern") }
         case .desert:
             for tier in 0..<10 {
                 let span = Double(21-tier*2)
-                if tier < 3 {
-                    for side in [-1.0,1] {
-                        try cube(.init(1,1,span),.init(side*(span-1)/2,Double(tier)+0.5,-4),"sandstone")
-                        try cube(.init((span-3)/2,1,1),.init(side*(span+3)/4,Double(tier)+0.5,-4+(span-1)/2),"sandstone")
-                    }
-                    try cube(.init(span,1,1),.init(0,Double(tier)+0.5,-4-(span-1)/2),"sandstone")
-                } else { try cube(.init(span,1,span),.init(0,Double(tier)+0.5,-4),"sandstone") }
+                try ring(.init(span,1,span),.init(0,Double(tier)+0.5,-4),"sandstone",opening:tier<3 ? 3 : 0)
             }
+            try cube(.init(1,1,1),.init(0,9.5,-4),"sandstone")
             for side in [-1.0,1] {
-                try cube(.init(5,8,5),.init(side*8,4,5),"sandstone")
+                try ring(.init(5,8,5),.init(side*8,4,5),"sandstone",opening:3)
+                try cube(.init(3,5,1),.init(side*8,5.5,7),"sandstone")
                 try cube(.init(3,1,3),.init(side*8,8.5,5),"chiseled_sandstone")
                 for p in [SCNVector3(side*8,4,7.51),.init(side*8,5,7.51),.init(side*8,3,7.51),.init(side*8-1,4,7.51),.init(side*8+1,4,7.51)] {
                     try cube(.init(1,1,0.02),p,"orange_terracotta")
                 }
             }
         case .jungle:
+            try cube(.init(12,1,15),.init(0,-0.5,0),"mossy_cobblestone")
             for tier in 0..<3 {
-                try cube(.init(Double(12-tier*2),3,Double(15-tier*2)),.init(0,Double(tier*3)+1.5,0),tier%2 == 0 ? "mossy_cobblestone" : "cobblestone")
+                try ring(.init(Double(12-tier*2),3,Double(15-tier*2)),.init(0,Double(tier*3)+1.5,0),tier%2 == 0 ? "mossy_cobblestone" : "cobblestone",opening:3)
             }
+            try cube(.init(8,1,11),.init(0,9.5,0),"mossy_cobblestone")
             for step in 0..<7 {
                 try cube(.init(4,1,1),.init(0,Double(step)+0.5,9-Double(step)),"mossy_cobblestone")
             }
@@ -250,7 +257,7 @@ enum Structures {
             try cube(.init(1,1,1),.init(-7,5,-4),"creaking_heart")
         case .basalt:
             for index in 0..<9 { try cube(.init(2,Double(8+index%4*3),2),.init(Double(index-4)*4,Double(8+index%4*3)/2,-19),"polished_basalt") }
-        case .mangrove, .mushroom, .midlands, .islands, .barrens, .terraces, .grove: break
+        case .mangrove, .mushroom, .midlands, .islands, .barrens, .terraces, .grove, .mine, .stronghold: break
         }
         root.addChildNode(mesh.node("masonry")); return root
     }
@@ -299,19 +306,67 @@ enum Structures {
 extension Structures {
     // Shared by imported villages and the mine's placed lights
     @discardableResult
-    static func fixture(_ name: String, states: [String:String] = [:], at p: SCNVector3,
+    static func fixture(_ name: String, states: [String:String] = [:], data: [String:Any] = [:], at p: SCNVector3,
                         assets: Assets, mesh: inout Voxels) throws -> Bool {
         let torch = ["torch","wall_torch","soul_torch","soul_wall_torch","redstone_torch","redstone_wall_torch","copper_torch","copper_wall_torch"].contains(name)
         let crop = ["wheat","carrots","potatoes","beetroots"].contains(name)
-        guard torch || crop || name == "bell" || name == "lantern" || name == "soul_lantern" else { return false }
+        let banner = name == "wall_banner" || name == "standing_banner" || name.hasSuffix("_banner")
+        let panel = name.hasSuffix("_door") || name.hasSuffix("trapdoor") || name == "ladder"
+        guard torch || crop || banner || panel || name == "brewing_stand" || name == "bell" || name == "lantern" || name == "soul_lantern" else { return false }
         let first = mesh.vertices.count
         if torch {
             let path = name.contains("soul") ? "soul_torch" : name.contains("redstone") ? "redstone_torch_on" : name.contains("copper") ? "copper_torch" : "torch_on"
             let material = try assets.texture("textures/blocks/"+path)
             var uv = Array(repeating:CGRect(x:7.0/16,y:1,width:2.0/16,height:-10.0/16),count:6)
-            uv[4] = CGRect(x:7.0/16,y:10.0/16,width:2.0/16,height:-2.0/16)
-            uv[5] = CGRect(x:7.0/16,y:1,width:2.0/16,height:-2.0/16)
+            uv[4] = CGRect(x:7.0/16,y:8.0/16,width:2.0/16,height:-2.0/16)
+            uv[5] = CGRect(x:7.0/16,y:15.0/16,width:2.0/16,height:-2.0/16)
             mesh.cube(.init(0.125,0.625,0.125),at:.init(p.x+0.5,p.y+0.3125,p.z+0.5),material:material,textureUV:uv)
+        } else if name == "brewing_stand" {
+            let stand = try assets.texture("textures/blocks/brewing_stand"), base = try assets.texture("textures/blocks/brewing_stand_base")
+            var uv = Array(repeating:CGRect(x:7.0/16,y:1,width:2.0/16,height:-14.0/16),count:6)
+            uv[4] = CGRect(x:7.0/16,y:9.0/16,width:2.0/16,height:-2.0/16); uv[5] = uv[4]
+            mesh.cube(.init(0.125,0.875,0.125),at:.init(p.x+0.5,p.y+0.4375,p.z+0.5),material:stand,textureUV:uv)
+            for (x,z) in [(9.0,5.0),(1,1),(1,9)] {
+                var foot = Array(repeating:CGRect(x:x/16,y:1,width:6.0/16,height:-2.0/16),count:6)
+                foot[1] = CGRect(x:z/16,y:1,width:6.0/16,height:-2.0/16); foot[3] = foot[1]
+                foot[4] = CGRect(x:x/16,y:(z+6)/16,width:6.0/16,height:-6.0/16); foot[5] = foot[4]
+                mesh.cube(.init(0.375,0.125,0.375),at:.init(p.x+(x+3)/16,p.y+0.0625,p.z+(z+3)/16),material:base,textureUV:foot)
+            }
+            for slot in 0..<3 {
+                let first = mesh.vertices.count, filled = states["has_bottle_\(slot)"] == "true"
+                let uv = Array(repeating:CGRect(x:filled ? 0 : 0.5,y:1,width:0.5,height:-1),count:6)
+                mesh.cube(.init(0.5,1,0),at:.init(p.x+(slot == 0 ? 0.75 : 3.59/16),p.y+0.5,p.z+0.5),material:stand,faces:1,textureUV:uv)
+                let turn = SCNNode(); turn.position = .init(p.x+0.5,p.y,p.z+0.5)
+                turn.eulerAngles.y = slot == 1 ? -.pi/4 : slot == 2 ? .pi/4 : 0
+                mesh.transform(from:first,origin:turn.position,by:turn)
+            }
+        } else if banner {
+            let wall = name.contains("wall_banner"), material = try assets.banner(name,data:data)
+            let support = try assets.texture("textures/entity/banner/banner_base")
+            let base = wall ? -23.0/48 : 0.5, z = wall ? 1.0/16 : 0.5
+            var cloth = Array(repeating:CGRect(x:0,y:41.0/64,width:1.0/64,height:-40.0/64),count:6)
+            cloth[0] = CGRect(x:1.0/64,y:41.0/64,width:20.0/64,height:-40.0/64)
+            cloth[2] = CGRect(x:22.0/64,y:41.0/64,width:20.0/64,height:-40.0/64)
+            mesh.cube(.init(20.0/24,40.0/24,1.0/24),at:.init(p.x+0.5,p.y+base+12.0/24,p.z+z+1.5/24),material:material,textureUV:cloth)
+            var bar = Array(repeating:CGRect(x:2.0/64,y:46.0/64,width:20.0/64,height:-2.0/64),count:6)
+            bar[4] = CGRect(x:2.0/64,y:44.0/64,width:20.0/64,height:-2.0/64); bar[5] = bar[4]
+            mesh.cube(.init(20.0/24,2.0/24,2.0/24),at:.init(p.x+0.5,p.y+base+31.0/24,p.z+z),material:support,textureUV:bar)
+            if !wall {
+                let pole = Array(repeating:CGRect(x:46.0/64,y:44.0/64,width:2.0/64,height:-42.0/64),count:6)
+                mesh.cube(.init(2.0/24,42.0/24,2.0/24),at:.init(p.x+0.5,p.y+0.875,p.z+0.5),material:support,textureUV:pole)
+            }
+            let turn = SCNNode(); turn.position = .init(p.x+0.5,p.y,p.z+0.5)
+            if wall {
+                turn.eulerAngles.y = states["facing"] == "north" ? .pi : states["facing"] == "east" ? .pi/2 : states["facing"] == "west" ? -.pi/2 : 0
+            } else { turn.eulerAngles.y = -Double(Int(states["rotation"] ?? "0") ?? 0) * .pi/8 }
+            mesh.transform(from:first,origin:turn.position,by:turn)
+        } else if panel {
+            let materials = try assets.tiles(name,states:states)
+            let uv = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
+            let trapdoor = name.hasSuffix("trapdoor"), vertical = !trapdoor || states["open"] == "true"
+            mesh.cube(vertical ? .init(1,1,name == "ladder" ? 0 : 0.1875) : .init(1,0.1875,1),
+                at:.init(p.x+0.5,p.y+(vertical ? 0.5 : states["half"] == "top" ? 0.90625 : 0.09375),p.z+(vertical ? name == "ladder" ? 0.9375 : 0.90625 : 0.5)),
+                material:materials[0],faces:name == "ladder" ? 1 : 63,textureUV:uv,faceMaterials:materials)
         } else if crop {
             let material = try assets.tiles(name,states:states)[0]
             let uv = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
@@ -342,18 +397,15 @@ extension Structures {
             mesh.cube(.init(0.25,0.125,0.25),at:.init(p.x+0.5,p.y+hanging+0.5,p.z+0.5),material:material,textureUV:cap)
             for x in [-0.0625,0.0625] { mesh.cube(.init(0.0625,0.1875,0.0625),at:.init(p.x+0.5+x,p.y+hanging+0.65625,p.z+0.5),material:material,textureUV:cap) }
         }
-        if name.contains("wall") || name == "bell" {
+        if torch && name.contains("wall") || name == "bell" || panel {
             let transform = SCNNode(); transform.position = .init(p.x+0.5,p.y,p.z+0.5)
             let facing = states["facing"] ?? "north"
             transform.eulerAngles.y = facing == "east" ? -.pi/2 : facing == "south" ? .pi : facing == "west" ? .pi/2 : 0
+            if name.hasSuffix("_door") && states["open"] == "true" { transform.eulerAngles.y += states["hinge"] == "right" ? .pi/2 : -.pi/2 }
             let lean = SCNNode()
             if torch { lean.eulerAngles.x = -.pi/8; lean.position = .init(0,0.2,0.25) }
             transform.addChildNode(lean)
-            for index in first..<mesh.vertices.count {
-                let v = mesh.vertices[index]
-                mesh.vertices[index] = lean.convertPosition(.init(v.x-p.x-0.5,v.y-p.y,v.z-p.z-0.5),to:nil)
-                mesh.normals[index] = lean.convertVector(mesh.normals[index],to:nil)
-            }
+            mesh.transform(from:first,origin:transform.position,by:lean)
         }
         return true
     }
@@ -366,7 +418,7 @@ extension Structures {
         let names = palette.map { ($0["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"") }
         func hidden(_ name: String) -> Bool { ["air","cave_air","void_air","jigsaw","structure_block","structure_void"].contains(name) }
         func partial(_ name: String) -> Bool {
-            ["stairs","slab","door","pane","fence","wall","torch","bed","plate","flower","glass","leaves","water","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","wheat","carrots","potatoes","beetroots","grass","fern","sapling","mushroom","vine","ladder","composter"].contains { name.contains($0) }
+            ["stairs","slab","door","pane","fence","wall","torch","bed","plate","flower","glass","leaves","water","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","grass","fern","sapling","mushroom","vine","ladder","composter"].contains { name.contains($0) }
         }
         let visible = names.map { !hidden($0) }, opaque = names.map { !partial($0) }
         func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
@@ -383,7 +435,7 @@ extension Structures {
             let p = block["pos"] as! [Int], state = block["state"] as! Int, name = names[state]
             guard visible[state], blocks[key(p)] != nil else { continue }
             let properties = palette[state]["Properties"] as? [String: String] ?? [:]
-            if try fixture(name,states:properties,at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
+            if try fixture(name,states:properties,data:block["nbt"] as? [String:Any] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
             var faces = 63
             if opaque[state] {
                 for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
@@ -416,9 +468,6 @@ extension Structures {
                 cube(.init(1,height,1),.init(0.5,height/2,0.5),mask:mask)
             } else if name == "farmland" || name == "grass_path" || name == "dirt_path" {
                 cube(.init(1,0.9375,1),.init(0.5,0.46875,0.5))
-            } else if name.contains("banner") {
-                let uv = Array(repeating:CGRect(x:1.0/64,y:41.0/64,width:20.0/64,height:-40.0/64),count:6)
-                mesh.cube(.init(1.25,2.5,0.02),at:.init(Double(p[0])+0.5,Double(p[1])-0.25,Double(p[2])+0.1),material:materials[0],textureUV:uv)
             } else if name.hasSuffix("_stairs") {
                 let upper = properties["half"] == "top"
                 cube(.init(1,0.5,1),.init(0.5,upper ? 0.75 : 0.25,0.5))
@@ -431,16 +480,9 @@ extension Structures {
                 let transform = SCNNode()
                 transform.position = .init(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5)
                 transform.eulerAngles.y = facing == "east" ? -.pi/2 : facing == "south" ? .pi : facing == "west" ? .pi/2 : 0
-                for index in first..<mesh.vertices.count {
-                    let point = mesh.vertices[index], c = transform.position
-                    mesh.vertices[index] = transform.convertPosition(.init(point.x-c.x,point.y-c.y,point.z-c.z),to:nil)
-                    mesh.normals[index] = transform.convertVector(mesh.normals[index],to:nil)
-                }
+                mesh.transform(from:first,origin:transform.position,by:transform)
             } else if name.hasSuffix("_slab") {
                 cube(.init(1,properties["type"] == "double" ? 1 : 0.5,1),.init(0.5,properties["type"] == "top" ? 0.75 : 0.25,0.5))
-            } else if name.hasSuffix("_door") {
-                let axis = ["east","west"].contains(properties["facing"] ?? "")
-                cube(axis ? .init(0.1875,1,1) : .init(1,1,0.1875),axis ? .init(0.09,0.5,0.5) : .init(0.5,0.5,0.09),sprite:true)
             } else if name.contains("glass_pane") || name == "iron_bars" {
                 // Saved templates defer pane connections until their neighbours are placed
                 cube(.init(0.125,1,0.125),.init(0.5,0.5,0.5),sprite:true)
@@ -466,16 +508,12 @@ extension Structures {
                 cube(.init(0,1,1),.init(0.5,0.5,0.5),mask:2,sprite:true)
             } else if name.contains("carpet") || name == "redstone_wire" {
                 cube(.init(1,0.0625,1),.init(0.5,0.03125,0.5))
-            } else if name.contains("trapdoor") {
-                cube(.init(1,0.1875,1),.init(0.5,properties["half"] == "top" ? 0.90625 : 0.09375,0.5))
             } else if name == "end_rod" || name == "chain" {
                 cube(.init(0.125,1,0.125),.init(0.5,0.5,0.5))
             } else if name.contains("candle") || name.contains("lantern") {
                 cube(.init(0.375,0.625,0.375),.init(0.5,0.3125,0.5),sprite:true)
             } else if name.hasSuffix("_wall") {
                 cube(.init(0.5,1,0.5),.init(0.5,0.5,0.5))
-            } else if name == "ladder" {
-                cube(.init(1,1,0),.init(0.5,0.5,0.06),mask:1,sprite:true)
             } else if name.hasSuffix("_bed") { cube(.init(1,0.56,1),.init(0.5,0.28,0.5)) }
             else if name.hasSuffix("_pressure_plate") { cube(.init(0.875,0.0625,0.875),.init(0.5,0.03,0.5)) }
             else { cube(.init(1,1,1),.init(0.5,0.5,0.5),mask:faces) }

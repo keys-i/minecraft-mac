@@ -207,6 +207,21 @@ struct LauncherChecks {
             try Data([UInt8(value)]).write(to:pack.appendingPathComponent("precedence"))
         }
         let art = try Assets(data:fixture)
+        let behaviours = fixture.appendingPathComponent("behavior_packs/vanilla/entities")
+        try FileManager.default.createDirectory(at:behaviours,withIntermediateDirectories:true)
+        let absent = try Mobs(assets:art).locomotion(.pig)
+        precondition(absent.speed == 0.8 && absent.width == 0.6 && absent.height == 1.8)
+        for value in [0,-1,true,"invalid",["range_min":0.1,"range_max":0.3],["range_min":0.3,"range_max":0.1]] as [Any] {
+            let entity: [String:Any] = ["minecraft:entity":["components":["minecraft:movement":["value":value],"minecraft:collision_box":["width":0.5,"height":1.8]]]]
+            try JSONSerialization.data(withJSONObject:entity).write(to:behaviours.appendingPathComponent("pig.json"))
+            if let number = value as? Int, !(value is Bool), number == 0 {
+                let still = try Mobs(assets:Assets(data:fixture)).locomotion(.pig)
+                precondition(still.speed == 0 && still.width == 0.5)
+            } else if let range = value as? [String:Double], range["range_min"] == 0.1 {
+                let varied = try Mobs(assets:Assets(data:fixture)).locomotion(.pig)
+                precondition(abs(varied.speed-0.8)<0.001)
+            } else { rejects { _ = try Mobs(assets:Assets(data:fixture)).locomotion(.pig) } }
+        }
         let tinted = try art.texture("textures/entity/fixture",tint:0x2080E0)
         let bitmap = tinted.diffuse.contents as! CGImage
         let rgba = Array(bitmap.dataProvider!.data! as Data)
@@ -286,7 +301,7 @@ struct LauncherChecks {
         precondition(Landscape.height(.coast, x: 1, z: 8, centre: 0) > 0)
         let roster = Set(World.allCases.flatMap { $0.biomes.flatMap(\.residents) })
         precondition(roster == Set(Species.allCases))
-        precondition(World.overworld.biomes.count == 23 && World.nether.biomes.count == 5)
+        precondition(World.overworld.biomes.count == 25 && World.nether.biomes.count == 5)
         precondition(Terrain(biome:.meadow).reserved(1,5))
         let village = Terrain(biome:.meadow)
         for plot in village.plots {
@@ -374,10 +389,12 @@ struct LauncherChecks {
         for frame in 0...400 { animation.update(atTime:Double(frame)/20) }
         let moved = zip(residents,positions).filter { hypot($0.0.position.x-$0.1.x,$0.0.position.z-$0.1.z)>0.2 }.count
         precondition(moved >= 4,"Residents must keep moving during the idle hover, got \(moved)")
+        let idleCamera = loaded!.rootNode.childNode(withName:"camera",recursively:false)!
+        precondition(abs(idleCamera.simdWorldTransform.columns.0.y)<0.001,"Idle aiming must keep the horizon level")
         animation.scene = nil
         print("Asset queue returned in \(String(format:"%.2f",enqueue)) ms and delivered an original-art graph on the main thread")
         loaded = nil
-        for species in Species.allCases { _ = try factory.make(species) }
+        for species in Species.allCases { _ = try factory.make(species); _ = try factory.locomotion(species) }
         for species in [Species.pig,.cow,.chicken,.wolf] { _ = try factory.make(species,classic:true) }
         _ = try factory.make(.cow,biome:.desert)
         _ = try factory.make(.chicken,biome:.snow)
@@ -402,12 +419,55 @@ struct LauncherChecks {
         precondition(eyePixels.colorAt(x:8,y:12)!.alphaComponent == 1 && eyePixels.colorAt(x:8,y:12)!.redComponent>0.3)
         let copper = try factory.make(.golem)
         precondition(copper.childNode(withName:"golem-eyes",recursively:true) != nil)
+        for (species,width,height,speed) in [(Species.blaze,0.5,1.8,0.92),(.enderman,0.6,2.9,1.2),(.golem,0.6,0.98,0.8),(.villager,0.6,1.9,1.2),(.sheep,0.9,1.3,0.8)] {
+            let motion = try factory.locomotion(species)
+            precondition(abs(motion.width-width)<0.001 && abs(motion.height-height)<0.001 && abs(motion.speed-speed)<0.001)
+        }
         var fixtures = Voxels()
-        for fixture in ["torch","wall_torch","bell","wheat","lantern"] {
+        for fixture in ["torch","wall_torch","bell","wheat","lantern","brewing_stand","illager_captain_wall_banner","oak_door","spruce_trapdoor","ladder"] {
             let handled = try Structures.fixture(fixture,states:["facing":"west","age":"7"],at:.init(0,0,0),assets:assets,mesh:&fixtures)
             precondition(handled)
         }
         precondition(!fixtures.vertices.isEmpty && fixtures.materials.contains { $0.name?.contains("wheat_stage_7") == true })
+        func placed(_ name: String, _ states: [String:String]) throws -> SCNNode {
+            var mesh = Voxels()
+            let handled = try Structures.fixture(name,states:states,at:.init(0,0,0),assets:assets,mesh:&mesh)
+            precondition(handled)
+            return mesh.node("placed-"+name)
+        }
+        let northBanner = try placed("illager_captain_wall_banner",["facing":"north"])
+        precondition(northBanner.boundingBox.min.z>0.85 && northBanner.boundingBox.max.z<0.99)
+        precondition(abs(northBanner.boundingBox.max.x-northBanner.boundingBox.min.x-20.0/24)<0.001)
+        let southLadder = try placed("ladder",["facing":"south"])
+        precondition(abs(southLadder.boundingBox.min.z-0.0625)<0.001)
+        let door = try placed("oak_door",["facing":"north","open":"false"])
+        let opened = try placed("oak_door",["facing":"north","open":"true","hinge":"right"])
+        precondition(abs(door.boundingBox.min.z-0.8125)<0.001 && abs(opened.boundingBox.min.x-0.8125)<0.001)
+        let hatch = try placed("spruce_trapdoor",["facing":"east","open":"true"])
+        precondition(abs(hatch.boundingBox.max.x-0.1875)<0.001 && hatch.boundingBox.max.y == 1)
+        let stand = try placed("brewing_stand",["has_bottle_0":"true","has_bottle_2":"true"])
+        precondition(stand.geometry!.materials.contains { $0.name == "textures/blocks/brewing_stand_base" })
+        precondition(stand.geometry!.sources(for:.vertex)[0].vectorCount == 108 && stand.boundingBox.max.y == 1)
+        let banner = try assets.banner("wall_banner",data:["Base":13,"Patterns":[["Pattern":"tt","Color":0],["Pattern":"bt","Color":0]]])
+        let bannerPixels = NSBitmapImageRep(cgImage:banner.diffuse.contents as! CGImage)
+        let centre = bannerPixels.colorAt(x:2,y:20)!.usingColorSpace(.deviceRGB)!
+        precondition(centre.redComponent>centre.greenComponent+0.3 && centre.blueComponent>centre.greenComponent+0.3)
+        let pattern = bannerPixels.colorAt(x:10,y:2)!.usingColorSpace(.deviceRGB)!
+        precondition(pattern.redComponent<0.2 && pattern.greenComponent<0.2)
+        let ship = try Structures.template("endcity/ship",assets:assets).geometry!
+        precondition(ship.materials.contains { $0.name == "textures/blocks/brewing_stand_base" })
+        let tower = try Structures.template("endcity/tower_top",assets:assets).geometry!
+        precondition(tower.materials.contains { $0.name == "banner-base13-triangle_top0-triangle_bottom0" })
+        precondition(!tower.materials.contains { $0.name?.contains("banner_illager") == true })
+        rejects { _ = try assets.banner("wall_banner",data:["Base":16]) }
+        rejects { _ = try assets.banner("wall_banner",data:["Patterns":[["Pattern":"../invalid","Color":0]]]) }
+        for (area,y,from,to) in [(Biome.desert,1.62,10.0,-4.0),(.jungle,7.62,4,-3),(.monument,3.62,28,0)] {
+            let interior = SCNScene(); interior.rootNode.addChildNode(try Structures.build(area,x:0,y:0,assets:assets))
+            let renderer = SCNRenderer(device:nil,options:nil); renderer.scene = interior
+            precondition(renderer.prepare(interior,shouldAbortBlock:nil))
+            precondition(Collision.clear(interior.rootNode,from:.init(0,y,from-18),to:.init(0,y,to-18)),"\(area) must have a reachable interior")
+            precondition(!Collision.clear(interior.rootNode,from:.init(0,y,to-18),to:.init(50,y,to-18)),"\(area) must retain solid side walls")
+        }
         precondition(Passage.stronghold.pose(at:0).eye.y-Passage.stronghold.pose(at:28).eye.y > 40)
         let dragon = try factory.actor("ender_dragon")
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
@@ -426,6 +486,25 @@ struct LauncherChecks {
         for world in World.allCases {
             for index in world.biomes.indices {
                 let scene = try Landscape.scene(world,biome:index,assets:assets)
+                if let passage = world.biomes[index].passage {
+                    let camera = scene.rootNode.childNode(withName:"camera",recursively:false)!
+                    precondition(camera.action(forKey:"passage") == nil && camera.action(forKey:"journey") != nil)
+                    precondition(scene.rootNode.childNode(withName:"passage-masonry",recursively:false) != nil)
+                    if passage == .mine {
+                        precondition(Collision.clear(scene.rootNode,from:.init(0,1.62,-12),to:.init(12,1.62,-12)))
+                        precondition(!Collision.clear(scene.rootNode,from:.init(12,1.62,-12),to:.init(17,1.62,-12)))
+                    } else {
+                        precondition(Collision.clear(scene.rootNode,from:.init(0,1.62,0),to:.init(9,1.62,0)))
+                        precondition(Collision.clear(scene.rootNode,from:.init(0,2.8,-14),to:.init(6,2.8,-14)))
+                    }
+                    let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("passage-resident-") == true }
+                    let origins = residents.map(\.position)
+                    SCNTransaction.flush()
+                    let animation = SCNRenderer(device:nil,options:nil); animation.scene = scene; animation.isPlaying = true
+                    for frame in 0...400 { animation.update(atTime:Double(frame)/20) }
+                    precondition(zip(residents,origins).filter { hypot($0.0.position.x-$0.1.x,$0.0.position.z-$0.1.z)>0.2 }.count >= 2,"Passage residents must keep moving during visits")
+                    animation.scene = nil
+                }
                 var nodes = 0, triangles = 0
                 scene.rootNode.enumerateChildNodes { node,_ in
                     nodes += 1
@@ -436,6 +515,10 @@ struct LauncherChecks {
                 precondition(nodes < 1200 && triangles < 350_000)
                 if world == .end {
                     precondition((scene.background.contents as? [CGImage])?.count == 6)
+                }
+                if world.biomes[index] == .city {
+                    let eye = Landscape.pose(.city,at:0).eye
+                    precondition(Collision.clear(scene.rootNode,from:eye,to:.init(eye.x,eye.y+1,eye.z-6),radius:0.35))
                 }
                 if world.biomes[index] == .meadow {
                     Daylight.apply(scene,area:.meadow,seconds:600)
@@ -461,12 +544,12 @@ struct LauncherChecks {
                     }
                     precondition(rooms.count == 18 && rooms.allSatisfy { $0 === rooms[0] })
                 }
-                precondition(scene.rootNode.childNode(withName:"habitat-detail",recursively:false) != nil)
+                if world.biomes[index].passage == nil { precondition(scene.rootNode.childNode(withName:"habitat-detail",recursively:false) != nil) }
                 for animated in [false,true] {
                     Landscape.focus(scene,world:world,biome:index,animated:animated)
                     precondition(scene.rootNode.childNode(withName:"camera",recursively:false)!.actionKeys == ["journey"])
                 }
-                let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("resident-") == true }
+                let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("resident-") == true || $0.name?.hasPrefix("passage-resident-") == true }
                 precondition(residents.count >= world.biomes[index].residents.count*2 || world.biomes[index] == .deep)
                 precondition(residents.count <= 40)
                 for resident in residents {

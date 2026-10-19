@@ -599,7 +599,7 @@ struct LauncherView: View {
                             .buttonStyle(.plain).tint(.white)
                             .accessibilityLabel("Developer Keys-i, open keysi.dev")
                         Spacer()
-                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.11.0"))
+                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.12.0"))
                     }.font(Blocks.type(13)).foregroundStyle(.white)
                         .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                         .padding(.horizontal,24).padding(.bottom,16)
@@ -726,10 +726,7 @@ struct LauncherView: View {
 
     private var look: some View {
         Button { explore(!exploring) } label: {
-            VStack(spacing:1) {
-                glyph("camera-small",fallback:exploring ? "eye.fill" : "eye")
-                Image(systemName:"arrow.left.and.right").font(.system(size:11,weight:.semibold))
-            }.frame(width:56,height:56)
+            glyph("spyglass",fallback:exploring ? "eye.fill" : "eye").scaleEffect(1.35).frame(width:56,height:56)
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone))
             .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
             .keyboardShortcut("l",modifiers:.command)

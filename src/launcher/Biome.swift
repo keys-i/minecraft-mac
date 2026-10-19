@@ -12,6 +12,7 @@ enum Biome: String, CaseIterable {
     case mansion = "Dark forest · Woodland mansion", trial = "Trial Chambers", dripstone = "Dripstone caves"
     case river = "River & birch woods", ice = "Ice spikes · Frozen ocean", monument = "Deep ocean · Monument"
     case lush = "Lush caves", deep = "Deep Dark · Ancient City"
+    case mine = "Abandoned mineshaft", stronghold = "Stronghold · Portal room"
     case wastes = "Nether Wastes · Fortress", crimson = "Crimson Forest · Bastion"
     case warped = "Warped Forest", soul = "Soul Sand Valley", basalt = "Basalt Deltas"
     case central = "Central island", highlands = "End highlands", midlands = "End midlands"
@@ -19,7 +20,9 @@ enum Biome: String, CaseIterable {
     case terraces = "Coral terraces", grove = "Luminous grove", valley = "Rift valley"
     case shards = "Floating shards", ruins = "Illager expedition", sculk = "Sculk fissures"
 
-    var underground: Bool { [.lush, .deep, .trial, .dripstone].contains(self) }
+    var underground: Bool { [.lush, .deep, .trial, .dripstone, .mine, .stronghold].contains(self) }
+
+    var passage: Passage? { self == .mine ? .mine : self == .stronghold ? .stronghold : nil }
 
     var residents: [Species] {
         switch self {
@@ -46,6 +49,8 @@ enum Biome: String, CaseIterable {
         case .dripstone: return [.bat, .spider, .zombie]
         case .lush: return [.axolotl, .glowsquid, .bat]
         case .deep: return [.warden]
+        case .mine: return [.bat, .spider]
+        case .stronghold: return [.silverfish]
         case .wastes: return [.piglin, .zombifiedPiglin, .strider, .blaze, .witherSkeleton]
         case .crimson: return [.hoglin, .piglin, .piglinBrute, .strider]
         case .warped: return [.enderman, .strider, .happyGhast]
@@ -128,7 +133,7 @@ extension World {
     var biomes: [Biome] {
         switch self {
         case .overworld: return [.meadow, .forest, .cherry, .snow, .peaks, .desert, .badlands,
-                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .river, .coast, .reef, .monument, .ice, .lush, .dripstone, .trial, .deep]
+                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .river, .coast, .reef, .monument, .ice, .lush, .dripstone, .trial, .deep, .mine, .stronghold]
         case .nether: return [.wastes, .crimson, .warped, .soul, .basalt]
         case .end: return [.central, .highlands, .midlands, .islands, .barrens, .city]
         case .sift: return [.terraces, .grove, .valley, .shards, .ruins, .sculk]

@@ -51,6 +51,14 @@ struct Voxels {
         }
     }
 
+    mutating func transform(from first: Int, origin: SCNVector3, by node: SCNNode) {
+        for index in first..<vertices.count {
+            let point = vertices[index]
+            vertices[index] = node.convertPosition(.init(point.x-origin.x,point.y-origin.y,point.z-origin.z),to:nil)
+            normals[index] = node.convertVector(normals[index],to:nil)
+        }
+    }
+
     func node(_ name: String) -> SCNNode {
         let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices),
             SCNGeometrySource(normals: normals), SCNGeometrySource(textureCoordinates: uv)],
@@ -75,6 +83,11 @@ enum Landscape {
 
     static func scene(_ world: World, biome: Int = 0, assets: Assets) throws -> SCNScene {
         let area = world.biomes[world.index(biome)], scene = SCNScene()
+        if let passage = area.passage {
+            let visit = try passage.scene(assets:assets)
+            focus(visit,world:world,biome:biome,animated:true)
+            return visit
+        }
         let camera = SCNNode(); camera.name = "camera"; camera.camera = SCNCamera()
         camera.camera?.fieldOfView = 67; camera.camera?.zFar = 230; camera.camera?.zNear = 0.1
         camera.camera?.wantsHDR = true; camera.camera?.wantsExposureAdaptation = false
@@ -451,6 +464,7 @@ enum Landscape {
     static func pose(_ area: Biome, at time: Double) -> (eye: SCNVector3, aim: SCNVector3) {
         let angle = max(0,time)/12*2 * .pi
         let phase = (1-cos(angle))/2
+        if let passage = area.passage { return passage.pose(at:(area == .mine ? 8 : 15)+phase*7) }
         let x: Double, z: Double, target: SCNVector3, elevation: Double?
         switch area {
         case .meadow: x = 3-phase; z = 8-phase*6; target = .init(-1,5,-23); elevation = nil
@@ -484,16 +498,16 @@ enum Landscape {
     static func focus(_ scene: SCNScene, world: World, biome: Int, animated: Bool) {
         let area = world.biomes[world.index(biome)], camera = scene.rootNode.childNode(withName:"camera",recursively:false)!
         let underwater = area == .reef || area == .monument
-        if world != .end { scene.background.contents = colour(underwater ? 0x245A78 : area.sky) }
-        scene.fogColor = colour(underwater ? 0x245A78 : area.sky)
+        if area.passage == nil && world != .end { scene.background.contents = colour(underwater ? 0x245A78 : area.sky) }
+        if area.passage == nil { scene.fogColor = colour(underwater ? 0x245A78 : area.sky) }
         scene.fogStartDistance = underwater ? 12 : area.underground || world == .nether ? 38 : 90
         scene.fogEndDistance = underwater ? 62 : area.underground || world == .nether ? 100 : 155
         for light in scene.rootNode.childNodes.compactMap(\.light) {
             if light.type == .ambient { light.intensity = area.underground ? 350 : area == .pale ? 300 : 450 }
             if light.type == .directional { light.intensity = area.underground ? 300 : area == .pale ? 450 : 900 }
         }
-        camera.removeAction(forKey:"journey")
-        let initial = pose(area,at:0); camera.position = initial.eye; camera.look(at:initial.aim)
+        camera.removeAction(forKey:"passage"); camera.removeAction(forKey:"journey")
+        let initial = pose(area,at:0); camera.position = initial.eye; camera.look(at:initial.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         var route = [initial.eye]
         for index in 1...24 {
             let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:pose(area,at:Double(index)/4).eye,radius:0.35)
@@ -504,7 +518,7 @@ enum Landscape {
             let t = min(24,max(0,phase*4)), index = min(23,Int(t)), fraction = t-Double(index)
             let a = route[index], b = route[index+1]
             node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
-            node.look(at:pose(area,at:Double(time)).aim)
+            node.look(at:pose(area,at:Double(time)).aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         }),forKey:"journey")
         if let sky = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight {
             Daylight.apply(scene,area:area,seconds:ProcessInfo.processInfo.systemUptime-sky.epoch)
@@ -541,11 +555,11 @@ enum Landscape {
             gateway.addChildNode(platform.node("end-spawn-platform"))
         } else { try Structures.portal(gateway,at:.init(0,-2.5,0),assets:assets,sift:passage == .rift) }
         scene.rootNode.addChildNode(gateway)
-        camera.removeAction(forKey:"journey"); camera.position = start; camera.look(at:aim)
+        camera.removeAction(forKey:"journey"); camera.position = start; camera.look(at:aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         let exit = SCNAction.customAction(duration:4) { node,time in
             let t = min(1,Double(time)/4)
             node.position = .init(start.x+(end.x-start.x)*t,start.y+(end.y-start.y)*t,start.z+(end.z-start.z)*t)
-            node.look(at:aim)
+            node.look(at:aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         }
         camera.runAction(.sequence([exit,idle]),forKey:"journey")
     }
