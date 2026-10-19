@@ -262,6 +262,7 @@ private enum Blocks {
     static let gold = Color(red:1,green:0.83,blue:0.37)
 
     static func type(_ size: CGFloat) -> Font { .custom("Monocraft",size:size,relativeTo:.body) }
+    static func action(_ size: CGFloat) -> Font { .system(size:size,weight:.semibold,design:.rounded) }
 }
 
 private struct BlockButton: ButtonStyle {
@@ -278,6 +279,7 @@ private struct BlockButton: ButtonStyle {
             .foregroundStyle(colour == Blocks.grass ? Blocks.ink : .white)
             .background {
                 colour.brightness(hovered ? 0.08 : 0)
+                    .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3)
                 if let texture, colour != Blocks.grass {
                     Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.28)
                 }
@@ -286,7 +288,6 @@ private struct BlockButton: ButtonStyle {
             .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.45)).frame(height:4) }
             .overlay { Rectangle().strokeBorder(selected ? Blocks.gold : .black.opacity(0.7),lineWidth:2) }
             .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(focused ? 1 : 0) }
-            .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3)
             .offset(y:configuration.isPressed && !reduced ? 2 : 0)
             .opacity(enabled ? 1 : 0.45)
             .contentShape(Rectangle())
@@ -415,7 +416,7 @@ struct LauncherView: View {
                     Spacer(minLength:40)
                     if exploring {
                         Button { exploring = false } label: {
-                            Label("Drag to look around · Done",systemImage:"viewfinder").font(Blocks.type(13))
+                            Label("Drag to look around · Done",systemImage:"viewfinder").font(Blocks.action(13))
                                 .padding(.horizontal,18).frame(height:44)
                         }.buttonStyle(BlockButton(texture:launcher.stone)).padding(.bottom,24)
                     } else {
@@ -426,7 +427,7 @@ struct LauncherView: View {
                                 Button { exploring = true } label: {
                                     VStack(spacing:5) {
                                         Image(systemName:"viewfinder").font(.system(size:20))
-                                        Text("Look around").font(.system(size:10,weight:.semibold))
+                                        Text("Look around").font(Blocks.action(10))
                                     }.frame(width:72,height:64)
                                 }.buttonStyle(BlockButton(texture:launcher.stone))
                                     .disabled(!available || launcher.journey.passage != nil)
@@ -437,7 +438,7 @@ struct LauncherView: View {
                         }.frame(maxWidth:640).padding(.horizontal,28)
                         Text(launcher.sceneryFailed ? "Scenery unavailable for this game version" : available ? "1–4 change realms   ·   ⌘L look around" : "Install Minecraft to explore the live worlds")
                             .font(.system(size:11)).foregroundStyle(.white.opacity(0.85))
-                            .shadow(color:.black,radius:2).padding(.top,14).padding(.bottom,18)
+                            .shadow(color:.black.opacity(0.25),radius:2,y:1).padding(.top,14).padding(.bottom,18)
                     }
                 }
             }
@@ -467,10 +468,9 @@ struct LauncherView: View {
         ZStack(alignment:.top) {
             VStack(spacing:4) {
                 Text("Minecraft").font(Blocks.type(42))
-                    .shadow(color:.black,radius:0,x:4,y:5)
-                    .shadow(color:.gray,radius:0,x:0,y:2)
-                Text("for MacOS").font(Blocks.type(14)).foregroundStyle(Blocks.gold)
-                    .shadow(color:.black,radius:0,x:1,y:2)
+                    .shadow(color:.black.opacity(0.3),radius:2,y:1)
+                Text("for MacOS").font(.system(size:13,weight:.semibold)).tracking(1.2).foregroundStyle(Blocks.gold)
+                    .shadow(color:.black.opacity(0.25),radius:1,y:1)
             }.padding(.top,12).accessibilityElement(children:.combine).accessibilityAddTraits(.isHeader)
             HStack(spacing:8) {
                 Spacer()
@@ -489,19 +489,19 @@ struct LauncherView: View {
     private var location: some View {
         HStack(alignment:.bottom) {
             VStack(alignment:.leading,spacing:6) {
-                Text(launcher.journey.world == .sift ? "The Sift · interpretation" : launcher.journey.world.title).font(Blocks.type(12)).foregroundStyle(Blocks.gold)
-                Text(launcher.journey.title).font(Blocks.type(16))
-                    .shadow(color:.black,radius:0,x:2,y:2).lineLimit(2)
+                Text(launcher.journey.world == .sift ? "The Sift · interpretation" : launcher.journey.world.title).font(.system(size:12,weight:.semibold)).foregroundStyle(Blocks.gold)
+                Text(launcher.journey.title).font(Blocks.action(18))
+                    .shadow(color:.black.opacity(0.25),radius:2,y:1).lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
             }
             Spacer(minLength:12)
             if launcher.journey.passage != nil {
                 Button { launcher.journey.skip() } label: {
-                    Text("Skip journey").font(Blocks.type(12)).padding(.horizontal,14).frame(height:44)
+                    Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,14).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             } else {
                 Button { search = ""; map = true } label: {
-                    Label("Explore biomes",systemImage:"map").font(.system(size:13,weight:.semibold))
+                    Label("Explore biomes",systemImage:"map").font(Blocks.action(13))
                         .padding(.horizontal,14).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone)).disabled(!available)
                     .popover(isPresented:$map) { biomeMap }
@@ -518,7 +518,7 @@ struct LauncherView: View {
                 } label: {
                     VStack(spacing:5) {
                         Slot(world:world,image:launcher.items[world])
-                        Text(world.title).font(.system(size:10,weight:.semibold)).lineLimit(1)
+                        Text(world.title).font(Blocks.action(10)).lineLimit(1)
                     }.frame(width:66,height:64)
                         .overlay(alignment:.topLeading) { Text("\(index+1)").font(.system(size:9,weight:.bold)).foregroundStyle(.white.opacity(0.5)).padding(5) }
                 }
@@ -535,7 +535,7 @@ struct LauncherView: View {
     private var biomeMap: some View {
         VStack(alignment:.leading,spacing:16) {
             HStack {
-                Text("Explore \(launcher.journey.world.title)").font(Blocks.type(18))
+                Text("Explore \(launcher.journey.world.title)").font(Blocks.action(20))
                 Spacer()
                 Button { map = false } label: { Image(systemName:"xmark").frame(width:32,height:32) }
                     .buttonStyle(.plain).accessibilityLabel("Close biomes")
@@ -565,7 +565,7 @@ struct LauncherView: View {
                 playButton(width:320)
                 if !detail.isEmpty {
                     Text(detail).font(.system(size:13,weight:.medium)).multilineTextAlignment(.center)
-                        .frame(maxWidth:500).shadow(color:.black,radius:2).textSelection(.enabled)
+                        .frame(maxWidth:500).shadow(color:.black.opacity(0.25),radius:2,y:1).textSelection(.enabled)
                 }
                 if fresh || launcher.status.state == "cancelled" { setupSteps }
             }
@@ -574,7 +574,7 @@ struct LauncherView: View {
 
     private func playButton(width: CGFloat) -> some View {
         Button { launcher.start() } label: {
-            Label(primaryTitle,systemImage:"play.fill").font(Blocks.type(width>200 ? 22 : 18))
+            Label(primaryTitle,systemImage:"play.fill").font(.system(size:width>200 ? 24 : 18,weight:.bold,design:.rounded))
                 .frame(width:width,height:62)
         }.buttonStyle(BlockButton(colour:Blocks.grass)).keyboardShortcut(.defaultAction)
     }
@@ -597,7 +597,7 @@ struct LauncherView: View {
             HStack(spacing:24) {
                 VStack(alignment:.leading,spacing:7) {
                     Text(fresh ? "Install Minecraft" : launcher.status.title)
-                        .font(Blocks.type(18)).fixedSize(horizontal:false,vertical:true).accessibilityAddTraits(.isHeader)
+                        .font(Blocks.action(20)).fixedSize(horizontal:false,vertical:true).accessibilityAddTraits(.isHeader)
                     if !detail.isEmpty {
                         if detail.count > 240 {
                             ScrollView {
@@ -614,11 +614,11 @@ struct LauncherView: View {
                     playButton(width:188)
                 } else if launcher.canCancel {
                     Button { launcher.cancel() } label: {
-                        Text("Cancel setup").font(Blocks.type(14)).frame(width:160,height:54)
+                        Text("Cancel setup").font(Blocks.action(14)).frame(width:160,height:54)
                     }.buttonStyle(BlockButton(texture:launcher.stone)).keyboardShortcut(.cancelAction)
                 } else {
                     Label(launcher.status.state == "playing" ? "Game running" : "Please wait",systemImage:launcher.status.state == "playing" ? "checkmark" : "hourglass")
-                        .font(Blocks.type(13)).frame(width:160,height:54)
+                        .font(Blocks.action(13)).frame(width:160,height:54)
                 }
             }
             if launcher.status.state == "busy", let fraction = launcher.status.fraction {
@@ -634,17 +634,19 @@ struct LauncherView: View {
             }
             if launcher.status.state == "error" {
                 Button { launcher.showLog() } label: {
-                    Label("Open setup log",systemImage:"doc.text").font(.system(size:12,weight:.semibold))
+                    Label("Open setup log",systemImage:"doc.text").font(Blocks.action(12))
                         .padding(.horizontal,12).frame(height:36)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             }
         }
         .padding(20)
-        .background(Blocks.stone.opacity(reduceTransparency ? 1 : 0.97))
+        .background {
+            Rectangle().fill(Blocks.stone.opacity(reduceTransparency ? 1 : 0.97))
+                .shadow(color:.black.opacity(0.4),radius:0,x:0,y:5)
+        }
         .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.2)).frame(height:2) }
         .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.6)).frame(height:4) }
         .overlay { Rectangle().strokeBorder(.black.opacity(0.8),lineWidth:2) }
-        .shadow(color:.black.opacity(0.4),radius:0,x:0,y:5)
     }
 }
 

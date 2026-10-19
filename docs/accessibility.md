@@ -39,8 +39,10 @@ Low Power Mode also stops ambient motion and automatic scene changes. Waiting
 states use text rather than a spinner. Reduce Transparency gives the launch
 panel an opaque background. The window can be resized down to 760 × 620 points
 Long status details scroll inside the setup panel and remain selectable
-Pixel typography is restricted to short headings and controls; explanatory copy
-uses the system font. The bundled font is registered only within this app
+Pixel typography is reserved for the main title; rounded system type identifies
+actions and section titles, while explanatory copy uses plain system type
+Text shadows are soft, low-opacity and offset by one point
+The bundled font is registered only within this app
 
 The README uses labelled links, image descriptions, headings and expandable
 sections. The poster's message is repeated in ordinary text so the image is

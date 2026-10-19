@@ -46,7 +46,9 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 
 The native title screen places a central Play button and compact four-slot realm
 hotbar over one live SceneKit world. Busy/error states use a separate status panel
-Monocraft supplies the pixel titles; original installed item icons identify the realms
+Monocraft supplies the main title; rounded system type identifies actions and
+section titles, and plain system type supplies supporting copy
+Original installed item icons identify the realms
 Stone controls use the installed stone texture and share hover, press and focus states
 The searchable biome picker and native menus give direct access to every area
 Look around pauses the camera route and lets a pan gesture turn the view

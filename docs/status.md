@@ -10,6 +10,26 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Typography refinement in 0.9.1
+
+The main title retains Monocraft; actions and section titles use rounded system
+type, while supporting copy uses plain system type. Text over scenery has a soft,
+low-opacity one-point shadow. Physical button/panel shadows are attached to their
+background surfaces, preventing duplicate shadows behind the labels
+
+The native build and 92 Python tests pass. Source-generated first-run, ready,
+busy, error, long-detail and playing layouts were checked again at narrow,
+normal and wide sizes. Full-window keyboard and VoiceOver workflows remain
+unverified. The scenery renderer is unchanged from the measurements below
+
+The separate 0.9.1 app and DMG verify, preserving all 1,051 resource hashes and
+runtime symlinks from 0.9. Minimum macOS remains 27; the local DMG is
+128,084,241 bytes with SHA-256:
+
+```text
+0e513a1f26946520cc7a54bf4cf4453fe567c8ff2e67ad2223398b5e8457d3cd
+```
+
 ## Gameplay-reference scenery and title screen in 0.9
 
 Version 0.9 follows actual Minecraft gameplay references for the village,
