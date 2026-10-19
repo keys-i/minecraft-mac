@@ -75,6 +75,38 @@ class IsolationTests(unittest.TestCase):
             with patch.object(standalone, 'PREFIX', prefix):
                 self.assertFalse(standalone.setup_matches({'setup_version': 2}))
 
+    def test_shared_graphics_overlay_avoids_duplicate_reads_and_still_checks_copies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            wine, dxmt, game = root / 'wine', root / 'dxmt', root / 'game'
+            for relative in ('x86_64-windows/d3d11.dll', 'x86_64-windows/dxgi.dll',
+                             'x86_64-windows/d3d10core.dll', 'x86_64-windows/winemetal.dll',
+                             'x86_64-unix/winemetal.so'):
+                source, installed = dxmt / relative, wine / 'lib/wine' / relative
+                source.parent.mkdir(parents=True, exist_ok=True)
+                installed.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(b'graphics')
+                installed.symlink_to(source)
+            threading = root / 'runtime/xgameruntime.dll.threading'
+            for path in (wine / 'bin/wine', wine / 'bin/wineserver',
+                         wine / 'lib/wine/x86_64-windows/xgameruntime.dll', threading,
+                         game / 'MicrosoftGame.Config', game / '.xodus-streaming.msixvc',
+                         game / 'Installers/GameInputRedist.msi'):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'fixture')
+            (game / 'Minecraft.Windows.exe').write_bytes(b'MZ fixture')
+            with patch.object(standalone, 'ROOT', root), patch.object(standalone, 'WINE', wine), \
+                    patch.object(standalone, 'DXMT', dxmt), \
+                    patch.object(standalone, 'THREADING_HASH', standalone.sha256(threading)), \
+                    patch.object(standalone, 'sha256', wraps=standalone.sha256) as digest:
+                standalone.prerequisites(game)
+                self.assertEqual([call.args[0] for call in digest.call_args_list], [threading])
+                installed = wine / 'lib/wine/x86_64-windows/d3d11.dll'
+                installed.unlink()
+                installed.write_bytes(b'different graphics')
+                with self.assertRaisesRegex(RuntimeError, 'Reinstall DXMT'):
+                    standalone.prerequisites(game)
+
     def test_account_timeout_stops_owned_helper_and_preserves_error(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -221,6 +253,16 @@ class IsolationTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     standalone.verify_unix_bridge()
                 (installed / 'winemetal-upstream.so').write_bytes(b'upstream')
+                (installed / 'winemetal-upstream.so').unlink()
+                (installed / 'winemetal-upstream.so').symlink_to(dxmt / 'x86_64-unix/winemetal.so')
+                with patch.object(standalone, 'sha256', wraps=standalone.sha256) as digest:
+                    standalone.verify_unix_bridge()
+                    upstream = dxmt / 'x86_64-unix/winemetal.so'
+                    self.assertEqual(sum(call.args[0].samefile(upstream) for call in digest.call_args_list), 1)
+                upstream.write_bytes(b'changed shared graphics')
+                with self.assertRaises(RuntimeError):
+                    standalone.verify_unix_bridge()
+                upstream.write_bytes(b'upstream')
                 patch_file.write_text('changed patch awaiting rebuild')
                 with self.assertRaises(RuntimeError):
                     standalone.verify_unix_bridge()

@@ -58,7 +58,9 @@ Stone controls and installed utility glyphs share hover, press and focus states
 Action headings/buttons now use pixel type. The hotbar has no extra backing
 The splash overlaps the title; the bottom corners hold a native developer Link
 and the actual launcher bundle version. Scenery motion controls remain in Settings/View
-The top-left biome name opens the searchable picker; native menus also give direct access
+The top-left biome name opens an in-window destination list with original block
+textures, search, selected states and arrow-key navigation. Automatic biome travel
+waits while the picker is open; native menus also give direct access
 The corner spyglass control or ⌘L enters spectator flight in `FlightView`
 Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
 arrows turn, captured relative mouse movement aims, and scrolling changes speed
@@ -66,7 +68,7 @@ between 2 and 32 blocks/s. Control doubles travel speed while held
 Capture owns one local event monitor and restores cursor association/visibility
 and the window’s previous mouse-event preference on release. It never installs
 a global monitor, event tap or Input Monitoring service
-A 20 Hz timer exists only while movement/turning keys are held; focus loss,
+A 60 Hz timer exists only while movement/turning keys are held; focus loss,
 responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
 Crossing an authored area boundary or pressing brackets loads the next/previous
 biome in the current realm. Only one graph is presented; obsolete builds cancel
@@ -118,8 +120,10 @@ frames at 20 fps for water / 10 fps for lava, without doubled lava emission
 batched stars and once-per-second lighting/fog updates. A shared asset epoch
 preserves time between areas; motion gates pause visible updates. Nether, End
 and underground scenes retain their environmental lighting
-Idle camera routes form a continuous twelve-second hover loop with an explicit
-world-up vector, preventing accumulated camera roll
+Idle camera routes form a continuous twelve-second hover loop with eased reversals
+and an explicit world-up vector. Initial placement checks solid volumes and nearby
+sightlines; animated tree canopies share the collision category used for scenery
+Flight arrivals use the same free-position search when a destination contains a wall
 Original block materials supply strata, vegetation, roots, fungi, chorus plants,
 waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
 particles move independently of the camera
@@ -144,6 +148,8 @@ grazing and species-specific hops. Flying hero actors follow circular paths
 Original behaviour collision boxes bound resident clearance rather than visual
 limbs or Blaze rods. Adult/calm component groups provide movement attributes;
 the midpoint represents original movement ranges in this scenery simulation
+Flying residents turn while travelling instead of inheriting walking waits
+End crystal shells follow the original installed bob/rotation formulas; bases stay still
 Four eligible classic species use base-pack models at a daylight-dependent
 10–15% launcher-only chance, selected once during scene construction
 Classic prototypes stay within the current scene factory; no old-version
@@ -197,10 +203,10 @@ transition. Destinations start beside a corresponding portal or End spawn
 platform, then join the existing hover path without a visible camera reset
 **Skip journey** cancels a passage; another selection replaces it immediately
 Reduced Motion and Low Power Mode select the destination directly
-The existing graph remains visible during loading. Native crossfades join scenes
+The existing graph remains visible during loading. Short native fades join scenes
 only while motion is enabled; cancellation rejects obsolete graph results
 
-The renderer is capped at 20 fps. Native checks bound each habitat to 1,200 nodes
+The renderer targets 30 fps while idle and 60 fps during spectator flight. Native checks bound each habitat to 1,200 nodes
 and 350,000 logical triangles; actual measurements are recorded in [Testing](test.md)
 A serial asset queue builds scenes away from the interface thread. Cancelling a
 selection drops queued work and ignores obsolete results; completed graphs move

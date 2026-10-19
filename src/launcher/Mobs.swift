@@ -182,21 +182,22 @@ final class Mobs {
                     && Collision.clear(root,from:start,to:candidate,radius:motion.width/2,height:motion.height) { end = candidate; break }
             }
             if index < 6 { visited.append(end) }
-            let length = hypot(end.x-start.x,end.z-start.z)
-            steps.append(.wait(duration:1.5+Terrain.random(seed,index,seed:87)*4))
+            let length = sqrt(pow(end.x-start.x,2)+pow(end.y-start.y,2)+pow(end.z-start.z,2))
+            if !species.flying { steps.append(.wait(duration:1.5+Terrain.random(seed,index,seed:87)*4)) }
             if length>0.1 {
                 let heading = atan2(end.x-start.x,end.z-start.z)
-                steps.append(.rotateTo(x:0,y:heading,z:0,duration:0.35,usesShortestUnitArc:true))
+                if !species.flying { steps.append(.rotateTo(x:0,y:heading,z:0,duration:0.35,usesShortestUnitArc:true)) }
                 let a = start, b = end, duration = length/motion.speed
                 let hopping = [.rabbit,.frog,.slime,.magma].contains(species)
-                steps.append(.customAction(duration:duration) { node,time in
+                let travel = SCNAction.customAction(duration:duration) { node,time in
                     let t = min(1,Double(time)/duration)
                     node.position = .init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
                     let stride = sin(Double(time)*7)
                     for (leg,base,sign) in legs { leg.eulerAngles.x = base.x+stride*(species == .enderman ? 0.35 : 0.5)*sign }
                     if hopping { node.position.y += abs(stride)*(species == .slime || species == .magma ? 0.65 : 0.3) }
                     if species.swimming || species.flying { node.position.y += sin(Double(time)*2+Double(seed))*0.12 }
-                })
+                }
+                steps.append(species.flying ? .group([travel,.rotateTo(x:0,y:heading,z:0,duration:min(0.35,duration),usesShortestUnitArc:true)]) : travel)
                 steps.append(.run { _ in for (leg,base,_) in legs { leg.eulerAngles = base } })
             }
             if species == .sheep, let head = model.childNode(withName:"head",recursively:true) {

@@ -108,6 +108,12 @@ final class Assets {
                     frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
                 }
             }
+            for surface in Set(Biome.allCases.map(\.surface)) {
+                if let tiles = try? self.tiles(surface) {
+                    let bitmap = tiles[4].diffuse.contents as! CGImage
+                    frames["biome-"+surface] = NSImage(cgImage:bitmap,size:NSSize(width:32,height:32))
+                }
+            }
             var font: CTFont?
             if let bytes = try? self.file("font/minecraft-ten.ttf"), bytes.count <= 4*1024*1024,
                let provider = CGDataProvider(data:bytes as CFData), let face = CGFont(provider) {
@@ -288,6 +294,20 @@ final class Assets {
     }
 
     private func assemble(_ model: SCNNode, name: String) {
+        if name == "ender_crystal", let outer = model.childNode(withName:"outerglass",recursively:true),
+           let inner = outer.childNode(withName:"innerglass",recursively:false),
+           let core = inner.childNode(withName:"crystal",recursively:false) {
+            inner.scale = .init(0.875,0.875,0.875); core.scale = inner.scale
+            outer.position.y = 1.5
+            // Match the installed animation's bob and nested shell rotations, keeping the base still
+            outer.runAction(.repeatForever(.customAction(duration:36) { node,time in
+                let radians = Double.pi/180, yaw = (14.5-Double(time)*60)*radians
+                node.position.y = 1.5+sin(Double(time)*230*radians)*0.5
+                node.eulerAngles = .init(39.2*radians,yaw,-39.2*radians)
+                inner.eulerAngles = node.eulerAngles
+                core.eulerAngles = .init(219.2*radians,yaw,-39.2*radians)
+            }),forKey:"crystal")
+        }
         if name == "enderman", let head = model.childNode(withName:"head",recursively:true) {
             // Legacy Enderman geometry requires the game's standing head attachment
             head.position.y = 0

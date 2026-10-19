@@ -228,22 +228,58 @@ extension Terrain {
 }
 
 enum Collision {
+    static func nearby(_ root: SCNNode, at point: SCNVector3, toward target: SCNVector3? = nil) -> SCNVector3? {
+        func usable(_ candidate: SCNVector3) -> Bool {
+            guard vacant(root,at:candidate) else { return false }
+            guard let target else { return true }
+            let length = sqrt(pow(target.x-candidate.x,2)+pow(target.y-candidate.y,2)+pow(target.z-candidate.z,2))
+            let scale = min(1,5/max(0.001,length))
+            return clear(root,from:candidate,to:.init(candidate.x+(target.x-candidate.x)*scale,
+                candidate.y+(target.y-candidate.y)*scale,candidate.z+(target.z-candidate.z)*scale),radius:0.35)
+        }
+        if usable(point) { return point }
+        for distance in 1...12 {
+            for (x,y,z) in [(0.0,0.0,1.0),(1.0,0.0,0.0),(-1.0,0.0,0.0),(0.0,0.0,-1.0),(0.0,1.0,0.0),(0.0,-1.0,0.0)] {
+                let candidate = SCNVector3(point.x+x*Double(distance),point.y+y*Double(distance),point.z+z*Double(distance))
+                if usable(candidate) { return candidate }
+            }
+        }
+        return nil
+    }
+
+    private static func solid(_ hit: SCNHitTestResult) -> Bool {
+        let ignored = ["water","lava","tallgrass","wheat","carrots","potatoes","flower","sapling","fern","rail","web"]
+        let materials = hit.node.geometry?.materials ?? []
+        let name = materials.indices.contains(hit.geometryIndex) ? materials[hit.geometryIndex].name ?? "" : ""
+        return !ignored.contains(where:name.contains)
+    }
+
+    // An outward first face means the eye starts inside solid geometry
+    static func vacant(_ root: SCNNode, at point: SCNVector3, radius: Double = 0.35) -> Bool {
+        for axis in 0..<3 {
+            var end = point
+            if axis == 0 { end.x += 256 } else if axis == 1 { end.y += 256 } else { end.z += 256 }
+            let hits = root.hitTestWithSegment(from:point,to:end,options:[SCNHitTestOption.categoryBitMask.rawValue:2,
+                SCNHitTestOption.backFaceCulling.rawValue:false,SCNHitTestOption.ignoreHiddenNodes.rawValue:true])
+            if let hit = hits.first(where:solid) {
+                let normal = axis == 0 ? hit.worldNormal.x : axis == 1 ? hit.worldNormal.y : hit.worldNormal.z
+                if normal > 0.01 || sqrt(pow(hit.worldCoordinates.x-point.x,2)+pow(hit.worldCoordinates.y-point.y,2)+pow(hit.worldCoordinates.z-point.z,2)) < radius { return false }
+            }
+        }
+        return true
+    }
+
     // Native mesh queries keep camera and resident paths aligned with placed structure faces
     static func clear(_ root: SCNNode, from a: SCNVector3, to b: SCNVector3,
                       radius: Double = 0.25, height: Double = 0) -> Bool {
         guard a.x != b.x || a.y != b.y || a.z != b.z else { return true }
-        let ignored = ["water","lava","tallgrass","wheat","carrots","potatoes","flower","sapling","fern","rail","web"]
         let levels = height > 0 ? [0.15,height*0.5,height-0.1] : [-radius,0,radius]
         for y in levels {
             let offsets: [(Double,Double)] = height == 0 && y != 0 ? [(0.0,0.0)] : [(0.0,0.0),(radius,0),(-radius,0),(0,radius),(0,-radius)]
             for (x,z) in offsets {
                 let start = SCNVector3(a.x+x,a.y+y,a.z+z), end = SCNVector3(b.x+x,b.y+y,b.z+z)
                 let hits = root.hitTestWithSegment(from:start,to:end,options:[SCNHitTestOption.categoryBitMask.rawValue:2,SCNHitTestOption.backFaceCulling.rawValue:false,SCNHitTestOption.ignoreHiddenNodes.rawValue:true])
-                if hits.contains(where: { hit in
-                    let materials = hit.node.geometry?.materials ?? []
-                    let name = materials.indices.contains(hit.geometryIndex) ? materials[hit.geometryIndex].name ?? "" : ""
-                    return !ignored.contains(where:name.contains)
-                }) { return false }
+                if hits.contains(where:solid) { return false }
             }
         }
         return true

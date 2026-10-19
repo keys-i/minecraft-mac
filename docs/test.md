@@ -5,6 +5,52 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Flight, destinations and repeat-launch checks in 0.13
+
+All 93 Python tests and installed-art native checks for 70 species, 42 areas and
+three passages pass. New regressions reject a camera inside a solid volume,
+check every area's initial free position, require tree canopy collision categories,
+verify continuous bat travel over sixty 100 ms samples and verify crystal bobbing
+with a stationary base. Existing cancellation, lifecycle and input checks remain
+
+The picker uses an in-window list, original block textures, search, arrow navigation,
+wrapping names and a selected state. It suspends automatic area changes while open
+Native renders cover the normal/narrow launcher, Overworld/Nether lists, the corrected
+cherry approach and crystal shells. Impeccable 4.6 context/refinement guidance,
+its source detector and ECC verification informed this pass
+
+Repeat preflight now recognises same-file graphics aliases and avoids rehashing
+the upstream bridge library within one verification. Distinct copies still undergo
+digest comparison; each new verification reads the bridge again. Four alternating
+samples on unchanged installed bytes reduced the median from 62.86 ms to 29.38 ms,
+17 to 8 hash calls and 92,512,240 to 43,015,404 bytes. The frozen worker's unchanged
+status path independently took 146.21–170.78 ms across three samples
+A same-method render sample used ten route/elevated/interior views, 1040 × 760,
+4× MSAA, ten warm-up frames and sixty measured frames per view. Baseline/candidate
+highest GPU p95 was 14.80/9.17 ms and wall p95 was 19.06/19.21 ms. Construction
+ranged 52.52–579.27/67.64–1036.43 ms; additional canopy/volume checks add work
+All samples fit the 33.3 ms idle frame budget; the wall-time tail exceeds the
+16.7 ms spectator target. Background load was uncontrolled, so this establishes
+neither a rendering speedup nor sustained 60 fps. No browser was closed
+
+These are preflight measurements, not an end-to-end Play speedup. Initial samples
+under contention took seconds, so the larger launch delay remains unresolved
+
+Computer Use inspected the mounted 0.12 launcher and invoked Play; its status
+reached “Minecraft is running”. The Wine game was absent from the app inventory,
+and direct selection returned “Invalid app: Minecraft.Windows.exe”. The available
+Computer Use interface supplies no video recorder. No actual gameplay, gameplay
+recording, hands-on comparison or VoiceOver assessment is claimed
+REA/Hopper identified the mounted 0.12 binary by its SHA-256 and confirmed the
+camera's old reverse-route action and explicit world-up call in machine code
+The 0.13 candidate was also opened live. Search, no-results feedback, Escape,
+selected states and arrow focus were exercised. Return from a focused row exposed
+an underlying Play shortcut, which started the game; the final source disables
+background controls during the picker and handles Return/Space on its rows
+That final keyboard correction is compiled but not live-retested because the
+running game still uses the earlier candidate's resources. Those files stay intact
+Source inspection, native tests and renderer samples establish the new behaviour
+
 ## Explorable structures and saved fixture states in 0.12
 
 All 92 Python tests and native checks for 70 original mob profiles, 42 areas and

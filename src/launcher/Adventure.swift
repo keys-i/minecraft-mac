@@ -147,8 +147,9 @@ final class FlightView: SCNView {
 
     func install(_ camera: SCNNode?, area: Biome) {
         self.area = area
-        if let entry, let camera {
-            camera.position = Self.arrival(area,point:entry.point,height:entry.height)
+        if let entry, let camera, let scene {
+            let proposed = Self.arrival(area,point:entry.point,height:entry.height)
+            camera.position = Collision.nearby(scene.rootNode,at:proposed) ?? camera.position
             camera.eulerAngles = entry.angles
         }
         entry = nil; loading = false
@@ -165,7 +166,7 @@ final class FlightView: SCNView {
         guard exploring, !loading, timer == nil, window?.isKeyWindow == true,
               !keys.isEmpty || descending else { return }
         last = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(timeInterval:SceneryMotion.interval,target:self,selector:#selector(tick),userInfo:nil,repeats:true)
+        let timer = Timer(timeInterval:1.0/60,target:self,selector:#selector(tick),userInfo:nil,repeats:true)
         self.timer = timer
         RunLoop.main.add(timer,forMode:.common)
     }
@@ -265,7 +266,7 @@ struct Adventure: NSViewRepresentable {
     func makeNSView(context: Context) -> FlightView {
         let view = FlightView(frame: .zero)
         view.backgroundColor = .clear
-        view.preferredFramesPerSecond = 20
+        view.preferredFramesPerSecond = 30
         view.antialiasingMode = .multisampling4X
         view.allowsCameraControl = false
         view.addGestureRecognizer(NSPanGestureRecognizer(target:context.coordinator,action:#selector(Coordinator.pan(_:))))
@@ -275,6 +276,7 @@ struct Adventure: NSViewRepresentable {
 
     func updateNSView(_ view: FlightView, context: Context) {
         let coordinator = context.coordinator
+        view.preferredFramesPerSecond = exploring ? 60 : 30
         view.travel = travel; view.finish = finish
         coordinator.moving = moving
         if coordinator.exploring != exploring {
@@ -302,7 +304,7 @@ struct Adventure: NSViewRepresentable {
                     let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
                     if coordinator.exploring { camera?.removeAllActions() }
                     if coordinator.moving, !coordinator.exploring, view.scene != nil {
-                        let transition = arrival == nil ? SKTransition.crossFade(withDuration:0.65)
+                        let transition = arrival == nil ? SKTransition.fade(withDuration:0.3)
                             : SKTransition.fade(with:Landscape.colour(arrival == .stronghold ? 0x080810 : 0x7024B8),duration:0.9)
                         view.present(scene,with:transition,incomingPointOfView:camera,completionHandler:nil)
                     } else { view.scene = scene; view.pointOfView = camera }

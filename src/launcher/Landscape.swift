@@ -163,7 +163,7 @@ enum Landscape {
                     } } }
                     crowns[tree] = canopy.node("canopy").geometry
                 }
-                let crown = SCNNode(geometry:crowns[tree]); crown.name = "wind-canopy"
+                let crown = SCNNode(geometry:crowns[tree]); crown.name = "wind-canopy"; crown.categoryBitMask = 2
                 crown.position = .init(x+(tree == "acacia" ? (index%2 == 0 ? -2 : 2) : 0),y+Double(tall)-(tree == "spruce" ? 4 : 1),z)
                 VoxelAdventure.sway(crown,x:0.003,z:0.005,period:8+Double(index%4),phase:Double(index))
                 scene.rootNode.addChildNode(crown)
@@ -507,14 +507,19 @@ enum Landscape {
             if light.type == .directional { light.intensity = area.underground ? 300 : area == .pale ? 450 : 900 }
         }
         camera.removeAction(forKey:"passage"); camera.removeAction(forKey:"journey")
-        let initial = pose(area,at:0); camera.position = initial.eye; camera.look(at:initial.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
-        var route = [initial.eye]
+        let initial = pose(area,at:0)
+        let eye = Collision.nearby(scene.rootNode,at:initial.eye,toward:initial.aim)
+            ?? Collision.nearby(scene.rootNode,at:initial.eye) ?? initial.eye
+        camera.position = eye; camera.look(at:initial.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+        let offset = SCNVector3(eye.x-initial.eye.x,eye.y-initial.eye.y,eye.z-initial.eye.z)
+        var route = [eye]
         for index in 1...24 {
-            let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:pose(area,at:Double(index)/4).eye,radius:0.35)
-            route.append(Collision.clear(scene.rootNode,from:start,to:next,radius:0.35) ? next : start)
+            let target = pose(area,at:Double(index)/4).eye
+            let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:.init(target.x+offset.x,target.y+offset.y,target.z+offset.z),radius:0.35)
+            route.append(Collision.vacant(scene.rootNode,at:next) && Collision.clear(scene.rootNode,from:start,to:next,radius:0.35) ? next : start)
         }
         camera.runAction(.repeatForever(.customAction(duration:12) { node,time in
-            let phase = Double(time)<=6 ? Double(time) : 12-Double(time)
+            let phase = 3*(1-cos(Double(time)/12*2 * .pi))
             let t = min(24,max(0,phase*4)), index = min(23,Int(t)), fraction = t-Double(index)
             let a = route[index], b = route[index+1]
             node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)

@@ -21,7 +21,6 @@ struct LauncherChecks {
         precondition(status(0.9).stage == 2)
         precondition(status(nil, state: "playing").stage == 3)
         precondition(status(0.5, state: "error").stage == nil)
-        precondition(SceneryMotion.interval >= 1.0 / 20)
         precondition(Daylight.light(at:0) == 1 && Daylight.light(at:600) == 0 && Daylight.light(at:1200) == 1)
         precondition(abs(Mobs.classicChance(daylight:1)-0.10)<0.0001)
         precondition(abs(Mobs.classicChance(daylight:0)-0.15)<0.0001)
@@ -165,6 +164,8 @@ struct LauncherChecks {
         let collision = SCNRenderer(device:nil,options:nil)
         collision.scene = obstacleScene
         precondition(collision.prepare(obstacleScene,shouldAbortBlock:nil))
+        precondition(!Collision.vacant(walls,at:.init(1,2,0)))
+        precondition(Collision.vacant(walls,at:.init(-2,2,0)))
         precondition(!Collision.clear(walls,from:.init(-2,1,0),to:.init(3,1,0)))
         precondition(!Collision.clear(walls,from:.init(3,1,0),to:.init(-2,1,0)))
         precondition(Collision.clear(walls,from:.init(-2,5,0),to:.init(3,5,0)))
@@ -398,6 +399,25 @@ struct LauncherChecks {
         for species in [Species.pig,.cow,.chicken,.wolf] { _ = try factory.make(species,classic:true) }
         _ = try factory.make(.cow,biome:.desert)
         _ = try factory.make(.chicken,biome:.snow)
+        let airborne = SCNScene(), bat = SCNNode(), batModel = try factory.make(.bat)
+        bat.position = .init(0,3,0); bat.addChildNode(batModel); airborne.rootNode.addChildNode(bat)
+        try factory.wander(bat,model:batModel,species:.bat,area:.dripstone,seed:15,root:airborne.rootNode) { x,z in .init(x,3,z) }
+        let crystal = try assets.actor("ender_crystal")
+        airborne.rootNode.addChildNode(crystal)
+        let shell = crystal.childNode(withName:"outerglass",recursively:true)!, base = crystal.childNode(withName:"base",recursively:true)!
+        let basePosition = base.position
+        SCNTransaction.flush()
+        let airborneAnimation = SCNRenderer(device:nil,options:nil); airborneAnimation.scene = airborne; airborneAnimation.isPlaying = true
+        airborneAnimation.update(atTime:0)
+        var lastBat = bat.position, movingFrames = 0, heights = [Double]()
+        for frame in 1...60 {
+            airborneAnimation.update(atTime:Double(frame)/10)
+            if hypot(bat.position.x-lastBat.x,bat.position.z-lastBat.z)>0.001 { movingFrames += 1 }
+            lastBat = bat.position; heights.append(shell.position.y)
+        }
+        precondition(movingFrames>=58,"Flying bats must not wait between their route segments")
+        precondition(heights.max()!-heights.min()!>0.8 && base.position.y == basePosition.y,"Crystal shells float while the base stays still")
+        airborneAnimation.scene = nil
         let plainsWater = try assets.water(.meadow), riverWater = try assets.water(.river)
         precondition(plainsWater == 0x44AFF5 && riverWater == 0x0084FF)
         let breeze = try factory.make(.breeze)
@@ -526,7 +546,7 @@ struct LauncherChecks {
                     Daylight.apply(scene,area:.meadow,seconds:0)
                     precondition(scene.rootNode.childNode(withName:"daylight",recursively:false)?.childNode(withName:"sun",recursively:false)?.opacity == 1)
                     let crowns = scene.rootNode.childNodes.filter { $0.name == "wind-canopy" }
-                    precondition(crowns.count > 2 && crowns.allSatisfy { $0.geometry === crowns[0].geometry })
+                    precondition(crowns.count > 2 && crowns.allSatisfy { $0.geometry === crowns[0].geometry && $0.categoryBitMask == 2 })
                 }
                 let area = world.biomes[index], terrain = Terrain(biome:area)
                 for step in 0...36 {
@@ -548,6 +568,7 @@ struct LauncherChecks {
                 for animated in [false,true] {
                     Landscape.focus(scene,world:world,biome:index,animated:animated)
                     precondition(scene.rootNode.childNode(withName:"camera",recursively:false)!.actionKeys == ["journey"])
+                    precondition(Collision.vacant(scene.rootNode,at:scene.rootNode.childNode(withName:"camera",recursively:false)!.position),"Camera must start outside solid blocks in \(area)")
                 }
                 let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("resident-") == true || $0.name?.hasPrefix("passage-resident-") == true }
                 precondition(residents.count >= world.biomes[index].residents.count*2 || world.biomes[index] == .deep)

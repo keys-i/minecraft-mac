@@ -252,8 +252,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum SceneryMotion {
-    static let interval = 1.0 / 20
-
     static func enabled(reduced: Bool, paused: Bool, lowPower: Bool,
                         active: Bool, visible: Bool, playing: Bool) -> Bool {
         !reduced && !paused && !lowPower && active && visible && !playing
@@ -524,7 +522,6 @@ struct LauncherView: View {
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var exploring = false
     @State private var map = false
-    @State private var search = ""
     @State private var focused = false
     @State private var hint = ShortcutHint()
     @FocusState private var areaFocused: Bool
@@ -599,17 +596,31 @@ struct LauncherView: View {
                             .buttonStyle(.plain).tint(.white)
                             .accessibilityLabel("Developer Keys-i, open keysi.dev")
                         Spacer()
-                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.12.0"))
+                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.13.0"))
                     }.font(Blocks.type(13)).foregroundStyle(.white)
                         .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                         .padding(.horizontal,24).padding(.bottom,16)
                 }
-                if hintAvailable && hint.showing {
+                if hintAvailable && hint.showing && !map {
                     VStack {
                         HStack { Spacer(); achievement }
                         Spacer()
                     }.padding(.trailing,28).padding(.top,exploring ? 96 : min(322,geometry.size.width*0.22+94))
                         .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
+                }
+            }
+        }
+        .disabled(map).accessibilityHidden(map)
+        .overlay {
+            if map {
+                GeometryReader { geometry in
+                    ZStack {
+                        Color.black.opacity(0.65).onTapGesture { map = false }
+                        Biomes(world:launcher.journey.world,selected:launcher.journey.biome,
+                            frames:launcher.frames,stone:launcher.stone,
+                            choose:{ launcher.journey.area($0); map = false },close:{ map = false })
+                            .frame(width:min(600,geometry.size.width-56),height:min(580,geometry.size.height-56))
+                    }.frame(maxWidth:.infinity,maxHeight:.infinity)
                 }
             }
         }
@@ -649,8 +660,8 @@ struct LauncherView: View {
         .onChange(of:available) { if !available { explore(false) } }
         .onChange(of:launcher.journey.world) { if launcher.journey.passage != nil { explore(false) } }
         .onChange(of:launcher.status.state) { if launcher.status.state == "playing" { explore(false) } }
-        .task(id:moving && !exploring && (rotateScenery || launcher.journey.passage != nil)) {
-            guard moving, !exploring, rotateScenery || launcher.journey.passage != nil else { return }
+        .task(id:moving && !exploring && !map && (rotateScenery || launcher.journey.passage != nil)) {
+            guard moving, !exploring, !map, rotateScenery || launcher.journey.passage != nil else { return }
             while !Task.isCancelled {
                 do { try await Task.sleep(for:.seconds(1)) } catch { return }
                 guard !Task.isCancelled else { return }
@@ -690,7 +701,7 @@ struct LauncherView: View {
                     Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,12).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             } else {
-                Button { search = ""; map = true } label: {
+                Button { map = true } label: {
                     HStack(spacing:8) {
                         Marquee(text:launcher.journey.title,active:moving && focused && !map)
                         Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
@@ -700,7 +711,7 @@ struct LauncherView: View {
                     .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(areaFocused ? 1 : 0) }
                     .accessibilityLabel("Choose biome: " + launcher.journey.title)
                     .help(launcher.journey.world == .sift ? "Sift interpretation · Choose biome" : "Choose biome or landmark")
-                    .disabled(!available).popover(isPresented:$map) { biomeMap }
+                    .disabled(!available)
             }
         }
     }
@@ -767,35 +778,6 @@ struct LauncherView: View {
             .accessibilityElement(children:.combine)
             .accessibilityLabel(exploring ? "Spectator mode: WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns" : "Press Command L to look around")
             .allowsHitTesting(false)
-    }
-
-    private var biomeMap: some View {
-        VStack(alignment:.leading,spacing:16) {
-            HStack {
-                Text("Explore \(launcher.journey.world.title)").font(Blocks.action(20))
-                Spacer()
-                Button { map = false } label: { Image(systemName:"xmark").frame(width:32,height:32) }
-                    .buttonStyle(.plain).accessibilityLabel("Close biomes")
-            }
-            TextField("Find a biome or landmark",text:$search).textFieldStyle(.plain)
-                .padding(10).background(.black.opacity(0.35))
-                .overlay { Rectangle().strokeBorder(.white.opacity(0.35),lineWidth:1) }
-                .accessibilityLabel("Find a biome or landmark")
-            ScrollView {
-                LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible()),GridItem(.flexible())],spacing:8) {
-                    ForEach(launcher.journey.world.biomes.indices.filter { search.isEmpty || launcher.journey.world.biomes[$0].rawValue.localizedCaseInsensitiveContains(search) },id:\.self) { index in
-                        Button { launcher.journey.area(index); map = false } label: {
-                            HStack(spacing:6) {
-                                if index == launcher.journey.biome { Image(systemName:"checkmark").foregroundStyle(Blocks.gold) }
-                                Text(launcher.journey.world.biomes[index].rawValue).font(.system(size:12,weight:.medium))
-                                    .frame(maxWidth:.infinity,alignment:.leading).multilineTextAlignment(.leading)
-                            }.padding(10).frame(minHeight:52)
-                        }.buttonStyle(BlockButton(selected:index == launcher.journey.biome,texture:launcher.stone))
-                    }
-                }
-            }.frame(maxHeight:330)
-            if launcher.journey.world == .sift { Text("An artistic interpretation using existing Minecraft blocks and mobs").font(.caption).foregroundStyle(.secondary) }
-        }.padding(20).frame(width:570).background(Blocks.stone)
     }
 
     @ViewBuilder private var installation: some View {
@@ -886,6 +868,98 @@ struct LauncherView: View {
         .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.2)).frame(height:2) }
         .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.6)).frame(height:4) }
         .overlay { Rectangle().strokeBorder(.black.opacity(0.8),lineWidth:2) }
+    }
+}
+
+struct Biomes: View {
+    let world: World
+    let selected: Int
+    let frames: [String:NSImage]
+    let stone: NSImage?
+    let choose: (Int) -> Void
+    let close: () -> Void
+    @State private var search = ""
+    @FocusState private var searching: Bool
+    @FocusState private var focused: Int?
+
+    private var matches: [Int] {
+        let query = search.trimmingCharacters(in:.whitespacesAndNewlines)
+        return world.biomes.indices.filter { query.isEmpty || world.biomes[$0].rawValue.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        VStack(spacing:0) {
+            HStack {
+                Text("Explore \(world.title)").font(Blocks.type(22)).accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(action:close) { Image(systemName:"xmark").frame(width:40,height:40) }
+                    .buttonStyle(BlockButton(texture:stone)).accessibilityLabel("Close biomes")
+            }.padding(20)
+            HStack(spacing:12) {
+                Image(systemName:"magnifyingglass").accessibilityHidden(true)
+                TextField("Find a biome or landmark",text:$search).textFieldStyle(.plain)
+                    .font(Blocks.type(13)).focused($searching)
+                    .accessibilityLabel("Find a biome or landmark")
+                    .onSubmit { if let first = matches.first { choose(first) } }
+                    .onKeyPress(.downArrow) { focused = matches.first; return .handled }
+                if !search.isEmpty {
+                    Button { search = ""; searching = true } label: { Image(systemName:"xmark").frame(width:28,height:28) }
+                        .buttonStyle(.plain).accessibilityLabel("Clear search")
+                }
+            }.padding(12).background(.black.opacity(0.7))
+                .overlay { Rectangle().strokeBorder(searching ? Blocks.gold : .white.opacity(0.35),lineWidth:2) }
+                .padding(.horizontal,20).padding(.bottom,16)
+            ScrollViewReader { scroll in
+                ScrollView {
+                    LazyVStack(spacing:6) {
+                        ForEach(matches,id:\.self) { index in
+                            let area = world.biomes[index]
+                            Button { choose(index) } label: {
+                                HStack(spacing:14) {
+                                    if let image = frames["biome-"+area.surface] {
+                                        Image(nsImage:image).resizable().interpolation(.none)
+                                            .frame(width:36,height:36).accessibilityHidden(true)
+                                    }
+                                    Text(area.rawValue).font(Blocks.type(14))
+                                        .frame(maxWidth:.infinity,alignment:.leading).multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal:false,vertical:true)
+                                    if selected == index { Image(systemName:"checkmark").foregroundStyle(Blocks.gold) }
+                                }.padding(.horizontal,14).frame(minHeight:58)
+                            }.buttonStyle(BlockButton(selected:selected == index,texture:stone))
+                                .focusable().focused($focused,equals:index).id(index)
+                                .accessibilityAddTraits(selected == index ? .isSelected : [])
+                                .onKeyPress(.return) { choose(index); return .handled }
+                                .onKeyPress(.space) { choose(index); return .handled }
+                                .onKeyPress(.downArrow) { move(from:index,by:1); return .handled }
+                                .onKeyPress(.upArrow) { move(from:index,by:-1); return .handled }
+                        }
+                        if matches.isEmpty {
+                            Text("No matching biomes").font(Blocks.type(15)).padding(.vertical,32)
+                        }
+                    }.padding(12)
+                }.background(.black.opacity(0.45))
+                    .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
+                    .onChange(of:focused) { if let focused { scroll.scrollTo(focused) } }
+                    .onAppear { scroll.scrollTo(selected,anchor:.center) }
+            }.padding(.horizontal,20)
+            HStack {
+                Text("\(matches.count) \(matches.count == 1 ? "destination" : "destinations")").font(Blocks.type(11))
+                Spacer()
+                if world == .sift { Text("Sift interpretation").font(Blocks.type(11)) }
+            }.foregroundStyle(.white.opacity(0.8)).padding(20)
+        }.foregroundStyle(.white).background(Blocks.stone)
+            .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
+            .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
+            .environment(\.colorScheme,.dark)
+            .task { searching = true }
+            .onExitCommand(perform:close)
+    }
+
+    private func move(from index: Int, by step: Int) {
+        guard let position = matches.firstIndex(of:index) else { return }
+        let next = position+step
+        if matches.indices.contains(next) { focused = matches[next] }
+        else if next<0 { searching = true }
     }
 }
 
