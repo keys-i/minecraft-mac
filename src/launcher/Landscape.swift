@@ -58,6 +58,7 @@ struct Voxels {
         geometry.materials = materials
         let node = SCNNode(geometry: geometry)
         node.name = name
+        node.categoryBitMask = 2
         return node
     }
 }
@@ -390,8 +391,14 @@ enum Landscape {
             glow.light?.intensity = area.underground ? 350 : world == .nether ? 250 : 0
             glow.light?.attenuationEndDistance = 34; glow.position = .init(x,12,z); scene.rootNode.addChildNode(glow)
         }
-        try populate(scene,world:world,area:area,factory:Mobs(assets:assets))
-        focus(scene,world:world,biome:biome,animated:false)
+        // SceneKit needs prepared geometry before offscreen segment queries can hit it
+        let collision = SCNRenderer(device:nil,options:nil)
+        collision.scene = scene
+        guard collision.prepare(scene,shouldAbortBlock:nil) else { throw AssetError.model }
+        try withExtendedLifetime(collision) {
+            try populate(scene,world:world,area:area,factory:Mobs(assets:assets))
+            focus(scene,world:world,biome:biome,animated:false)
+        }
         if world == .overworld && !area.underground { try Daylight.install(scene,area:area,assets:assets) }
         if world == .end {
             // The original sky is greyscale and receives a dark purple tint in game
@@ -487,12 +494,60 @@ enum Landscape {
         }
         camera.removeAction(forKey:"journey")
         let initial = pose(area,at:0); camera.position = initial.eye; camera.look(at:initial.aim)
+        var route = [initial.eye]
+        for index in 1...24 {
+            let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:pose(area,at:Double(index)/4).eye,radius:0.35)
+            route.append(Collision.clear(scene.rootNode,from:start,to:next,radius:0.35) ? next : start)
+        }
         camera.runAction(.repeatForever(.customAction(duration:12) { node,time in
-            let p = pose(area,at:Double(time)); node.position = p.eye; node.look(at:p.aim)
+            let phase = Double(time)<=6 ? Double(time) : 12-Double(time)
+            let t = min(24,max(0,phase*4)), index = min(23,Int(t)), fraction = t-Double(index)
+            let a = route[index], b = route[index+1]
+            node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
+            node.look(at:pose(area,at:Double(time)).aim)
         }),forKey:"journey")
         if let sky = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight {
             Daylight.apply(scene,area:area,seconds:ProcessInfo.processInfo.systemUptime-sky.epoch)
         }
+    }
+
+    static func medium(_ scene: SCNScene, area: Biome, eye: SCNVector3) {
+        let submerged = eye.y < 0.9 && Terrain(biome:area).height(eye.x.rounded(),eye.z.rounded()) < 0.9
+        let lava = submerged && World.nether.biomes.contains(area)
+        if submerged {
+            scene.fogColor = colour(lava ? 0xA73D08 : 0x125C9C)
+            scene.fogStartDistance = 0; scene.fogEndDistance = lava ? 1.5 : 18
+        } else {
+            scene.fogColor = scene.background.contents as? NSColor ?? colour(area.sky)
+            let underground = area.underground || World.nether.biomes.contains(area)
+            scene.fogStartDistance = underground ? 38 : 90
+            scene.fogEndDistance = underground ? 100 : 155
+        }
+    }
+
+    static func arrive(_ scene: SCNScene, world: World, biome: Int, passage: Passage, assets: Assets) throws {
+        guard let camera = scene.rootNode.childNode(withName:"camera",recursively:false), let idle = camera.action(forKey:"journey") else { return }
+        let end = camera.position, aim = pose(world.biomes[world.index(biome)],at:0).aim
+        let length = max(1,hypot(aim.x-end.x,aim.z-end.z))
+        let proposed = SCNVector3(end.x-(aim.x-end.x)/length*3,end.y,end.z-(aim.z-end.z)/length*3)
+        let candidate = Collision.move(scene.rootNode,from:end,to:proposed,radius:0.35)
+        let start = Collision.clear(scene.rootNode,from:end,to:candidate,radius:0.35) ? candidate : end
+        let gateway = SCNNode(); gateway.name = "arrival"; gateway.position = start
+        gateway.eulerAngles.y = atan2(aim.x-end.x,aim.z-end.z)
+        if passage == .stronghold {
+            var platform = Voxels()
+            let tile = try assets.tiles("obsidian")
+            platform.cube(.init(5,1,5),at:.init(0,-2.12,0),material:tile[0],faceMaterials:tile)
+            gateway.addChildNode(platform.node("end-spawn-platform"))
+        } else { try Structures.portal(gateway,at:.init(0,-2.5,0),assets:assets,sift:passage == .rift) }
+        scene.rootNode.addChildNode(gateway)
+        camera.removeAction(forKey:"journey"); camera.position = start; camera.look(at:aim)
+        let exit = SCNAction.customAction(duration:4) { node,time in
+            let t = min(1,Double(time)/4)
+            node.position = .init(start.x+(end.x-start.x)*t,start.y+(end.y-start.y)*t,start.z+(end.z-start.z)*t)
+            node.look(at:aim)
+        }
+        camera.runAction(.sequence([exit,idle]),forKey:"journey")
     }
 
     private static func populate(_ scene: SCNScene, world: World, area: Biome, factory: Mobs) throws {
@@ -504,7 +559,10 @@ enum Landscape {
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)
                 let classic = Terrain.random(kind,index,seed:terrain.seed+227) < Mobs.classicChance(daylight:daylight)
-                let model = try factory.make(species,biome:area,variant:index,classic:classic); actor.addChildNode(model)
+                let model: SCNNode
+                do { model = try factory.make(species,biome:area,variant:index,classic:classic) }
+                catch AssetError.missing where [.camelHusk,.parched,.nautilus,.zombieNautilus,.happyGhast].contains(species) { continue }
+                actor.addChildNode(model)
                 if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y) }
                 let a = Terrain.random(kind,index,seed:3)*Double.pi*2
                 let radius = sqrt(Terrain.random(index,kind,seed:2))*3
@@ -545,7 +603,7 @@ enum Landscape {
                 let start = point(x,z)
                 actor.position = start; actor.eulerAngles.y = a
                 if species != .shulker && species != .warden && species != .snowGolem {
-                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,point:point)
+                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,root:scene.rootNode,point:point)
                 }
                 scene.rootNode.addChildNode(actor)
             }
@@ -553,13 +611,23 @@ enum Landscape {
         if area == .central || world == .nether {
             let group = SCNNode(); group.name = "sky-resident"
             group.addChildNode(try factory.actor(world == .end ? "ender_dragon" : "ghast"))
-            group.position = .init(-18,24,-35)
             let duration = world == .end ? 48.0 : 64
+            let radius = world == .end ? 34.0 : 20
+            var route = [SCNVector3(radius,25,-25)]
+            for index in 1...32 {
+                let angle = Double(index)/32*2 * .pi
+                let next = SCNVector3(cos(angle)*radius,25+sin(angle*2)*3,-25+sin(angle)*radius)
+                let start = route.last!, body = world == .end ? 3.5 : 2.0
+                let candidate = Collision.move(scene.rootNode,from:start,to:next,radius:body)
+                route.append(Collision.clear(scene.rootNode,from:start,to:candidate,radius:body) ? candidate : start)
+            }
+            group.position = route[0]
             group.runAction(.repeatForever(.customAction(duration:duration) { node,time in
-                let angle = Double(time)/duration*2 * .pi
-                let radius = world == .end ? 34.0 : 20
-                node.position = .init(cos(angle)*radius,25+sin(angle*2)*3,-25+sin(angle)*radius)
-                node.eulerAngles.y = .pi-angle
+                let phase = Double(time)/duration*64, t = phase<=32 ? phase : 64-phase
+                let index = min(31,max(0,Int(t))), fraction = min(1,max(0,t-Double(index)))
+                let a = route[index], b = route[index+1]
+                node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
+                node.eulerAngles.y = atan2(b.x-a.x,b.z-a.z)+(phase>32 ? .pi : 0)
             }))
             scene.rootNode.addChildNode(group)
         }
@@ -640,5 +708,6 @@ final class Daylight: SCNNode {
         rig.childNode(withName:"stars",recursively:false)?.opacity = 1-daylight
         for material in rig.water { material.diffuse.intensity = 0.2+0.8*daylight }
         scene.rootNode.childNode(withName:"drifting-cloud",recursively:false)?.geometry?.firstMaterial?.diffuse.intensity = 0.25+0.75*daylight
+        if let camera = scene.rootNode.childNode(withName:"camera",recursively:false) { Landscape.medium(scene,area:area,eye:camera.position) }
     }
 }

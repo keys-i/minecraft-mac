@@ -66,11 +66,17 @@ final class Assets {
 
     /// Build on the asset queue and transfer the finished graph to the main thread
     @discardableResult
-    func load(_ world: World, biome: Int, passage: Passage?, completion: @escaping @MainActor (Result<SCNScene, Error>) -> Void) -> Operation {
+    func load(_ world: World, biome: Int, passage: Passage?, arrival: Passage? = nil, completion: @escaping @MainActor (Result<SCNScene, Error>) -> Void) -> Operation {
         let operation = BlockOperation()
         operation.addExecutionBlock { [weak operation] in
             guard let operation, !operation.isCancelled else { return }
-            let result = Result { try passage?.scene(assets: self) ?? Landscape.scene(world, biome: biome, assets: self) }
+            let result = Result {
+                let scene = try passage?.scene(assets:self) ?? Landscape.scene(world,biome:biome,assets:self)
+                if let arrival { try Landscape.arrive(scene,world:world,biome:biome,passage:arrival,assets:self) }
+                // Commit actions created after preparation before handing the graph to another renderer
+                SCNTransaction.flush()
+                return scene
+            }
             self.releaseArchives()
             guard !operation.isCancelled else { return }
             DispatchQueue.main.async {
@@ -216,8 +222,8 @@ final class Assets {
         let definition = try geometry(identifier, entity: name)
         let skin = try texture(image)
         let material = skin.copy() as! SCNMaterial
-        // Sheep alpha marks dye coverage rather than transparency
-        if (description["materials"] as? [String: String])?["default"] == "sheep" {
+        // These native shaders use texture alpha for dye or emission rather than holes
+        if ["enderman","blaze"].contains(name) || (description["materials"] as? [String: String])?["default"] == "sheep" {
             let image = skin.diffuse.contents as! CGImage
             if image.alphaInfo == .last || image.alphaInfo == .first {
                 let alpha = image.alphaInfo == .last ? CGImageAlphaInfo.noneSkipLast : .noneSkipFirst
@@ -228,14 +234,33 @@ final class Assets {
             }
             material.blendMode = .replace
         }
+        if name == "enderman" {
+            let source = NSBitmapImageRep(cgImage:skin.diffuse.contents as! CGImage)
+            let eyes = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:source.pixelsWide,pixelsHigh:source.pixelsHigh,
+                bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+            for y in 0..<source.pixelsHigh { for x in 0..<source.pixelsWide {
+                let colour = source.colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!
+                let emits = colour.alphaComponent>0 && colour.alphaComponent<0.1
+                eyes.setColor(NSColor(deviceRed:emits ? colour.redComponent : 0,green:emits ? colour.greenComponent : 0,
+                    blue:emits ? colour.blueComponent : 0,alpha:1),atX:x,y:y)
+            } }
+            material.emission.contents = eyes.cgImage
+        }
         if let glow = textures["eyes"] ?? textures["bioluminescent_layer"] {
             material.emission.contents = try texture(glow).diffuse.contents
         } else if name == "blaze" || name == "glow_squid" {
-            material.emission.contents = skin.diffuse.contents
+            material.emission.contents = material.diffuse.contents
             material.emission.intensity = 0.4
         }
         if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
         let model = try node(definition,material:material)
+        if name == "copper_golem", let eyes = textures["eyes_"+key] {
+            let glow = try texture(eyes).copy() as! SCNMaterial
+            glow.lightingModel = .constant
+            let layer = try node(definition,material:glow)
+            layer.name = "golem-eyes"
+            model.addChildNode(layer)
+        }
         if name == "tropicalfish", let path = textures[(key == "typeA" ? "aPattern" : "bPattern")+String(variant%6+1)] {
             let markings = try texture(path).copy() as! SCNMaterial
             markings.multiply.contents = Landscape.colour([0xFAF7E9,0xD95D39,0x4DA9BB,0x292D36,0xB471C9,0xF1B844][variant%6])
@@ -263,18 +288,29 @@ final class Assets {
     }
 
     private func assemble(_ model: SCNNode, name: String) {
+        if name == "enderman", let head = model.childNode(withName:"head",recursively:true) {
+            // Legacy Enderman geometry requires the game's standing head attachment
+            head.position.y = 0
+            head.childNode(withName:"hat",recursively:false)?.position = .init(0,0,0)
+        }
         if name == "blaze" {
             for ring in 0..<3 {
                 let orbit = SCNNode(); orbit.name = "rod-orbit-\(ring)"
                 model.addChildNode(orbit)
                 for index in 0..<4 {
                     guard let rod = model.childNode(withName:"upperBodyParts\(ring*4+index)",recursively:false) else { continue }
-                    let angle = Double(index)*Double.pi/2+Double(ring)*0.45
+                    let phase = ring == 0 ? 0.0 : ring == 1 ? 45 : 27
+                    let angle = (Double(index)*90+phase)*Double.pi/180
                     let radius = Double(9-ring*2)/16
                     rod.removeFromParentNode(); orbit.addChildNode(rod)
-                    rod.position = .init(cos(angle)*radius,1.6-Double(ring)*0.5,sin(angle)*radius)
+                    let level = Double([26,22,13][ring])/16
+                    rod.position = .init(cos(angle)*radius,level,sin(angle)*radius)
+                    let phaseY = Double(ring*4+index)*(ring == 2 ? 1.5 : 2)
+                    rod.runAction(.repeatForever(.customAction(duration:18) { node,time in
+                        node.position.y = level+cos((phaseY+Double(time)*20)*14.32 * .pi/180)/16
+                    }))
                 }
-                orbit.runAction(.repeatForever(.rotateBy(x:0,y:ring == 1 ? -.pi*2 : .pi*2,z:0,duration:Double(8+ring*2))))
+                orbit.runAction(.repeatForever(.rotateBy(x:0,y:ring == 1 ? .pi*2 : -.pi*2,z:0,duration:[1,10.0/3,2][ring])))
             }
         }
         guard name == "ender_dragon" else { return }
@@ -484,6 +520,11 @@ extension Assets {
 
     private func resolve(_ name: String, states: [String: String]) throws -> [SCNMaterial] {
         var name = name.replacingOccurrences(of:"minecraft:",with:"")
+        if ["wheat","carrots","potatoes","beetroots"].contains(name) {
+            let age = min(7,max(0,Int(states["age"] ?? "7") ?? 7))
+            let stage = name == "wheat" ? age : name == "beetroots" ? min(3,age) : min(3,age == 7 ? 3 : age/2)
+            return Array(repeating:try texture("textures/blocks/"+name+"_stage_\(stage)"),count:6)
+        }
         if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
         if name.contains("banner") { return Array(repeating:try texture("textures/entity/banner/banner_illager"),count:6) }
         if name == "planks" { name = (states["variant"] ?? "oak")+"_planks" }

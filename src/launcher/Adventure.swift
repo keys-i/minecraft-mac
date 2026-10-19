@@ -185,8 +185,12 @@ final class FlightView: SCNView {
         let rotated = camera.simdWorldTransform*local
         var direction = SIMD3<Float>(rotated.x,rotated.y,rotated.z)
         direction.y += key(49)-(descending ? 1 : 0)
-        if simd_length_squared(direction)>0 { camera.simdWorldPosition += simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt }
+        if simd_length_squared(direction)>0, let scene {
+            let next = camera.simdWorldPosition+simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt
+            camera.worldPosition = Collision.move(scene.rootNode,from:camera.worldPosition,to:SCNVector3(next))
+        }
         camera.position.y = min(90,max(-28,camera.position.y))
+        if let scene { Landscape.medium(scene,area:area,eye:camera.position) }
         let yaw = key(124)-key(123), pitch = key(126)-key(125)
         if yaw != 0 || pitch != 0 { controller.rotateBy(x:-yaw*70*dt,y:pitch*70*dt) }
         needsDisplay = true
@@ -286,18 +290,21 @@ struct Adventure: NSViewRepresentable {
             coordinator.operation?.cancel()
             coordinator.request += 1
             let request = coordinator.request
+            let arrival = passage == nil ? coordinator.passage : nil
             coordinator.world = world
             coordinator.biome = biome
             coordinator.passage = passage
             view.prepare()
-            coordinator.operation = assets.load(world, biome: biome, passage: passage) { [weak view, weak coordinator] result in
+            coordinator.operation = assets.load(world, biome: biome, passage: passage, arrival:arrival) { [weak view, weak coordinator] result in
                 guard let view, let coordinator, coordinator.request == request else { return }
                 switch result {
                 case .success(let scene):
                     let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
                     if coordinator.exploring { camera?.removeAllActions() }
                     if coordinator.moving, !coordinator.exploring, view.scene != nil {
-                        view.present(scene,with:.crossFade(withDuration:0.65),incomingPointOfView:camera,completionHandler:nil)
+                        let transition = arrival == nil ? SKTransition.crossFade(withDuration:0.65)
+                            : SKTransition.fade(with:Landscape.colour(arrival == .stronghold ? 0x080810 : 0x7024B8),duration:0.9)
+                        view.present(scene,with:transition,incomingPointOfView:camera,completionHandler:nil)
                     } else { view.scene = scene; view.pointOfView = camera }
                     coordinator.showing = (world,biome)
                     view.install(camera,area:world.biomes[world.index(biome)])

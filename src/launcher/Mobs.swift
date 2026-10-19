@@ -9,9 +9,10 @@ enum Species: String, CaseIterable {
     case illager, vindicator, allay, vex
     case horse, polarBear, witch, guardian, drowned, breeze, bogged, witherSkeleton, piglinBrute, zombifiedPiglin
     case cod, salmon, sniffer, husk, ravager, silverfish, tropical, snowGolem, cat
+    case camelHusk, parched, nautilus, zombieNautilus, happyGhast
 
-    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .drowned, .cod, .salmon, .tropical].contains(self) }
+    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .drowned, .cod, .salmon, .tropical, .nautilus, .zombieNautilus].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -35,6 +36,9 @@ final class Mobs {
         }
         let name: String
         switch species {
+        case .camelHusk: name = "camel_husk"
+        case .zombieNautilus: name = "zombie_nautilus"
+        case .happyGhast: name = "happy_ghast"
         case .snowGolem: name = "snow_golem"
         case .tropical: name = "tropicalfish"
         case .horse: name = "horse_v3"
@@ -51,6 +55,7 @@ final class Mobs {
         }
         let texture: String
         switch species {
+        case .happyGhast: texture = "happy_ghast"
         case .horse: texture = ["base_brown","base_chestnut","base_white","base_black"][variant%4]
         case .cat: texture = ["tabby","calico","jellie"][variant%3]
         case .tropical: texture = variant%2 == 0 ? "typeA" : "typeB"
@@ -92,7 +97,7 @@ final class Mobs {
     }
 
     func wander(_ actor: SCNNode, model: SCNNode, species: Species, area: Biome, seed: Int,
-                point: (Double,Double) -> SCNVector3) throws {
+                root: SCNNode, point: (Double,Double) -> SCNVector3) throws {
         let terrain = Terrain(biome:area), origin = actor.position
         if speeds[species] == nil {
             let aliases: [Species:String] = [.ironGolem:"iron_golem",.glowsquid:"glow_squid",.magma:"magma_cube",
@@ -125,12 +130,19 @@ final class Mobs {
                 VoxelAdventure.sway(node,y:0.16,period:7+Double(seed%7),phase:Double(seed)*1.7)
             }
         }
-        var steps: [SCNAction] = [], start = origin
-        for index in 0..<6 {
-            let angle = Terrain.random(seed,index,seed:85)*2 * .pi
-            let distance = 2+Terrain.random(seed,index,seed:86)*4
-            var end = index%2 == 1 ? origin : point(origin.x+cos(angle)*distance,origin.z+sin(angle)*distance)
-            if !Self.walkable(from:start,to:end,species:species,terrain:terrain) { end = start }
+        var steps: [SCNAction] = [], start = origin, visited = [origin]
+        let bounds = model.boundingBox
+        let radius = min(1.8,max(0.2,(bounds.max.x-bounds.min.x)/2)), tall = max(0.4,bounds.max.y-bounds.min.y)
+        for index in 0..<12 {
+            var end = index >= 6 ? visited[11-index] : start
+            for attempt in 0..<(index < 6 ? 12 : 0) {
+                let angle = Terrain.random(seed,index*12+attempt,seed:85)*2 * .pi
+                let distance = 1+Terrain.random(seed,index*12+attempt,seed:86)*4
+                let candidate = point(origin.x+cos(angle)*distance,origin.z+sin(angle)*distance)
+                if Self.walkable(from:start,to:candidate,species:species,terrain:terrain)
+                    && Collision.clear(root,from:start,to:candidate,radius:radius,height:tall) { end = candidate; break }
+            }
+            if index < 6 { visited.append(end) }
             let length = hypot(end.x-start.x,end.z-start.z)
             steps.append(.wait(duration:1.5+Terrain.random(seed,index,seed:87)*4))
             if length>0.1 {
@@ -142,7 +154,7 @@ final class Mobs {
                     let t = min(1,Double(time)/duration)
                     node.position = .init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
                     let stride = sin(Double(time)*7)
-                    for (leg,base,sign) in legs { leg.eulerAngles.x = base.x+stride*0.5*sign }
+                    for (leg,base,sign) in legs { leg.eulerAngles.x = base.x+stride*(species == .enderman ? 0.35 : 0.5)*sign }
                     if hopping { node.position.y += abs(stride)*(species == .slime || species == .magma ? 0.65 : 0.3) }
                     if species.swimming || species.flying { node.position.y += sin(Double(time)*2+Double(seed))*0.12 }
                 })
@@ -151,6 +163,10 @@ final class Mobs {
             if species == .sheep, let head = model.childNode(withName:"head",recursively:true) {
                 let base = head.eulerAngles.x
                 steps.append(.customAction(duration:3) { _,time in head.eulerAngles.x = base+sin(Double(time)/3 * .pi)*0.8 })
+            }
+            if length <= 0.1 {
+                steps.append(.rotateBy(x:0,y:0.3,z:0,duration:1.2))
+                steps.append(.rotateBy(x:0,y:-0.3,z:0,duration:1.2))
             }
             start = end
         }
@@ -166,7 +182,8 @@ final class Mobs {
             if species.swimming {
                 if ground >= min(start.y,end.y)-0.5 { return false }
             } else if !species.flying && species != .strider {
-                if ground < 0.9 || abs(ground-start.y)>1 || terrain.occupied(x,z) { return false }
+                let bridge = [.witherSkeleton].contains(species)
+                if ground < 0.9 || !bridge && abs(ground-start.y)>1 { return false }
             }
         }
         return true

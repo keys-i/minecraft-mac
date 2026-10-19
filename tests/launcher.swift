@@ -158,6 +158,23 @@ struct LauncherChecks {
         mesh.cube(.init(1,1,1),at:.init(0,0,0),material:SCNMaterial(),faces:1,
                   textureUV:Array(repeating:CGRect(x:0,y:0.75,width:0.5,height:-0.5),count:6))
         precondition(mesh.uv[0].y == 0.75 && mesh.uv[2].y == 0.25)
+        var obstacle = Voxels()
+        obstacle.cube(.init(1,4,8),at:.init(1,2,0),material:SCNMaterial())
+        let obstacleScene = SCNScene(), walls = obstacleScene.rootNode
+        walls.addChildNode(obstacle.node("wall"))
+        let collision = SCNRenderer(device:nil,options:nil)
+        collision.scene = obstacleScene
+        precondition(collision.prepare(obstacleScene,shouldAbortBlock:nil))
+        precondition(!Collision.clear(walls,from:.init(-2,1,0),to:.init(3,1,0)))
+        precondition(!Collision.clear(walls,from:.init(3,1,0),to:.init(-2,1,0)))
+        precondition(Collision.clear(walls,from:.init(-2,5,0),to:.init(3,5,0)))
+        let slide = Collision.move(walls,from:.init(-1,1,0),to:.init(3,1,2))
+        precondition(slide.x < 0.5 && abs(slide.z-2)<0.001)
+        let immersion = SCNScene()
+        Landscape.medium(immersion,area:.wastes,eye:.init(4,0,-6))
+        precondition(immersion.fogStartDistance == 0 && immersion.fogEndDistance == 1.5)
+        Landscape.medium(immersion,area:.wastes,eye:.init(4,8,-6))
+        precondition(immersion.fogStartDistance == 38 && immersion.fogEndDistance == 100)
 
         let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("minecraft-art-"+UUID().uuidString)
         try FileManager.default.createDirectory(at:fixture.appendingPathComponent("resource_packs/vanilla"),withIntermediateDirectories:true)
@@ -351,6 +368,13 @@ struct LauncherChecks {
         let limit = Date().addingTimeInterval(5)
         while loaded == nil && Date() < limit { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
         precondition(loaded?.rootNode.childNode(withName:"terrain",recursively:false) != nil)
+        let residents = loaded!.rootNode.childNodes.filter { $0.name?.hasPrefix("resident-") == true }
+        let positions = residents.map(\.position)
+        let animation = SCNRenderer(device:nil,options:nil); animation.scene = loaded; animation.isPlaying = true
+        for frame in 0...400 { animation.update(atTime:Double(frame)/20) }
+        let moved = zip(residents,positions).filter { hypot($0.0.position.x-$0.1.x,$0.0.position.z-$0.1.z)>0.2 }.count
+        precondition(moved >= 4,"Residents must keep moving during the idle hover, got \(moved)")
+        animation.scene = nil
         print("Asset queue returned in \(String(format:"%.2f",enqueue)) ms and delivered an original-art graph on the main thread")
         loaded = nil
         for species in Species.allCases { _ = try factory.make(species) }
@@ -364,9 +388,27 @@ struct LauncherChecks {
         precondition(fish.childNode(withName:"fish-pattern",recursively:true) != nil)
         precondition(breeze.childNodes.filter { $0.name?.hasPrefix("breeze_wind_") == true }.count == 3)
         let blaze = try factory.make(.blaze)
+        let blazePixels = NSBitmapImageRep(cgImage:blaze.childNode(withName:"head",recursively:true)!.geometry!.firstMaterial!.diffuse.contents as! CGImage)
+        precondition(blazePixels.colorAt(x:8,y:12)!.alphaComponent == 1)
         let rods = blaze.childNodes.filter { $0.name?.hasPrefix("rod-orbit-") == true }.flatMap(\.childNodes)
         precondition(rods.count == 12)
         precondition(Set(rods.map { "\($0.position.x),\($0.position.y),\($0.position.z)" }).count == 12)
+        let enderman = try factory.make(.enderman)
+        let headBounds = enderman.childNode(withName:"head",recursively:true)!
+        let bodyBounds = enderman.childNode(withName:"body",recursively:true)!
+        precondition(headBounds.convertPosition(headBounds.geometry!.boundingBox.min,to:enderman).y >= bodyBounds.convertPosition(bodyBounds.geometry!.boundingBox.max,to:enderman).y-0.04)
+        let enderSkin = headBounds.geometry!.firstMaterial!
+        let eyePixels = NSBitmapImageRep(cgImage:enderSkin.emission.contents as! CGImage)
+        precondition(eyePixels.colorAt(x:8,y:12)!.alphaComponent == 1 && eyePixels.colorAt(x:8,y:12)!.redComponent>0.3)
+        let copper = try factory.make(.golem)
+        precondition(copper.childNode(withName:"golem-eyes",recursively:true) != nil)
+        var fixtures = Voxels()
+        for fixture in ["torch","wall_torch","bell","wheat","lantern"] {
+            let handled = try Structures.fixture(fixture,states:["facing":"west","age":"7"],at:.init(0,0,0),assets:assets,mesh:&fixtures)
+            precondition(handled)
+        }
+        precondition(!fixtures.vertices.isEmpty && fixtures.materials.contains { $0.name?.contains("wheat_stage_7") == true })
+        precondition(Passage.stronghold.pose(at:0).eye.y-Passage.stronghold.pose(at:28).eye.y > 40)
         let dragon = try factory.actor("ender_dragon")
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
         let window = try Structures.template("mansion/wall_window",assets:assets).geometry!
@@ -445,7 +487,7 @@ struct LauncherChecks {
             if passage == .mine {
                 precondition(scene.rootNode.childNode(withName:"landmark-wastes",recursively:true) != nil)
                 let last = passage.pose(at:Double(passage.duration))
-                precondition(last.eye.z < -34)
+                precondition(last.eye.z > -34 && last.eye.z <= -33.9)
             } else if passage == .stronghold {
                 let portal = scene.rootNode.childNode(withName:"end-portal",recursively:true)!
                 precondition(passage.pose(at:Double(passage.duration)).eye.y > portal.position.y+0.05 && passage.pose(at:Double(passage.duration)).eye.y <= portal.position.y+0.15)

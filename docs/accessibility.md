@@ -11,12 +11,12 @@ sign-in window also depends on those applications
 | Install, play, retry or continue | The main button, or <kbd>Return</kbd> while it is available |
 | Cancel setup | **Cancel Setup**, or <kbd>Escape</kbd> while setup can be cancelled |
 | Change accounts | **Minecraft for MacOS → Sign Out of Microsoft…**, with the game closed |
-| Get help or open logs | The **Help** menu |
-| Pause or resume background motion | **Settings → Animate the background adventure** or **View → Animate Scenery** |
+| Get help or open logs | The **?** button or **Help** menu opens the in-app guide, which includes setup logs |
+| Pause or resume background motion | **Settings → Background animation** or **View → Animate Scenery** |
 | Choose a scene | The four item slots in the bottom inventory bar, keys <kbd>1</kbd>–<kbd>4</kbd>, or **View**, with the selection exposed to assistive technology |
 | Choose an area | The biome name at the top left opens the searchable picker; **View → Choose Biome or Landmark** also works |
 | Look around | The eye-and-arrows button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change biomes with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
-| Mute or unmute launcher music | The labelled speaker button; Settings also supplies a volume slider |
+| Mute or unmute launcher music | **Settings → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
 | Scenery preferences | **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd> |
 | Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
@@ -41,7 +41,7 @@ states use text rather than a spinner. Reduce Transparency gives the launch
 panel an opaque background. The window can be resized down to 760 × 620 points
 Long status details scroll inside the setup panel and remain selectable
 Original installed artwork supplies the main title and Minecraft Ten supplies
-the subtitle. Pixel typography identifies the fallback title and shortcut toast; rounded system type identifies
+the subtitle. Pixel typography identifies the fallback title and shortcut toast; pixel type identifies
 actions and section titles, while explanatory copy uses plain system type
 Text shadows are soft, low-opacity and offset by one point
 The bundled font is registered only within this app; the owner’s subtitle font
@@ -71,13 +71,15 @@ with the redesigned interface. Standard controls alone do not establish
 VoiceOver or WCAG conformance
 Spectator flight supports keyboard movement and aiming; full-window event
 routing, focus restoration and VoiceOver operation still need manual checks
-Music uses a visible mute button and labelled volume slider; no task depends on
-hearing it. It pauses outside the focused launcher and while the game runs
+Music uses the labelled master-volume control in Settings; no task depends on
+hearing it It pauses outside the focused launcher and while the game runs
 The splash stays still with Reduced Motion, Low Power or paused scenery
 Mouse-look hides/releases the cursor with native APIs only while the launcher
 is key. Escape, responder/window focus loss and teardown release it and remove
 the local event monitor; arrow-key aiming remains available
 The developer credit is a native Link with an accessible destination label
+Long biome names scroll while active; Reduced Motion shows the full static name
+The advancement-style hint retains its 60-second display and focused return wait
 
 The launcher cannot supply accessibility features missing from the Windows
 game or Microsoft's sign-in window. Handle macOS security and Keychain prompts

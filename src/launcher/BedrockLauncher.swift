@@ -46,6 +46,7 @@ final class Launcher: ObservableObject {
     @Published var stone: NSImage?
     @Published var gameFont: CTFont?
     @Published var splash = ""
+    @Published var help = false
     #if LAUNCHER_TEST
     var previewImage: NSImage?
     init(status: Status, background: NSImage, assets: Assets) {
@@ -178,7 +179,7 @@ final class Launcher: ObservableObject {
     }
 
     func showHelp() {
-        NSWorkspace.shared.open(URL(string: "https://github.com/keys-i/minecraft-mac/blob/main/docs/play.md")!)
+        help = true
     }
 
     func checkUpdates() {
@@ -432,7 +433,7 @@ private struct GameTitle: View {
 
     private var splashText: some View {
         Text(splash).font(Blocks.type(width*0.033)).foregroundStyle(.yellow)
-            .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.5)
+            .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.3)
             .frame(width:width*0.48).shadow(color:.black.opacity(0.65),radius:0,x:1,y:1)
     }
 
@@ -445,13 +446,24 @@ private struct GameTitle: View {
                         .lineLimit(1).shadow(color:.black.opacity(0.6),radius:0,y:3)
                 }
             }.frame(width:width,height:width/5.52)
-            Text("MAC EDITION").font(font.map { Font(CTFontCreateCopyWithAttributes($0,width*0.042,nil,nil)) } ?? Blocks.type(width*0.042))
-                .foregroundStyle(.white).shadow(color:.black.opacity(0.85),radius:0,x:1,y:2)
-                .padding(.horizontal,20).padding(.vertical,3)
-                .background(Color(red:0.22,green:0.21,blue:0.20))
-                .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.18)).frame(height:2) }
-                .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.65)).frame(height:3) }
-                .overlay { Rectangle().strokeBorder(.black.opacity(0.85),lineWidth:2) }
+            ZStack {
+                ForEach((1...6).reversed(),id:\.self) { depth in
+                    Text("MAC EDITION").foregroundStyle(Color(white:0.08))
+                        .offset(x:CGFloat(depth)*0.3,y:CGFloat(depth)*0.65)
+                }
+                Text("MAC EDITION").foregroundStyle(LinearGradient(colors:[.white,Color(white:0.8)],startPoint:.top,endPoint:.bottom))
+            }.font(font.map { Font(CTFontCreateCopyWithAttributes($0,width*0.042,nil,nil)) } ?? Blocks.type(width*0.042))
+                .padding(.horizontal,22).padding(.top,3).padding(.bottom,8)
+                .background {
+                    GeometryReader { geometry in
+                        let w = geometry.size.width, h = geometry.size.height
+                        Path { path in
+                            path.move(to:.init(x:5,y:0)); path.addLine(to:.init(x:w-5,y:0))
+                            path.addLine(to:.init(x:w,y:h)); path.addLine(to:.init(x:0,y:h)); path.closeSubpath()
+                        }.fill(Color(white:0.22)).shadow(color:.black,radius:0,y:4)
+                            .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2).padding(.horizontal,5) }
+                    }
+                }
         }.frame(width:width)
             .overlay(alignment:.bottomTrailing) {
                 if !splash.isEmpty {
@@ -459,7 +471,7 @@ private struct GameTitle: View {
                         if moving {
                             splashText.phaseAnimator([false,true]) { content,small in
                                 content.scaleEffect(small ? 0.94 : 1)
-                            } animation: { _ in .easeInOut(duration:0.45) }
+                            } animation: { _ in .easeInOut(duration:0.25) }
                         } else { splashText }
                     }.rotationEffect(.degrees(-20)).offset(x:width*0.04,y:-width*0.075)
                         .accessibilityHidden(true).allowsHitTesting(false)
@@ -467,6 +479,33 @@ private struct GameTitle: View {
             }
             .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft, Mac Edition")
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct Marquee: View {
+    let text: String
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var offset: CGFloat = 0
+    private var width: CGFloat { (text as NSString).size(withAttributes:[.font:NSFont(name:"Monocraft",size:18) ?? .monospacedSystemFont(ofSize:18,weight:.regular)]).width }
+
+    var body: some View {
+        Group {
+            if reduced { Text(text).lineLimit(3).fixedSize(horizontal:false,vertical:true) }
+            else {
+                HStack(spacing:32) {
+                    Text(text).fixedSize()
+                    if width > 164 { Text(text).fixedSize() }
+                }.offset(x:offset).frame(width:164,alignment:.leading).clipped()
+                    .task(id:active ? text : "") {
+                        var transaction = Transaction(); transaction.disablesAnimations = true
+                        withTransaction(transaction) { offset = 0 }
+                        guard active, width > 164 else { return }
+                        do { try await Task.sleep(for:.seconds(2)) } catch { return }
+                        withAnimation(.linear(duration:Double(width+32)/28).repeatForever(autoreverses:false)) { offset = -width-32 }
+                    }
+            }
+        }.font(Blocks.action(18)).accessibilityLabel(text)
     }
 }
 
@@ -560,7 +599,7 @@ struct LauncherView: View {
                             .buttonStyle(.plain).tint(.white)
                             .accessibilityLabel("Developer Keys-i, open keysi.dev")
                         Spacer()
-                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.10.1"))
+                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.11.0"))
                     }.font(Blocks.type(13)).foregroundStyle(.white)
                         .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                         .padding(.horizontal,24).padding(.bottom,16)
@@ -574,6 +613,7 @@ struct LauncherView: View {
                 }
             }
         }
+        .ignoresSafeArea(.container).background(.black)
         .foregroundStyle(.white).environment(\.colorScheme,.dark)
         .frame(minWidth:760,minHeight:620)
         .onAppear {
@@ -582,6 +622,7 @@ struct LauncherView: View {
         .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onDisappear { music.stop() }
+        .sheet(isPresented:$launcher.help) { Help(launcher:launcher) }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
             focused = (notification.object as? NSWindow)?.title == "Minecraft for MacOS"
         }
@@ -623,12 +664,6 @@ struct LauncherView: View {
             HStack(alignment:.top,spacing:8) {
                 location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
                 Spacer()
-                Button { musicEnabled.toggle() } label: {
-                    glyph("sound_glyph",fallback:musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                        .opacity(musicEnabled ? 1 : 0.35).frame(width:44,height:44)
-                }.help(musicEnabled ? "Mute music · \(music.title)" : "Play Minecraft music")
-                    .accessibilityLabel(musicEnabled ? "Mute music" : "Play Minecraft music")
-                    .disabled(!available)
                 Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
                     .help("Help").accessibilityLabel("Help")
                 Button { openSettings() } label: { glyph("icon_setting",fallback:"gearshape.fill").frame(width:44,height:44) }
@@ -657,8 +692,7 @@ struct LauncherView: View {
             } else {
                 Button { search = ""; map = true } label: {
                     HStack(spacing:8) {
-                        Text(launcher.journey.title).font(Blocks.action(18))
-                            .lineLimit(2).multilineTextAlignment(.leading)
+                        Marquee(text:launcher.journey.title,active:moving && focused && !map)
                         Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
                     }.frame(minHeight:44)
                         .shadow(color:.black.opacity(0.25),radius:2,y:1)
@@ -721,7 +755,7 @@ struct LauncherView: View {
                 }
             } else {
                 VStack(alignment:.leading,spacing:5) {
-                    Text("New perspective!").font(Blocks.type(12)).foregroundStyle(Blocks.gold)
+                    Text("Advancement made!").font(Blocks.type(12)).foregroundStyle(Blocks.gold)
                     Text("\(Text("⌘ + L").font(.system(size:13,weight:.semibold))) to look around")
                         .font(Blocks.type(12)).lineLimit(1)
                 }
@@ -858,36 +892,90 @@ struct LauncherView: View {
     }
 }
 
-private struct Preferences: View {
+struct Preferences: View {
+    @ObservedObject var launcher: Launcher
     @AppStorage("animateScenery") private var animateScenery = true
     @AppStorage("rotateScenery") private var rotateScenery = true
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @Environment(\.accessibilityReduceMotion) private var reduced
+    @FocusState private var volumeFocused: Bool
 
     var body: some View {
-        Form {
-            Section("Scenery") {
-                Toggle("Animate the background adventure", isOn: $animateScenery)
-                Toggle("Automatically change scenes", isOn: $rotateScenery)
-                    .disabled(!animateScenery)
-                Text(reduced ? "Reduced Motion is enabled in macOS, so scenery stays still."
-                     : "Animation pauses in Low Power Mode, in the background and while Minecraft runs.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Minecraft") {
-                Text("Change game graphics, sound, controls and accessibility inside Minecraft.")
-                    .foregroundStyle(.secondary)
-            }
-            Section("Launcher music") {
-                Toggle("Play Minecraft menu and game music",isOn:$musicEnabled)
-                Slider(value:$musicVolume,in:0...1) { Text("Volume") }
-                    .disabled(!musicEnabled).accessibilityValue("\(Int(musicVolume*100)) percent")
-                Text("Uses your installed game’s music. Pauses when you leave the launcher or start Minecraft.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+        VStack(spacing:20) {
+            Text("Settings").font(Blocks.type(26)).accessibilityAddTraits(.isHeader)
+            VStack(spacing:12) {
+                Toggle(isOn:$animateScenery) { Text("Background animation: \(animateScenery ? "ON" : "OFF")").frame(maxWidth:.infinity,minHeight:44) }
+                Toggle(isOn:$rotateScenery) { Text("Travel between biomes: \(rotateScenery ? "ON" : "OFF")").frame(maxWidth:.infinity,minHeight:44) }.disabled(!animateScenery)
+            }.toggleStyle(.button).buttonStyle(BlockButton(texture:launcher.stone))
+                .controlSize(.large).font(Blocks.type(15))
+            VStack(spacing:10) {
+                Text("Master volume: \(musicEnabled ? Int(musicVolume*100) : 0)%").font(Blocks.type(15))
+                GeometryReader { geometry in
+                    let travel = max(1,geometry.size.width-24)
+                    ZStack(alignment:.leading) {
+                        Rectangle().fill(.black.opacity(0.75))
+                        Rectangle().fill(Blocks.grass.opacity(0.65)).frame(width:24+travel*(musicEnabled ? musicVolume : 0))
+                        Rectangle().fill(Color(white:0.65)).frame(width:24)
+                            .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
+                            .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.5)).frame(height:2) }
+                            .offset(x:travel*(musicEnabled ? musicVolume : 0))
+                    }.overlay { Rectangle().strokeBorder(volumeFocused ? Blocks.gold : .black,lineWidth:2) }
+                        .contentShape(Rectangle())
+                        .gesture(DragGesture(minimumDistance:0).onChanged { value in
+                            musicVolume = min(1,max(0,(value.location.x-12)/travel)); musicEnabled = musicVolume>0
+                        })
+                }.frame(height:36).focusable().focused($volumeFocused)
+                    .accessibilityElement().accessibilityLabel("Master volume")
+                    .accessibilityValue("\(musicEnabled ? Int(musicVolume*100) : 0) percent")
+                    .accessibilityAdjustableAction { direction in
+                        musicVolume = min(1,max(0,(musicEnabled ? musicVolume : 0)+(direction == .increment ? 0.05 : -0.05))); musicEnabled = musicVolume>0
+                    }
+                    .onKeyPress(.leftArrow) { musicVolume = max(0,(musicEnabled ? musicVolume : 0)-0.05); musicEnabled = musicVolume>0; return .handled }
+                    .onKeyPress(.rightArrow) { musicVolume = min(1,(musicEnabled ? musicVolume : 0)+0.05); musicEnabled = musicVolume>0; return .handled }
+                Text("Minecraft menu and game music from your installation")
+                    .font(.system(size:13)).foregroundStyle(.white.opacity(0.75))
+            }.padding(.vertical,8)
+            Text(reduced ? "macOS Reduced Motion is on" : "Scenery rests in Low Power Mode, while hidden and while Minecraft runs")
+                .font(.system(size:13)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+            Text("Game graphics, sound and controls are in Minecraft’s Settings")
+                .font(.system(size:13)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+        }.padding(32).frame(width:560).foregroundStyle(.white)
+            .background {
+                Blocks.stone
+                if let stone = launcher.stone { Image(nsImage:stone).resizable(resizingMode:.tile).interpolation(.none).opacity(0.12) }
+            }.environment(\.colorScheme,.dark)
+    }
+}
+
+struct Help: View {
+    @ObservedObject var launcher: Launcher
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing:20) {
+            Text("How to play").font(Blocks.type(26)).accessibilityAddTraits(.isHeader)
+            ScrollView {
+                VStack(alignment:.leading,spacing:20) {
+                    guide("Start your game", "Choose Install & play, then sign in with the Microsoft account that owns Minecraft for Windows. Your worlds and account stay on this Mac")
+                    guide("Look around · ⌘L", "WASD moves · Mouse looks · Space rises · Shift descends · Control sprints · Scroll changes speed · Escape returns")
+                    guide("Explore another biome", "Choose the biome name at the top left, or fly towards the edge of an area. The inventory slots choose a realm. Brackets visit neighbouring biomes")
+                    guide("Music and motion", "Open Settings to change master volume, background animation and automatic travel. macOS Reduced Motion and Low Power Mode also pause the scenery")
+                    guide("Having trouble?", "Use Open setup logs below to inspect a launch failure. Save and quit Minecraft normally before replacing an app or runtime")
+                }.padding(.vertical,4)
+            }.frame(maxHeight:360)
+            HStack(spacing:12) {
+                Button { launcher.showLog() } label: { Text("Open setup logs").frame(maxWidth:.infinity,minHeight:44) }
+                Button { dismiss() } label: { Text("Done").frame(maxWidth:.infinity,minHeight:44) }.keyboardShortcut(.defaultAction)
+            }.font(Blocks.type(14)).buttonStyle(BlockButton(texture:launcher.stone))
+        }.padding(28).frame(width:600).foregroundStyle(.white).background(Blocks.stone).environment(\.colorScheme,.dark)
+    }
+
+    private func guide(_ title: String, _ text: String) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text(title).font(Blocks.type(15)).foregroundStyle(Blocks.gold).accessibilityAddTraits(.isHeader)
+            Text(text).font(.system(size:14)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
         }
-        .formStyle(.grouped).padding(16).frame(width: 460)
     }
 }
 
@@ -936,6 +1024,7 @@ private struct LauncherMenus: Commands {
         }
         CommandGroup(replacing: .help) {
             Button("Minecraft for MacOS Help") {
+                openWindow(id:"launcher")
                 launcher.showHelp()
             }
             Button("Open Setup Logs") { launcher.showLog() }
@@ -955,11 +1044,12 @@ struct BedrockLauncherApp: App {
         Window("Minecraft for MacOS", id: "launcher") {
             LauncherView(launcher: launcher)
                 .onAppear { delegate.launcher = launcher; NSApp.activate(ignoringOtherApps: true) }
+                .containerBackground(.black,for:.window)
         }
         .defaultSize(width: 1040, height: 760)
         .windowStyle(.hiddenTitleBar)
         .commands { LauncherMenus(launcher: launcher) }
-        Settings { Preferences() }
+        Settings { Preferences(launcher:launcher) }
     }
 }
 

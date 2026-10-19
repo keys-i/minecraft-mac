@@ -164,6 +164,7 @@ extension Terrain {
         func key(_ px: Int, _ pz: Int) -> Int { (px-x.lowerBound+1)*(z.count+2)+pz-z.lowerBound+1 }
         for px in (x.lowerBound-1)...x.upperBound { for pz in (z.lowerBound-1)...z.upperBound { heights[key(px,pz)] = sample?(px,pz) ?? terrain.height(Double(px),Double(pz)) } }
         func h(_ x: Int, _ z: Int) -> Double { heights[key(x,z)] ?? -100 }
+        func edge(_ px: Int, _ pz: Int) -> Bool { !x.contains(px) || !z.contains(pz) }
         let strata = try (area == .badlands ? ["red_terracotta","orange_terracotta","yellow_terracotta","terracotta"] : []).map { try assets.tiles($0) }
         let soil = world == .overworld && !area.underground && ![.desert,.badlands,.reef,.monument,.coast,.peaks,.ice].contains(area)
         let directions = [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))]
@@ -172,21 +173,21 @@ extension Terrain {
             for x in cx..<min(cx+16,x.upperBound) { for z in cz..<min(cz+16,z.upperBound) {
                 let y = h(x,z); guard y > -90 else { continue }
                 var cap = 16
-                for (face,d) in directions { if h(x+d.0,z+d.1)<y { cap |= 1 << face } }
+                for (face,d) in directions { if edge(x+d.0,z+d.1) || h(x+d.0,z+d.1)<y { cap |= 1 << face } }
                 land.cube(.init(1,1,1),at:.init(Double(x),y-0.5,Double(z)),material:surface[0],faces:cap,faceMaterials:surface)
                 let bottom = terrain.end || area == .shards ? -3-max(0,18-hypot(Double(x),Double(z+17))*0.3) : -28
                 if !strata.isEmpty || soil {
                     for level in 1...(soil ? 3 : Int(max(1,y-bottom-1))) {
                         let by = y-Double(level)-0.5
                         var faces = 0
-                        for (face,d) in directions { if h(x+d.0,z+d.1)<=by+0.5 { faces |= 1 << face } }
+                        for (face,d) in directions { if edge(x+d.0,z+d.1) || h(x+d.0,z+d.1)<=by+0.5 { faces |= 1 << face } }
                         let tiles = soil ? dirt : strata[abs(Int(by)/2)%strata.count]
                         if faces != 0 { land.cube(.init(1,1,1),at:.init(Double(x),by,Double(z)),material:tiles[0],faces:faces,faceMaterials:tiles) }
                     }
                 }
                 let depth = soil ? 4.0 : 1
                 var sides = 0
-                for (face,d) in directions { if h(x+d.0,z+d.1)<y-depth { sides |= 1 << face } }
+                for (face,d) in directions { if edge(x+d.0,z+d.1) || h(x+d.0,z+d.1)<y-depth { sides |= 1 << face } }
                 if strata.isEmpty {
                     land.cube(.init(1,max(0.1,y-depth-bottom),1),at:.init(Double(x),(y-depth+bottom)/2,Double(z)),material:stone[0],faces:sides | (terrain.end ? 32 : 0),faceMaterials:stone)
                 }
@@ -199,11 +200,18 @@ extension Terrain {
                     let ceiling = max(y+9,terrain.ceiling(Double(x),Double(z)))
                     var faces = 32
                     for (face,d) in directions {
-                        if terrain.ceiling(Double(x+d.0),Double(z+d.1))>ceiling { faces |= 1 << face }
+                        if edge(x+d.0,z+d.1) || terrain.ceiling(Double(x+d.0),Double(z+d.1))>ceiling { faces |= 1 << face }
                     }
                     roof.cube(.init(1,max(1,64-ceiling),1),at:.init(Double(x),(ceiling+max(64,ceiling+1))/2,Double(z)),material:stone[0],faces:faces,faceMaterials:stone)
                 }
             } }
+            if !terrain.end && area != .shards {
+                let width = Double(min(16,x.upperBound-cx)), depth = Double(min(16,z.upperBound-cz))
+                land.cube(.init(width,0,depth),at:.init(Double(cx)+(width-1)/2,-28,Double(cz)+(depth-1)/2),material:stone[0],faces:32)
+                if area.underground || world == .nether {
+                    roof.cube(.init(width,0,depth),at:.init(Double(cx)+(width-1)/2,64,Double(cz)+(depth-1)/2),material:stone[0],faces:16)
+                }
+            }
             ground.addChildNode(land.node("chunk-\(cx)-\(cz)"))
             if !pools.vertices.isEmpty { ground.addChildNode(pools.node("pool-\(cx)-\(cz)")) }
             if !roof.vertices.isEmpty { ground.addChildNode(roof.node("ceiling-\(cx)-\(cz)")) }
@@ -213,5 +221,44 @@ extension Terrain {
             Landscape.animate(controller,material:water); ground.addChildNode(controller)
         }
         return ground
+    }
+}
+
+enum Collision {
+    // Native mesh queries keep camera and resident paths aligned with placed structure faces
+    static func clear(_ root: SCNNode, from a: SCNVector3, to b: SCNVector3,
+                      radius: Double = 0.25, height: Double = 0) -> Bool {
+        guard a.x != b.x || a.y != b.y || a.z != b.z else { return true }
+        let ignored = ["water","lava","tallgrass","wheat","carrots","potatoes","flower","sapling","fern","rail","web"]
+        let levels = height > 0 ? [0.15,height*0.5,height-0.1] : [-radius,0,radius]
+        for y in levels {
+            let offsets: [(Double,Double)] = height == 0 && y != 0 ? [(0.0,0.0)] : [(0.0,0.0),(radius,0),(-radius,0),(0,radius),(0,-radius)]
+            for (x,z) in offsets {
+                let start = SCNVector3(a.x+x,a.y+y,a.z+z), end = SCNVector3(b.x+x,b.y+y,b.z+z)
+                let hits = root.hitTestWithSegment(from:start,to:end,options:[SCNHitTestOption.categoryBitMask.rawValue:2,SCNHitTestOption.backFaceCulling.rawValue:false,SCNHitTestOption.ignoreHiddenNodes.rawValue:true])
+                if hits.contains(where: { hit in
+                    let materials = hit.node.geometry?.materials ?? []
+                    let name = materials.indices.contains(hit.geometryIndex) ? materials[hit.geometryIndex].name ?? "" : ""
+                    return !ignored.contains(where:name.contains)
+                }) { return false }
+            }
+        }
+        return true
+    }
+
+    static func move(_ root: SCNNode, from start: SCNVector3, to end: SCNVector3, radius: Double = 0.25) -> SCNVector3 {
+        let distance = sqrt(pow(end.x-start.x,2)+pow(end.y-start.y,2)+pow(end.z-start.z,2))
+        let count = max(1,Int(ceil(distance/0.25)))
+        var p = start
+        for _ in 0..<count {
+            for axis in 0..<3 {
+                var next = p
+                if axis == 0 { next.x += (end.x-start.x)/Double(count) }
+                else if axis == 1 { next.y += (end.y-start.y)/Double(count) }
+                else { next.z += (end.z-start.z)/Double(count) }
+                if clear(root,from:p,to:next,radius:radius) { p = next }
+            }
+        }
+        return p
     }
 }

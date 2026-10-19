@@ -47,7 +47,7 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 The native title screen places a central Play button and compact four-slot realm
 hotbar over one live SceneKit world. Busy/error states use a separate status panel
 The installed game supplies the original title artwork, Minecraft Ten subtitle
-font and splash pool. The Mac Edition plaque follows the Pocket Edition treatment
+font and splash pool. The Mac Edition subtitle uses an extruded face and sloped stone backing
 The yellow splash uses a native repeating scale animation, removed when motion
 is disabled, the launcher loses focus or a game/error/biome picker takes priority
 Monocraft supplies the fallback title and shortcut toast; rounded system type
@@ -84,8 +84,8 @@ A running game disables Look around
 `Music.swift` owns one native AVAudioPlayer and one cancellable load on the
 existing serial asset queue. It reads original installed menu/game Ogg tracks
 on demand, avoids an immediate repeat and limits each source to 32 MiB/20 minutes
-The visible speaker button and Settings share a mute preference and volume
-(default 18%). Losing launcher focus, occlusion or game launch pauses playback
+Settings owns the launcher’s master-volume control (default 18%); zero mutes it
+The header has no separate sound control Losing launcher focus, occlusion or game launch pauses playback
 Closing the view cancels the pending load and releases the player. Artwork,
 fonts and audio remain in the owner’s installation and are never redistributed
 `Assets.swift` reads original models, textures and structure templates from the
@@ -98,7 +98,18 @@ stubs fall back to ordinary files. Nothing is extracted or copied from the game
 `Landscape.swift` builds one complete habitat per selection, replacing the former
 three-biome strips. `Terrain.swift` owns deterministic interpolated noise, ground
 height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
+Domain edges and flat undersides close the terrain shell; Nether ceilings are capped
 The same mesh builder supplies the forest above the mine and stronghold approaches
+Static voxel meshes use SceneKit collision category 2. One temporary native
+renderer prepares their transforms/geometry before offscreen segment queries
+Completed graph actions are committed before moving from the asset queue to
+the presentation renderer, so prepared scenes do not leave residents stationary
+Residents reject wall-crossing strolls, retry bounded alternatives and retrace
+their outward route. Idle camera paths are checked once at construction; flight
+uses short swept segments and axis sliding, with foliage and structure faces
+blocking travel. Original non-solid plants, rails and fluids do not block flight
+Underwater viewing uses blue fog; submerged Nether lava has a 1.5-block orange
+visibility limit rather than a clear view of the terrain underneath
 Camera routes stay at player height or low spectator height, including underwater
 Texture tint is baked once into cached RGB pixels while preserving original
 alpha. Fluids use original biome colours, one alpha application and native atlas
@@ -118,8 +129,10 @@ fallen logs, roots, fungi, coral fans and ceiling-attached cave growth into view
 Original cloud art moves above the Overworld; the original greyscale End sky is
 darkened in a small native bitmap before it becomes the background cubemap
 
-`Mobs.swift` shares original geometry/skins within each scene and places 65 types
-in habitat-specific groups. Aquatic residents use water pockets, Striders use lava,
+`Mobs.swift` shares original geometry/skins within each scene and places 70 types
+in habitat-specific groups. Five newer types are skipped on older installations
+when their original art is absent; malformed assets still fail clearly
+Aquatic residents use water pockets, Striders use lava,
 and fortress residents use bridge height. River residents follow the actual
 channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
 use original skin variants. Tropical fish add the original pattern layer and colour
@@ -132,6 +145,8 @@ Four eligible classic species use base-pack models at a daylight-dependent
 Classic prototypes stay within the current scene factory; no old-version
 download, separate simulation, combat, breeding or village job system is added
 The dragon stays at the central island
+Enderman and Blaze native shader alpha is treated as material data, preserving
+opaque bodies and emissive eyes; the copper golem also receives its eye layer
 Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
 from the installed assets. Ambient actions do not reproduce the game's AI or
 complete animation system
@@ -159,9 +174,12 @@ not reproduce world generation, the game renderer or its Molang interpreter
 `Journey.swift` owns bounded selection and the 18-second area clock
 The 22-second Nether entry descends a supported, ore-lined mine past side shafts,
 cobwebs, a minecart and bats, then crosses a 4 × 5 obsidian portal into a lava/
-fortress vista. The 20-second End entry descends an Overworld stronghold, passes
+fortress vista. The 28-second End entry descends over forty blocks into an Overworld stronghold, passes
 side libraries and a Silverfish spawner, then approaches a raised 12-frame portal
 Sift has a 16-second explicitly artistic rift approach
+Portal surfaces fill the departing camera before a colour-matched dimension
+transition. Destinations start beside a corresponding portal or End spawn
+platform, then join the existing hover path without a visible camera reset
 **Skip journey** cancels a passage; another selection replaces it immediately
 Reduced Motion and Low Power Mode select the destination directly
 The existing graph remains visible during loading. Native crossfades join scenes
@@ -202,6 +220,12 @@ with `tests/preview.py` as its only worker and an internal fixture root. It has 
 different app identity and does not access accounts, downloads or saved worlds
 See [Accessibility](accessibility.md) for controls and outstanding manual checks
 
+Settings uses the same pixel typography, stone buttons and square volume track
+as the title screen. The volume track supports pointer, arrow keys and
+accessibility adjustment. Help opens a local, dismissible guide with setup-log
+access; reporting a problem remains a separate external action
+Long biome names scroll only while the launcher is active; Reduced Motion
+shows the full name over several lines
 Settings stores scenery preferences in the app's own defaults. Edit, View,
 Window and Help use native menu commands; About, Services and Quit remain macOS
 app-menu behaviours. Check for Updates makes one bounded-time request to the

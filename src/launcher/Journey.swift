@@ -3,7 +3,7 @@ import SceneKit
 
 enum Passage: String, Sendable {
     case mine, stronghold, rift
-    var duration: Int { self == .mine ? 22 : self == .stronghold ? 20 : 16 }
+    var duration: Int { self == .mine ? 22 : self == .stronghold ? 28 : 16 }
     var title: String {
         switch self {
         case .mine: return "Into the mineshaft · Nether portal"
@@ -17,13 +17,13 @@ enum Passage: String, Sendable {
         let eyes: [SCNVector3], aims: [SCNVector3]
         switch self {
         case .mine:
-            eyes = [.init(0,15,42),.init(0,12.62,30),.init(0,7.62,10),.init(0,3.62,-6),.init(0,1.62,-23),.init(0,1.62,-33.8),.init(0,2.2,-36),.init(0,5,-44)]
+            eyes = [.init(0,15,42),.init(0,12.62,30),.init(0,7.62,10),.init(0,3.62,-6),.init(0,1.62,-23),.init(0,1.62,-33.8),.init(0,2.2,-33.85),.init(0,2.3,-33.9)]
             aims = [.init(0,12,31),.init(0,6,5),.init(0,2,-10),.init(0,2,-27),.init(0,2.4,-34),.init(0,2.3,-35),.init(0,8,-64),.init(0,11,-75)]
         case .stronghold:
-            eyes = [.init(0,14.62,40),.init(0,10.62,25),.init(0,3.62,6),.init(0,1.62,-4),.init(0,2.6,-11),.init(0,5,-17),.init(0,4.8,-21),.init(0,3.36,-21.5)]
-            aims = [.init(0,9,21),.init(0,4,5),.init(-2,3,-5),.init(0,3,-17),.init(0,3.2,-21),.init(0,3.2,-21),.init(0,2,-21.5),.init(0,-2,-21.6)]
+            eyes = [.init(0,46.62,92),.init(0,38.12,75),.init(0,23.12,45),.init(0,8.12,15),.init(0,1.62,-4),.init(0,2.6,-11),.init(0,5,-17),.init(0,4.8,-21),.init(0,3.36,-21.5)]
+            aims = [.init(0,38,75),.init(0,23,45),.init(0,8,15),.init(-2,3,-5),.init(0,3,-17),.init(0,3.2,-21),.init(0,3.2,-21),.init(0,2,-21.5),.init(0,-2,-21.6)]
         case .rift:
-            eyes = [.init(0,3.62,30),.init(0,3.62,19),.init(0,3.62,5),.init(0,3.62,-8),.init(0,3.62,-13.86),.init(0,3.62,-16)]
+            eyes = [.init(0,3.62,30),.init(0,3.62,19),.init(0,3.62,5),.init(0,3.62,-8),.init(0,3.62,-13.86),.init(0,3.62,-13.9)]
             aims = [.init(0,6,-12),.init(0,5,-14),.init(0,4.8,-14),.init(0,4.8,-15),.init(0,4.8,-16),.init(0,5,-22)]
         }
         let segments = eyes.count-1
@@ -36,8 +36,8 @@ enum Passage: String, Sendable {
         if self == .mine, eye.z > -32, eye.z < 43 {
             // Follow the rail slope below the original-height support beams
             eye.y = min(13,max(0,(eye.z+12)/4))+1.62
-        } else if self == .stronghold, eye.z > 2, eye.z < 43 {
-            eye.y = min(13,max(0,(eye.z-2)/2.5))+1.62
+        } else if self == .stronghold, eye.z > 2, eye.z < 95 {
+            eye.y = max(0,(eye.z-2)/2)+1.62
         }
         return (eye,blend(aims[index],aims[index+1]))
     }
@@ -116,7 +116,7 @@ extension Passage {
             light.light?.color = Landscape.colour(soul ? 0x86D7DF : 0xF2BD7D)
             light.light?.intensity = 230; light.light?.attenuationEndDistance = 12
             light.position = at; scene.rootNode.addChildNode(light)
-            try sprite(soul ? "soul_torch" : "torch_on",at)
+            try Structures.fixture(soul ? "soul_wall_torch" : "wall_torch",states:["facing":"west"],at:.init(at.x-0.5,at.y-0.5,at.z-0.5),assets:assets,mesh:&mesh)
         }
         if self == .rift {
             let terrain = Terrain(biome:.valley)
@@ -155,27 +155,27 @@ extension Passage {
         } else {
             let mine = self == .mine
             let terrain = Terrain(biome:.forest)
-            let approach = try terrain.node(assets:assets,x:-64..<64,z:-16..<96) { x,z in
-                if abs(x)<4 && z<42 { return -100 }
-                return max(13,terrain.height(Double(x),Double(z))+9)
+            let approach = try terrain.node(assets:assets,x:-64..<64,z:-16..<(mine ? 96 : 128)) { x,z in
+                if abs(x)<4 && z<(mine ? 42 : 95) { return -100 }
+                return max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
             }
             scene.rootNode.addChildNode(approach)
-            for z in 35...42 {
-                let floor = min(13,max(0,ceil(mine ? (Double(z)+12)/4 : (Double(z)-2)/2.5)))
+            for z in (mine ? 35 : 91)...(mine ? 42 : 96) {
+                let floor = min(mine ? 13 : 45,max(0,ceil(mine ? (Double(z)+12)/4 : (Double(z)-2)/2)))
                 try cube(.init(7,1,1),.init(0,floor-0.5,Double(z)),"stone")
             }
             for index in 0..<65 {
                 let x = (Terrain.random(index,4,seed:9)*116-58).rounded()
                 let z = (Terrain.random(index,12,seed:6)*94).rounded()
                 guard abs(x)>8 else { continue }
-                let y = max(13,terrain.height(x,z)+9), tall = Double(4+index%3)
+                let y = max(mine ? 13 : 45,terrain.height(x,z)+9), tall = Double(4+index%3)
                 try cube(.init(1,tall,1),.init(x,y+tall/2,z),"oak_log")
                 try cube(.init(5,2,5),.init(x,y+tall-1,z),"oak_leaves")
                 try cube(.init(3,1,3),.init(x,y+tall+0.5,z),"oak_leaves")
             }
-            for z in stride(from:34.0,through:mine ? -34 : -30,by:-1) {
-                let index = Int(34-z)
-                let floor = mine ? max(0,ceil((z+12)/4)) : max(0,ceil((z-2)/2.5))
+            for z in stride(from:mine ? 34.0 : 90,through:mine ? -34 : -30,by:-1) {
+                let index = Int((mine ? 34 : 90)-z)
+                let floor = mine ? max(0,ceil((z+12)/4)) : max(0,ceil((z-2)/2))
                 let chamber = mine ? z < -22 : z < -9
                 let radius = chamber ? (mine ? 6.0 : 7) : 3.0
                 let stone = mine ? (z < -10 ? "deepslate" : "stone") : index%7 == 0 ? "mossy_stone_bricks" : index%5 == 0 ? "cracked_stone_bricks" : "stone_bricks"
@@ -191,7 +191,10 @@ extension Passage {
                     }
                     if mine && index%5 == 0 { try cube(.init(0.02,1,1),.init(side*(radius-0.01),floor+1.5,z),["coal_ore","iron_ore","copper_ore","gold_ore","diamond_ore"][index/5%5]) }
                 }
-                if z < 22 { try cube(.init(radius*2+4,1,1),.init(0,floor+(chamber ? 8.5 : 5.5),z),stone) }
+                if z < (mine ? 22 : 86) {
+                    let ceiling = floor+(chamber ? 8 : 5), roof = mine ? ceiling+1 : max(45,ceiling+1)
+                    try cube(.init(radius*2+4,roof-ceiling,1),.init(0,(ceiling+roof)/2,z),stone)
+                }
                 if mine {
                     if index%5 == 0 && !chamber {
                         for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(side*2,floor+1.5,z),"oak_fence") }
