@@ -20,19 +20,19 @@ spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
-    def test_launcher_bundles_artwork_and_keeps_existing_installation_identity(self):
+    def test_launcher_needs_no_panorama_assets_and_keeps_installation_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / 'assets').mkdir()
-            for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
-                (root / 'assets' / name).write_bytes(name.encode())
+            resources = root / 'build/Minecraft for MacOS.app/Contents/Resources'
+            resources.mkdir(parents=True)
+            (resources / 'overworld.jpg').write_bytes(b'retired panorama')
             with patch.object(packager, 'ROOT', root), \
                     patch.object(packager.subprocess, 'run'), \
                     contextlib.redirect_stdout(io.StringIO()):
                 app = packager.build_launcher()
             self.assertEqual(app.name, 'Minecraft for MacOS.app')
             for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
-                self.assertEqual((app / 'Contents/Resources' / name).read_bytes(), name.encode())
+                self.assertFalse((app / 'Contents/Resources' / name).exists())
             with (app / 'Contents/Info.plist').open('rb') as file:
                 info = plistlib.load(file)
             self.assertEqual(info['CFBundleDisplayName'], 'Minecraft for MacOS')

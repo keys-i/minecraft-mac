@@ -22,18 +22,28 @@ enum World: String, CaseIterable {
         case .sift: return .cyan
         }
     }
+
+    var biomes: [String] {
+        switch self {
+        case .overworld: return ["Forest", "Cherry Grove", "Coast"]
+        case .nether: return ["Crimson Forest", "Basalt Deltas", "Warped Forest"]
+        case .end: return ["Central Island", "Chorus Islands", "End City"]
+        case .sift: return ["Coral terraces", "Luminous grove", "Rift valley"]
+        }
+    }
 }
 
 @MainActor
 enum VoxelAdventure {
     // Small shared pixel maps keep surface detail out of the scene graph
-    private static func material(_ palette: [UInt32], face: [String] = []) -> SCNMaterial {
+    static func material(_ palette: [UInt32], face: [String] = [], cap: [UInt32]? = nil) -> SCNMaterial {
         var pixels = [UInt8](repeating: 255, count: 16 * 16 * 4)
         for y in 0..<16 {
             let row = face.isEmpty ? [] : Array(face[y])
             for x in 0..<16 {
                 let shade = (x / 2 * 7 + y / 3 * 13 + x * y) % 17
-                let rgb = !row.isEmpty && row[x] == "#" ? 0x625E5C : palette[shade % palette.count]
+                let colours = y < 3 ? (cap ?? palette) : palette
+                let rgb = !row.isEmpty && row[x] == "#" ? 0x625E5C : colours[shade % colours.count]
                 let offset = (y * 16 + x) * 4
                 pixels[offset] = UInt8((rgb >> 16) & 255)
                 pixels[offset + 1] = UInt8((rgb >> 8) & 255)
@@ -49,12 +59,14 @@ enum VoxelAdventure {
         material.diffuse.magnificationFilter = .nearest
         material.diffuse.minificationFilter = .nearest
         material.diffuse.mipFilter = .none
+        material.diffuse.wrapS = .repeat
+        material.diffuse.wrapT = .repeat
         material.lightingModel = .lambert
         return material
     }
 
     @discardableResult
-    private static func block(_ parent: SCNNode, _ size: SCNVector3, _ position: SCNVector3,
+    static func block(_ parent: SCNNode, _ size: SCNVector3, _ position: SCNVector3,
                               _ material: SCNMaterial, name: String? = nil) -> SCNNode {
         let geometry = SCNBox(width: CGFloat(size.x), height: CGFloat(size.y),
                               length: CGFloat(size.z), chamferRadius: 0)
@@ -66,7 +78,7 @@ enum VoxelAdventure {
         return node
     }
 
-    private static func sway(_ node: SCNNode, x: CGFloat = 0, y: CGFloat = 0,
+    static func sway(_ node: SCNNode, x: CGFloat = 0, y: CGFloat = 0,
                              z: CGFloat = 0, period: Double, phase: Double = 0) {
         let base = node.eulerAngles
         node.eulerAngles = SCNVector3(base.x + x * sin(phase), base.y + y * sin(phase), base.z + z * sin(phase))
@@ -273,10 +285,12 @@ enum VoxelAdventure {
 
 struct Adventure: NSViewRepresentable {
     let world: World
+    let biome: Int
     let moving: Bool
 
     final class Coordinator {
         var world: World?
+        var biome: Int?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -292,9 +306,14 @@ struct Adventure: NSViewRepresentable {
 
     func updateNSView(_ view: SCNView, context: Context) {
         if context.coordinator.world != world {
-            view.scene = VoxelAdventure.scene(world)
+            view.scene = Landscape.scene(world)
             view.pointOfView = view.scene?.rootNode.childNode(withName: "camera", recursively: false)
             context.coordinator.world = world
+            context.coordinator.biome = nil
+        }
+        if context.coordinator.biome != biome, let scene = view.scene {
+            Landscape.focus(scene, biome: biome, animated: moving && context.coordinator.biome != nil)
+            context.coordinator.biome = biome
         }
         view.scene?.isPaused = !moving
         view.isPlaying = moving

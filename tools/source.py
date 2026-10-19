@@ -68,6 +68,7 @@ ALLOWED_FILES = (
     'tools/build.py',
     'src/launcher/BedrockLauncher.swift',
     'src/launcher/Adventure.swift',
+    'src/launcher/Landscape.swift',
     'src/launcher/setup.py',
     'tools/build/wine.sh',
     'tools/build/graphics.sh',

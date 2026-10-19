@@ -28,7 +28,7 @@ written as text rather than communicated through colour alone
 
 Worker stage and title changes request a macOS accessibility announcement;
 percentage-only updates do not repeat it. Reduced Motion disables the button
-animation, camera motion, 3D actor actions, particles, scene fades and automatic scene changes
+animation, camera motion, 3D actor actions, flowing textures, particles, biome journeys and automatic realm changes
 Low Power Mode also stops ambient motion and automatic scene changes. Waiting
 states use text rather than a spinner. Reduce Transparency gives the launch
 panel an opaque background. The window can be resized,

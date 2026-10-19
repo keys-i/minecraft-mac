@@ -41,11 +41,7 @@ final class Launcher: ObservableObject {
     private var process: Process?
     private var buffer = Data()
     let root: URL
-    let worlds = World.allCases.compactMap { world -> (world: World, image: NSImage)? in
-        guard let url = Bundle.main.url(forResource: world.rawValue, withExtension: "jpg"),
-              let image = NSImage(contentsOf: url) else { return nil }
-        return (world, image)
-    }
+    let worlds = World.allCases
 
     init() {
         let path = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
@@ -254,51 +250,29 @@ private struct LaunchButton: ButtonStyle {
 }
 
 private struct Scenery: View {
-    let worlds: [(world: World, image: NSImage)]
-    let selection: Int
+    let world: World
     let moving: Bool
+    @State private var biome = 0
 
     var body: some View {
-        GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: SceneryMotion.interval, paused: !moving)) { frame in
-                let time = moving ? frame.date.timeIntervalSinceReferenceDate : 0
-                ZStack {
-                    Color(red: 0.04, green: 0.08, blue: 0.07)
-                    ForEach(worlds.indices, id: \.self) { index in
-                        Image(nsImage: worlds[index].image).resizable().scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .scaleEffect(moving ? 1.065 : 1)
-                            .offset(x: moving ? sin(time / 19) * 12 : 0,
-                                    y: moving ? cos(time / 23) * 8 : 0)
-                            .opacity(index == selection ? 1 : 0)
-                    }
-                    if moving {
-                        Canvas { context, size in
-                            guard size.width > 0, size.height > 0 else { return }
-                            for index in 0..<18 {
-                                let seed = Double(index)
-                                let x = (seed * 73.7 + sin(time / 8 + seed) * 20)
-                                    .truncatingRemainder(dividingBy: size.width)
-                                let y = size.height - (time * (5 + seed / 4) + seed * 47)
-                                    .truncatingRemainder(dividingBy: size.height)
-                                let side = index.isMultiple(of: 3) ? 3.0 : 2.0
-                                let colour = worlds.indices.contains(selection) ? worlds[selection].world.colour : Blocks.grass
-                                context.fill(Path(CGRect(x: x, y: y, width: side, height: side)),
-                                             with: .color(colour.opacity(0.25 + 0.3 * abs(sin(time / 3 + seed)))))
-                            }
-                        }
-                    }
-                    LinearGradient(colors: [.black.opacity(0.08), .clear, .black.opacity(0.82)],
-                                   startPoint: .top, endPoint: .bottom)
-                    LinearGradient(colors: [.black.opacity(0.42), .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                }
-                .clipped()
-            }
+        ZStack {
+            Adventure(world: world, biome: biome, moving: moving)
+            LinearGradient(colors: [.black.opacity(0.48), .clear], startPoint: .leading, endPoint: .trailing)
+            LinearGradient(colors: [.clear, .black.opacity(0.12), .black.opacity(0.86)], startPoint: .top, endPoint: .bottom)
         }
-        .overlay {
-            if worlds.indices.contains(selection) {
-                Adventure(world: worlds[selection].world, moving: moving)
+        .overlay(alignment: .topTrailing) {
+            Text(world.biomes[biome]).font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 13).padding(.vertical, 8)
+                .background(.black.opacity(0.3), in: Capsule())
+                .padding(.top, 92).padding(.trailing, 36)
+        }
+        .onChange(of: world) { biome = 0 }
+        .task(id: moving ? world : nil) {
+            guard moving else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(18)) } catch { return }
+                guard !Task.isCancelled else { return }
+                biome = (biome + 1) % world.biomes.count
             }
         }
         .accessibilityHidden(true)
@@ -411,7 +385,7 @@ struct LauncherView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Scenery(worlds: launcher.worlds, selection: launcher.selection, moving: moving)
+                Scenery(world: launcher.worlds[launcher.selection], moving: moving)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: launcher.selection)
                     .ignoresSafeArea()
                 ScrollView {
@@ -451,7 +425,7 @@ struct LauncherView: View {
         }
         .task(id: moving && rotateScenery ? launcher.selection : -1) {
             guard moving, rotateScenery, launcher.worlds.count > 1 else { return }
-            do { try await Task.sleep(for: .seconds(24)) } catch { return }
+            do { try await Task.sleep(for: .seconds(54)) } catch { return }
             guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 1.2)) {
                 launcher.selection = (launcher.selection + 1) % launcher.worlds.count
@@ -555,16 +529,16 @@ struct LauncherView: View {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6)) { launcher.selection = index }
                 } label: {
                     HStack(spacing: 7) {
-                        Circle().fill(launcher.worlds[index].world.colour).frame(width: 6, height: 6)
-                        Text(launcher.worlds[index].world.title).font(.system(size: 12, weight: .medium))
+                        Circle().fill(launcher.worlds[index].colour).frame(width: 6, height: 6)
+                        Text(launcher.worlds[index].title).font(.system(size: 12, weight: .medium))
                     }
                     .padding(.horizontal, 12).frame(height: 32)
                     .background(.white.opacity(launcher.selection == index ? 0.18 : 0.04), in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
-                .accessibilityLabel("\(launcher.worlds[index].world.title) scenery")
-                .help(launcher.worlds[index].world == .sift ? "Artistic Sift preview — announced for Java and Bedrock in 2027" : "Choose \(launcher.worlds[index].world.title) scenery")
+                .accessibilityLabel("\(launcher.worlds[index].title) scenery")
+                .help(launcher.worlds[index] == .sift ? "Artistic Sift preview — announced for Java and Bedrock in 2027" : "Choose \(launcher.worlds[index].title) scenery")
             }
         }
     }

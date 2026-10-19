@@ -67,8 +67,44 @@ struct LauncherChecks {
                 precondition(Set(lengths).count > 1)
             }
             print("\(world.title): \(nodes) nodes, \(materials.count) shared 16×16 materials")
+            precondition(world.biomes.count == 3)
+            let landscape = Landscape.scene(world)
+            var sceneryNodes = 0, triangles = 0, residents = 0
+            var sceneryMaterials = Set<ObjectIdentifier>()
+            landscape.rootNode.enumerateChildNodes { node, _ in
+                sceneryNodes += 1
+                if node.name?.hasPrefix("resident-") == true { residents += 1 }
+                for element in node.geometry?.elements ?? [] where element.primitiveType == .triangles {
+                    triangles += element.primitiveCount
+                }
+                for material in node.geometry?.materials ?? [] {
+                    sceneryMaterials.insert(ObjectIdentifier(material))
+                }
+            }
+            precondition(sceneryNodes < 250 && triangles < 50_000 && sceneryMaterials.count <= 32)
+            precondition(residents >= 3)
+            precondition(landscape.rootNode.childNode(withName: "terrain", recursively: false)?.geometry != nil)
+            if world != .end {
+                let surface = landscape.rootNode.childNode(withName: "flowing-surface", recursively: false)!
+                let texture = surface.geometry!.firstMaterial!.diffuse.contentsTransform
+                precondition(texture.m11 > 1 && texture.m22 > 1)
+            }
+            let camera = landscape.rootNode.childNode(withName: "camera", recursively: false)!
+            Landscape.focus(landscape, biome: 0, animated: false)
+            let first = camera.position
+            Landscape.focus(landscape, biome: 2, animated: false)
+            let last = camera.position
+            precondition(first.x != last.x)
+            Landscape.focus(landscape, biome: 99, animated: false)
+            precondition(camera.position.x == last.x)
+            Landscape.focus(landscape, biome: -1, animated: false)
+            precondition(camera.position.x == first.x)
+            Landscape.focus(landscape, biome: 1, animated: true)
+            Landscape.focus(landscape, biome: 2, animated: true)
+            precondition(camera.actionKeys == ["journey"])
+            print("  Landscape: \(sceneryNodes) nodes, \(triangles) triangles, \(sceneryMaterials.count) materials")
         }
-        print("Native progress, six motion stop conditions, release filtering and four bounded adventure scenes passed")
-        print("Four scene graphs constructed in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
+        print("Native progress, motion, release filtering, textures and twelve biome camera states passed")
+        print("Actor studies and four landscapes constructed in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
     }
 }

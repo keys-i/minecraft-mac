@@ -13,7 +13,7 @@ removed — 356,088 bytes. Both images remain below the exporter's 2 MiB limit.
 Keep images individually listed in the source allowlist and give each meaningful
 alternative text
 
-## Animated launcher scenes
+## Earlier illustrated launcher scenes
 
 `overworld.jpg`, `nether.jpg`, `end.jpg` and `sift.jpg` are original project illustrations generated
 with the built-in ImageGen tool on October 19, 2026, then encoded as JPEG at
@@ -31,8 +31,11 @@ references for proportions, expressions, harness and wing anatomy
 The launcher uses authored geometry and generated 16 × 16 pixel maps, not bundled
 Mojang models or textures. The invented Sift creature and crude rider were removed
 
-The README's original `poster.webp` is unchanged. The four scene assets are
-individually allowlisted for source export and copied into the native app
+The README's original `poster.webp` is unchanged. These four images remain as
+source artwork references, individually allowlisted for export. Version 0.4
+replaces the launcher panoramas with a live native landscape and does not copy
+these images into the app; its terrain, plants and resident groups are authored
+in `src/launcher/Landscape.swift`
 
 ### Overworld prompt
 

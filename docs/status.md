@@ -10,7 +10,23 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
-## Animated interface preview
+## Live realm preview
+
+Version 0.4 replaces static panoramas with four native 3D landscapes and twelve
+area views. Each realm contains 9–13 residents, shared terrain geometry, flowing
+surfaces or ambient particles, and camera journeys between its areas
+
+Biomes advance every 18 seconds and realms every 54 seconds. Clouds, plants,
+waterfalls, lava and mobs move within the scene. The same motion gate stops
+rendering and automatic changes when paused, inactive, occluded, in Low Power
+Mode, with Reduced Motion, or while Minecraft runs
+
+The source and isolated preview compile; 91 Python tests and the native graph,
+texture, motion, camera-boundary and rapid-change checks pass locally. The twelve
+area GPU probe and its limits are recorded in [Testing](test.md#native-app-and-helper)
+The README poster is unchanged; earlier artwork is no longer bundled or loaded
+
+## Earlier 0.3 mob preview
 
 The latest interface uses four local world panoramas, slow camera motion, ambient
 particles, native 3D mobs, manual scene selection and automatic scene fades. A compact launch

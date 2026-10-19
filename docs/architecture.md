@@ -44,22 +44,35 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native window places a scrollable launch panel over four bundled world
-panoramas. The images are loaded once per launcher instance. A separate scenery
-view owns the 20 fps ambient timeline, slow camera drift and 18 particles, so
-those frames do not invalidate the launch controls. Scenes cross-fade every
-24 seconds or when selected manually
+The native window places a scrollable launch panel over one live SceneKit world
+`src/launcher/Landscape.swift` builds terrain, forests, structures, flowing surfaces,
+waterfalls, clouds, ambient particles and resident groups. Static blocks share a
+mesh with buried faces omitted; texture detail uses shared 16 × 16 pixel maps
+The app no longer loads or bundles the earlier panoramic JPEGs
 
-`src/launcher/Adventure.swift` owns the authored SceneKit actors: a harnessed Happy
-Ghast, a Nether Ghast, an articulated Ender Dragon and an artistic Sift rift
-The mobs follow official visual references, with shared 16 × 16 pixel maps,
-nearest-neighbour filtering, varied tentacle lengths and hinged wing membranes
-Each scene has at most 78 nodes and six shared materials; pixel details add no nodes
-One bounded scene graph is active at a time, with a separate 20 fps renderer
-It pauses with the same motion gate and releases its graph when dismantled
-No video generator, AI model, network service or game textures are needed at
-runtime. The Sift illustration is an artistic preview of the realm announced
-for Java and Bedrock in 2027, not a claim that the installed game includes it
+Each realm contains three areas. The camera moves to the next every 18 seconds;
+automatic realm changes happen after 54 seconds. A small caption identifies the
+current area. Camera actions replace their previous journey when changed rapidly
+
+| Realm | Journey | Residents |
+| --- | --- | --- |
+| Overworld | Forest → Cherry Grove → Coast | Happy Ghasts, a pig family, bees and turtles |
+| Nether | Crimson Forest → Basalt Deltas → Warped Forest | Ghasts and striders, with lava falls and embers |
+| End | Central Island → Chorus Islands → End City | One patrolling dragon and groups of Endermen |
+| Sift | Coral terraces → Luminous grove → Rift valley | Visiting illagers and Allays around an artistic rift |
+
+`src/launcher/Adventure.swift` owns the primary Ghast/dragon rigs, shared pixel
+materials and the native renderer wrapper. Landscape residents reuse geometry
+and materials through SceneKit clones. Each full graph remains below 250 nodes,
+50,000 triangles and 32 materials; one graph is active at a time at 20 fps
+It pauses with the shared motion gate and releases its graph when dismantled
+No video generator, AI model, network service or game textures are needed at runtime
+
+The Sift scenery follows the colourful terrain, rifts and illager presence in
+[Mojang's Dungeons II announcement](https://www.minecraft.net/en-us/article/minecraft-dungeons-ii-is-live)
+Its area names, flora and use of visiting existing mobs are artistic choices,
+not announced Bedrock biomes or a claim about native Sift species. Its Java/Bedrock
+arrival was announced for 2027; the launcher does not add it to the installed game
 
 Ambient motion and automatic scene changes stop with Reduced Motion, Low Power
 Mode, the pause control, an inactive app, an occluded window or a running game

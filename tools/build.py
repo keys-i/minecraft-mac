@@ -162,13 +162,13 @@ def build_launcher():
     cache = ROOT / 'build/swift-module-cache'
     executable.parent.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
-    for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
-        shutil.copy2(ROOT / 'assets' / name, resources / name)
-    (resources / 'poster.webp').unlink(missing_ok=True)
+    for name in ('poster.webp', 'overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
+        (resources / name).unlink(missing_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-O', '-target',
                     'arm64-apple-macos15.0', '-module-cache-path', str(cache),
-                    str(ROOT / 'src/launcher/BedrockLauncher.swift'), str(ROOT / 'src/launcher/Adventure.swift'), '-o', str(executable)], check=True)
+                    str(ROOT / 'src/launcher/BedrockLauncher.swift'), str(ROOT / 'src/launcher/Adventure.swift'),
+                    str(ROOT / 'src/launcher/Landscape.swift'), '-o', str(executable)], check=True)
     icon = ROOT / 'build/make-icon'
     iconset = ROOT / 'build/AppIcon.iconset'
     subprocess.run(['xcrun', 'swiftc', '-O', '-module-cache-path', str(cache),
@@ -178,7 +178,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='3', CFBundleShortVersionString='0.3.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='4', CFBundleShortVersionString='0.4.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)

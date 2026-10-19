@@ -51,7 +51,7 @@ Compile the interface on a Mac with Command Line Tools:
 ```sh
 python3 minecraft.py build launcher
 xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift tests/launcher.swift -o build/launcher-checks
+  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
@@ -74,36 +74,40 @@ with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
 The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
 
-The continuous scenery schedule is capped at 20 fps with 18 particles; controls
-are outside that timeline. The SceneKit overlay also requests 20 fps and stops
-its actions and continuous rendering when motion is gated off. The four JPEG
-assets total 2,204,849 bytes and their uncompressed RGBA dimensions imply about
-24 MiB before framework/render buffers
+The live scenery renderer is capped at 20 fps. SwiftUI launch controls have no
+per-frame timeline, and the earlier 24 MiB of panorama image data is no longer
+loaded. World graphs use shared pixel textures and a single batched terrain mesh
+The current Overworld/Nether/End/Sift graphs have 200/162/152/179 nodes,
+42,756/39,234/8,548/43,052 triangles and 29/17/17/22 materials respectively
+Native checks enforce budgets, multiple residents, three camera areas per realm,
+bounded area selection and cancellation of superseded camera journeys
 
-The revised graphs contain 31/23/78/9 nodes for Overworld/Nether/End/Sift and at
-most six shared pixel maps. The unoptimised native check constructed all four in
-207 ms including framework initialisation on the M3 Pro/36 GB development Mac
-Offscreen Metal renders were inspected for faces, anatomy and wing silhouettes
-Frames at 0 and 4 seconds differ; frames paused at 6 and 10 seconds are identical
+All twelve area views were rendered offscreen for inspection. Pausing both the
+scene and renderer produces identical frames; exposure adaptation is disabled
+so a still scene does not keep changing its brightness
 
-An optimised, same-process before/after probe rendered 1040 × 760 with 4× MSAA
-into reused Metal textures, warmed ten frames, then sampled 60 frames per scene
+An optimised M3 Pro/36 GB probe rendered 1040 × 760 with 4× MSAA into reused Metal
+textures, warmed ten frames, then sampled 60 frames for each of the twelve areas
 GPU timestamps exclude image readback; wall times include submission and waiting
+The actor baseline renders the preceding mob study without the environment
 
-| Scene | Previous GPU median / p95 | Revised GPU median / p95 | Revised wall median / p95 |
-| --- | --- | --- | --- |
-| Overworld | 1.25 / 10.63 ms | 1.29 / 17.15 ms | 11.57 / 41.00 ms |
-| Nether | 2.47 / 15.89 ms | 1.51 / 8.54 ms | 15.76 / 61.91 ms |
-| End | 1.25 / 17.84 ms | 1.15 / 9.59 ms | 11.78 / 34.26 ms |
-| Sift | 1.19 / 25.33 ms | 1.49 / 9.54 ms | 12.77 / 48.19 ms |
+| Realm | Actor baseline median GPU | Full-world median GPU range | Highest full-world GPU p95 | Highest wall p95 |
+| --- | --- | --- | --- | --- |
+| Overworld | 0.60 ms | 4.58–5.24 ms | 10.88 ms | 12.09 ms |
+| Nether | 0.51 ms | 4.30–4.77 ms | 9.19 ms | 10.39 ms |
+| End | 0.63 ms | 4.15–4.98 ms | 9.82 ms | 10.95 ms |
+| Sift | 0.61 ms | 4.46–5.11 ms | 10.14 ms | 11.55 ms |
 
-Revised GPU p95 times fit the 50 ms budget for 20 fps. Host scheduling spikes also
-affected the earlier models, so this does not establish a speedup or smooth
-full-window presentation. These checks cover authored actors, not application
-menus, focus or the complete SwiftUI/SceneKit composition
+The full worlds do more work than isolated mobs and fit the 50 ms GPU budget
+for 20 fps in this probe. Warm full-graph construction measured 2.52–9.48 ms;
+this excludes framework/renderer startup and does not establish launch speed
+The unoptimised native check constructed the actor studies and four landscapes
+in 226 ms including framework initialisation on one run
 
-Actual foreground CPU/GPU use, background wakeups and long-session memory still
-need measurement on the running app. No launcher or game speedup is claimed
+These checks cover authored scenery, not application menus, focus or the complete
+SwiftUI/SceneKit composition. Actual foreground CPU/GPU use, background wakeups,
+energy use, long-session memory and keyboard/VoiceOver workflows still need
+measurement on the running app. No launcher or game speedup is claimed
 
 Prepare the current standalone helper example and run its tests after quitting
 Minecraft and letting its helper stop. The builder rejects any active
