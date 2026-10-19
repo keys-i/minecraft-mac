@@ -92,7 +92,7 @@ license audit of a future binary bundle.
 ## Artwork and screenshots
 
 The README poster and earlier Overworld/Nether/End/Sift panoramas are original
-AI-generated project artwork. Version 0.4 uses authored procedural terrain,
+AI-generated project artwork. Versions 0.4 and 0.5 use authored procedural terrain,
 plants, structures and creatures in the native renderer; the earlier panoramas
 remain source references and are not bundled. Mob proportions and features use
 the official references listed in [asset notes](../assets/README.md), with

@@ -23,14 +23,7 @@ enum World: String, CaseIterable {
         }
     }
 
-    var biomes: [String] {
-        switch self {
-        case .overworld: return ["Forest", "Cherry Grove", "Coast"]
-        case .nether: return ["Crimson Forest", "Basalt Deltas", "Warped Forest"]
-        case .end: return ["Central Island", "Chorus Islands", "End City"]
-        case .sift: return ["Coral terraces", "Luminous grove", "Rift valley"]
-        }
-    }
+
 }
 
 @MainActor
@@ -287,10 +280,13 @@ struct Adventure: NSViewRepresentable {
     let world: World
     let biome: Int
     let moving: Bool
+    let passage: Passage?
 
     final class Coordinator {
         var world: World?
         var biome: Int?
+        var page: Int?
+        var passage: Passage?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -305,19 +301,24 @@ struct Adventure: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SCNView, context: Context) {
-        if context.coordinator.world != world {
-            view.scene = Landscape.scene(world)
+        if context.coordinator.world != world || context.coordinator.passage != passage
+            || (passage == nil && context.coordinator.page != world.page(biome)) {
+            view.scene?.isPaused = true
+            view.scene = passage?.scene() ?? Landscape.scene(world, biome: biome)
             view.pointOfView = view.scene?.rootNode.childNode(withName: "camera", recursively: false)
             context.coordinator.world = world
+            context.coordinator.page = world.page(biome)
+            context.coordinator.passage = passage
             context.coordinator.biome = nil
         }
-        if context.coordinator.biome != biome, let scene = view.scene {
-            Landscape.focus(scene, biome: biome, animated: moving && context.coordinator.biome != nil)
+        if passage == nil, context.coordinator.biome != biome, let scene = view.scene {
+            Landscape.focus(scene, world: world, biome: biome, animated: moving && context.coordinator.biome != nil)
             context.coordinator.biome = biome
         }
         view.scene?.isPaused = !moving
         view.isPlaying = moving
         view.rendersContinuously = moving
+        view.needsDisplay = true
     }
 
     static func dismantleNSView(_ view: SCNView, coordinator: Coordinator) {

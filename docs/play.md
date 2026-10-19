@@ -120,6 +120,8 @@ workflow.
 releases and offers the Releases page for manual review. It distinguishes app
 DMGs from source archives and does not replace your installation. Use **Settings…**
 for scenery preferences; game graphics and controls stay in Minecraft's settings
+Use the map menu to jump to any biome or landmark. Realm changes include a mine,
+stronghold or artistic rift crossing; **Skip journey** goes straight to the destination
 
 There is no automatic app or game updater. For an app update, back up the prefix,
 close the game and launcher, and replace only the application in Applications.

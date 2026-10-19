@@ -37,7 +37,8 @@ final class Launcher: ObservableObject {
     @Published var status = Status(state: "checking", title: "Minecraft on your Mac", detail: "Checking installation…", progress: nil)
     @Published var running = false
     @Published var checkingUpdates = false
-    @Published var selection = 0
+    @Published var journey = Journey()
+    var selection: Int { worlds.firstIndex(of: journey.world)! }
     private var process: Process?
     private var buffer = Data()
     let root: URL
@@ -250,30 +251,14 @@ private struct LaunchButton: ButtonStyle {
 }
 
 private struct Scenery: View {
-    let world: World
+    let journey: Journey
     let moving: Bool
-    @State private var biome = 0
 
     var body: some View {
         ZStack {
-            Adventure(world: world, biome: biome, moving: moving)
+            Adventure(world: journey.world, biome: journey.biome, moving: moving, passage: journey.passage)
             LinearGradient(colors: [.black.opacity(0.48), .clear], startPoint: .leading, endPoint: .trailing)
             LinearGradient(colors: [.clear, .black.opacity(0.12), .black.opacity(0.86)], startPoint: .top, endPoint: .bottom)
-        }
-        .overlay(alignment: .topTrailing) {
-            Text(world.biomes[biome]).font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 13).padding(.vertical, 8)
-                .background(.black.opacity(0.3), in: Capsule())
-                .padding(.top, 92).padding(.trailing, 36)
-        }
-        .onChange(of: world) { biome = 0 }
-        .task(id: moving ? world : nil) {
-            guard moving else { return }
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(18)) } catch { return }
-                guard !Task.isCancelled else { return }
-                biome = (biome + 1) % world.biomes.count
-            }
         }
         .accessibilityHidden(true)
         .allowsHitTesting(false)
@@ -325,7 +310,7 @@ private struct WorldProgress: ProgressViewStyle {
     }
 }
 
-private struct Journey: View {
+private struct SetupSteps: View {
     let stage: Int?
     private let names = ["Sign in", "Download", "Prepare", "Play"]
     private let icons = ["person.crop.circle", "arrow.down", "cube", "play.fill"]
@@ -385,7 +370,7 @@ struct LauncherView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Scenery(world: launcher.worlds[launcher.selection], moving: moving)
+                Scenery(journey: launcher.journey, moving: moving)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: launcher.selection)
                     .ignoresSafeArea()
                 ScrollView {
@@ -411,6 +396,9 @@ struct LauncherView: View {
                     .frame(minHeight: geometry.size.height, alignment: .topLeading)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                sceneryNavigation.padding(.top, 92).padding(.trailing, 36)
+            }
         }
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
@@ -423,14 +411,48 @@ struct LauncherView: View {
                 window.title == "Minecraft for MacOS" && window.occlusionState.contains(.visible)
             }
         }
-        .task(id: moving && rotateScenery ? launcher.selection : -1) {
-            guard moving, rotateScenery, launcher.worlds.count > 1 else { return }
-            do { try await Task.sleep(for: .seconds(54)) } catch { return }
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 1.2)) {
-                launcher.selection = (launcher.selection + 1) % launcher.worlds.count
+        .onChange(of: reduceMotion) { if reduceMotion { launcher.journey.skip() } }
+        .onChange(of: lowPower) { if lowPower { launcher.journey.skip() } }
+        .task(id: moving && (rotateScenery || launcher.journey.passage != nil)) {
+            guard moving, rotateScenery || launcher.journey.passage != nil else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard !Task.isCancelled else { return }
+                launcher.journey.tick(rotate: rotateScenery)
             }
         }
+    }
+
+    private var sceneryNavigation: some View {
+        HStack(spacing: 12) {
+            if launcher.journey.passage != nil {
+                Text(launcher.journey.title).font(.system(size: 13, weight: .medium))
+                Button("Skip journey") { launcher.journey.skip() }
+                    .buttonStyle(.bordered)
+                    .help("Go straight to \(launcher.journey.world.title)")
+            } else {
+                Menu {
+                    ForEach(launcher.journey.world.biomes.indices, id: \.self) { index in
+                        Button {
+                            launcher.journey.area(index)
+                        } label: {
+                            if index == launcher.journey.biome {
+                                Label(launcher.journey.world.biomes[index].rawValue, systemImage: "checkmark")
+                            } else { Text(launcher.journey.world.biomes[index].rawValue) }
+                        }
+                    }
+                } label: {
+                    Label(launcher.journey.title, systemImage: "map")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Choose biome or landmark")
+                .accessibilityValue(launcher.journey.title)
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 8)
+        .background(.black.opacity(0.6), in: Capsule())
     }
 
     private var header: some View {
@@ -503,7 +525,7 @@ struct LauncherView: View {
             }
             if fresh || launcher.status.state == "busy" || launcher.status.state == "cancelled" {
                 Divider().overlay(.white.opacity(0.1))
-                Journey(stage: launcher.status.stage)
+                SetupSteps(stage: launcher.status.stage)
             }
             if launcher.status.state == "error" {
                 Button("Open Setup Log") { launcher.showLog() }.buttonStyle(.link)
@@ -526,7 +548,7 @@ struct LauncherView: View {
             Spacer()
             ForEach(launcher.worlds.indices, id: \.self) { index in
                 Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6)) { launcher.selection = index }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6)) { launcher.journey.select(launcher.worlds[index], animated: moving) }
                 } label: {
                     HStack(spacing: 7) {
                         Circle().fill(launcher.worlds[index].colour).frame(width: 6, height: 6)
@@ -591,9 +613,19 @@ private struct LauncherMenus: Commands {
             Toggle("Automatically Change Scenes", isOn: $rotateScenery)
             Button("Next Scene") {
                 guard !launcher.worlds.isEmpty else { return }
-                launcher.selection = (launcher.selection + 1) % launcher.worlds.count
+                let animate = SceneryMotion.enabled(reduced: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                    paused: !animateScenery, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                    active: NSApp.isActive, visible: true, playing: launcher.status.state == "playing")
+                launcher.journey.select(launcher.worlds[(launcher.selection + 1) % launcher.worlds.count], animated: animate)
             }
             .keyboardShortcut("]", modifiers: .command)
+            Menu("Choose Biome or Landmark") {
+                ForEach(launcher.journey.world.biomes.indices, id: \.self) { index in
+                    Button(launcher.journey.world.biomes[index].rawValue) { launcher.journey.area(index) }
+                }
+            }
+            Button("Skip Portal Journey") { launcher.journey.skip() }
+                .disabled(launcher.journey.passage == nil)
         }
         CommandGroup(before: .windowList) {
             Button("Show Launcher") { openWindow(id: "launcher") }

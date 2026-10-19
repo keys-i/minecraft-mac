@@ -51,7 +51,7 @@ Compile the interface on a Mac with Command Line Tools:
 ```sh
 python3 minecraft.py build launcher
 xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift tests/launcher.swift -o build/launcher-checks
+  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
@@ -74,35 +74,44 @@ with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
 The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
 
-The live scenery renderer is capped at 20 fps. SwiftUI launch controls have no
-per-frame timeline, and the four earlier panoramas are no longer loaded or
-bundled. World graphs use shared pixel textures and a single batched terrain mesh
-The current Overworld/Nether/End/Sift graphs have 200/162/152/179 nodes,
-42,756/39,234/8,548/43,052 triangles and 29/17/17/22 materials respectively
-Native checks enforce budgets, multiple residents, three camera areas per realm,
-bounded area selection and cancellation of superseded camera journeys
+The live scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
+Version 0.5 streams three neighbouring areas into one graph instead of retaining
+all 31 stops. Its eleven pages use 98–242 nodes, 8,138–38,848 triangles and 17–44
+materials. Native checks enforce fewer than 250 nodes, 45,000 triangles and at
+most 48 materials, plus at least six residents on each page
 
-All twelve area views were rendered offscreen for inspection. Pausing both the
-scene and renderer produces identical frames; exposure adaptation is disabled
-so a still scene does not keep changing its brightness
+The native check covers the full 42-species catalogue, all area pages, camera
+action replacement, pool placement, Creaking visibility only at dusk, bounded
+selection, automatic timing, rapid passage replacement and skip behaviour
+An optimised run constructed the actor studies, eleven pages and three passages
+in 118 ms including framework initialisation
 
-An optimised M3 Pro/36 GB probe rendered 1040 × 760 with 4× MSAA into reused Metal
-textures, warmed ten frames, then sampled 60 frames for each of the twelve areas
-GPU timestamps exclude image readback; wall times include submission and waiting
-The actor baseline renders the preceding mob study without the environment
+All 31 areas and fifteen passage viewpoints were rendered offscreen for inspection
+All eleven pages produced identical frames with both scene and renderer paused
+Exposure adaptation is disabled so a still scene does not change its brightness
+A 104-second offscreen video shows every area at 9× tour speed and all three
+14-second passages in real time. It records authored scenery, not the app window
 
-| Realm | Actor baseline median GPU | Full-world median GPU range | Highest full-world GPU p95 | Highest wall p95 |
-| --- | --- | --- | --- | --- |
-| Overworld | 0.60 ms | 4.58–5.24 ms | 10.88 ms | 12.09 ms |
-| Nether | 0.51 ms | 4.30–4.77 ms | 9.19 ms | 10.39 ms |
-| End | 0.63 ms | 4.15–4.98 ms | 9.82 ms | 10.95 ms |
-| Sift | 0.61 ms | 4.46–5.11 ms | 10.14 ms | 11.55 ms |
+The final M3 Pro/36 GB probe rendered 1040 × 760 with 4× MSAA into reused Metal
+textures. Each view warmed ten frames, then sampled sixty frames at 20 fps scene
+times. GPU timestamps exclude image readback; wall times include submission and
+waiting. Our snapshot and movie renderers had finished before this measurement
 
-The full worlds do more work than isolated mobs and fit the 50 ms GPU budget
-for 20 fps in this probe. Warm full-graph construction measured 2.52–9.48 ms;
-this excludes framework/renderer startup and does not establish launch speed
-The unoptimised native check constructed the actor studies and four landscapes
-in 226 ms including framework initialisation on one run
+| Realm or passage | Views | Median GPU range | Highest GPU p95 | Highest wall p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Overworld | 14 | 3.72–6.12 ms | 11.67 ms | 13.70 ms |
+| Nether | 5 | 4.51–4.65 ms | 11.08 ms | 12.71 ms |
+| End | 6 | 4.27–4.88 ms | 10.40 ms | 12.26 ms |
+| Sift | 6 | 4.57–5.37 ms | 10.88 ms | 12.56 ms |
+| Mine crossing | 3 | 1.86–2.27 ms | 5.90 ms | 7.60 ms |
+| Stronghold crossing | 3 | 1.70–1.91 ms | 5.66 ms | 7.31 ms |
+| Rift crossing | 3 | 1.99–2.22 ms | 6.35 ms | 7.86 ms |
+
+The earlier twelve-view 0.4 probe measured 4.15–5.24 ms median GPU, with a maximum
+10.88 ms GPU p95. The expanded scenes add species and landmarks while remaining
+inside the 50 ms budget for 20 fps in this probe; this is not a speedup claim
+Warm construction measured 2.34–10.62 ms, with 13.85 ms for the first graph
+This excludes framework/renderer startup and does not establish app launch speed
 
 These checks cover authored scenery, not application menus, focus or the complete
 SwiftUI/SceneKit composition. Actual foreground CPU/GPU use, background wakeups,

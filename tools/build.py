@@ -168,7 +168,8 @@ def build_launcher():
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-O', '-target',
                     'arm64-apple-macos15.0', '-module-cache-path', str(cache),
                     str(ROOT / 'src/launcher/BedrockLauncher.swift'), str(ROOT / 'src/launcher/Adventure.swift'),
-                    str(ROOT / 'src/launcher/Landscape.swift'), '-o', str(executable)], check=True)
+                    str(ROOT / 'src/launcher/Landscape.swift'),
+                    str(ROOT / 'src/launcher/Biome.swift'), str(ROOT / 'src/launcher/Mobs.swift'), str(ROOT / 'src/launcher/Structures.swift'), str(ROOT / 'src/launcher/Journey.swift'), '-o', str(executable)], check=True)
     icon = ROOT / 'build/make-icon'
     iconset = ROOT / 'build/AppIcon.iconset'
     subprocess.run(['xcrun', 'swiftc', '-O', '-module-cache-path', str(cache),
@@ -178,7 +179,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='4', CFBundleShortVersionString='0.4.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='5', CFBundleShortVersionString='0.5.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)

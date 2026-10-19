@@ -10,7 +10,30 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
-## Live realm preview
+## Expanded realm journeys
+
+Version 0.5 adds 31 selectable habitat and landmark areas, with 42 species in
+the resident catalogue alongside the original Happy Ghast and dragon rigs
+Only three neighbouring areas are built at once. The roster includes snowy
+terrain, desert and jungle temples, mangroves, mushroom fields, Pale Garden at
+dusk, lush caves, Deep Dark, all five Nether biomes and the End City and ship
+
+Nether entry follows a 14-second descent from a grassy mine entrance along rails
+through an obsidian portal. End entry returns to an Overworld stronghold and
+descends through its horizontal portal. Sift has an artistic rift crossing
+The area menu and native View menu reach every stop; Skip journey cancels a
+crossing. Reduced Motion and Low Power Mode go directly to the destination
+Pause, inactivity, occlusion and gameplay stop both the renderer and tour clock
+
+The native checks cover all eleven pages, the full resident catalogue, aquatic
+pool placement, Creaking visibility at dusk, bounded selection, passage timing,
+rapid replacement and skip behaviour. The 91 Python tests pass locally
+All 31 area renders, fifteen passage viewpoints and eleven paused-frame comparisons
+pass. The forty-view GPU probe stays within the 50 ms budget for 20 fps, with a
+maximum 11.67 ms GPU p95; methods and limits are in [Testing](test.md#native-app-and-helper)
+The README poster, game runtime, worker, account helper and installed app are unchanged
+
+## Earlier 0.4 live realm preview
 
 Version 0.4 replaces static panoramas with four native 3D landscapes and twelve
 area views. Each realm contains 9–13 residents, shared terrain geometry, flowing

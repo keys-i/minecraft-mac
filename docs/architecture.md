@@ -45,27 +45,40 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
 The native window places a scrollable launch panel over one live SceneKit world
-`src/launcher/Landscape.swift` builds terrain, forests, structures, flowing surfaces,
-waterfalls, clouds, ambient particles and resident groups. Static blocks share a
-mesh with buried faces omitted; texture detail uses shared 16 × 16 pixel maps
-The app no longer loads or bundles the earlier panoramic JPEGs
+`Biome.swift` defines 31 selectable habitats and landmark areas across four realms
+`Landscape.swift` builds three neighbouring areas at a time, replacing that page
+when selection moves beyond it. Static blocks share one mesh with buried faces
+omitted; textures use shared 16 × 16 pixel maps. No panoramas are loaded or bundled
 
-Each realm contains three areas. The camera moves to the next every 18 seconds;
-automatic realm changes happen after 54 seconds. A small caption identifies the
-current area. Camera actions replace their previous journey when changed rapidly
+`Mobs.swift` owns 42 species rigs and shares prototypes and materials within the
+current graph. `Structures.swift` builds the village, temples, igloo, mineshaft,
+Ancient City, Nether fortress, bastion, fossils, End City, ship and portal frames
+The original Ghast and dragon rigs remain in `Adventure.swift`, which also owns
+the renderer wrapper and releases the old graph when its world or page changes
 
-| Realm | Journey | Residents |
+| Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | Forest → Cherry Grove → Coast | Happy Ghasts, a pig family, bees and turtles |
-| Nether | Crimson Forest → Basalt Deltas → Warped Forest | Ghasts and striders, with lava falls and embers |
-| End | Central Island → Chorus Islands → End City | One patrolling dragon and groups of Endermen |
-| Sift | Coral terraces → Luminous grove → Rift valley | Visiting illagers and Allays around an artistic rift |
+| Overworld | 14, from meadow and snowy taiga to mangroves, mushroom fields, Pale Garden, lush caves and Deep Dark | Farm animals, villagers, Copper Golem, wolves, foxes, goats, camels, armadillos, frogs, pandas, parrots, mooshrooms, Creaking at dusk, axolotls, Warden and more |
+| Nether | All five biomes | Piglins, hoglins, striders, Ghasts, Blazes, skeletons and magma cubes; fortress, bastion, basalt columns and fossils |
+| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; obsidian towers, crystals, gateway, chorus plants and ship |
+| Sift | Six artistic areas | Existing visiting illagers, vindicators, Allays and Vex; coral forms, ruins, floating shards and sculk fissures |
 
-`src/launcher/Adventure.swift` owns the primary Ghast/dragon rigs, shared pixel
-materials and the native renderer wrapper. Landscape residents reuse geometry
-and materials through SceneKit clones. Each full graph remains below 250 nodes,
-50,000 triangles and 32 materials; one graph is active at a time at 20 fps
-It pauses with the shared motion gate and releases its graph when dismantled
+`Journey.swift` owns bounded area/realm selection, the 18-second area clock and
+three 14-second passage scenes. Entering the Nether descends from a grassy mine
+entrance along rails into an obsidian portal. Entering the End returns to an
+Overworld stronghold, crosses its library corridor and descends into a horizontal
+End portal. Sift uses an explicitly artistic rift crossing
+
+A labelled area menu and **View → Choose Biome or Landmark** expose every stop
+without waiting for the automatic tour. **Skip journey** immediately cancels a
+passage; selecting another area or realm replaces it. One timer advances the
+current journey only while motion is allowed. Manual realm choices run their
+passage even when automatic changes are disabled; Reduced Motion and Low Power
+Mode select the destination directly
+
+Each page remains below 250 nodes, 45,000 triangles and 48 materials at 20 fps
+Camera actions replace their previous journey on rapid selection. The renderer
+pauses with the shared motion gate and releases its graph when dismantled
 No video generator, AI model, network service or game textures are needed at runtime
 
 The Sift scenery follows the colourful terrain, rifts and illager presence in

@@ -13,6 +13,15 @@ removed — 356,088 bytes. Both images remain below the exporter's 2 MiB limit.
 Keep images individually listed in the source allowlist and give each meaningful
 alternative text
 
+## Native scenery
+
+Version 0.5 builds 31 habitat and landmark areas, 42 mob species and mine,
+stronghold and rift passages in native SceneKit. Models, structures and pixel maps
+are authored code in `src/launcher/`; no Mojang geometry or textures are bundled
+The area list includes structure visits rather than claiming every stop is a
+separate official biome. Sift's six area names and rift route are interpretations
+The README poster is unchanged
+
 ## Earlier illustrated launcher scenes
 
 `overworld.jpg`, `nether.jpg`, `end.jpg` and `sift.jpg` are original project illustrations generated
