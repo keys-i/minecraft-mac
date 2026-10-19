@@ -28,7 +28,8 @@ Impeccable context launcher was unavailable and was not installed
 The paired sample uses an M3 Pro / 36 GB, 1040 × 760, 4× MSAA, ten warm-up and
 sixty measured frames per view. Eight habitat route/elevated views and two
 passage interiors run sequentially on 0.11 then 0.12 after build/render work ends
-Chrome for Testing and the existing Minecraft process remain running
+No browser was closed for these samples; concurrent game activity was not
+recorded per view, so background load is a comparison limit
 
 | Metric | 0.11 baseline | 0.12 candidate |
 | --- | ---: | ---: |
