@@ -26,9 +26,27 @@ texture, motion, camera-boundary and rapid-change checks pass locally. The twelv
 area GPU probe and its limits are recorded in [Testing](test.md#native-app-and-helper)
 The README poster is unchanged; earlier artwork is no longer bundled or loaded
 
+The local 0.4.0 full app retains 1,046 matching resource hashes, including every
+runtime, worker, helper and licence file. The third-party note was extended and
+four unused JPEGs removed, leaving 1,047 inventoried resources. Launcher machine
+code matches the native build; its ad-hoc signature and LZFSE DMG verify
+The image is 127,585,943 bytes, with no game/account/world payload, and
+retains the runtime's macOS 27 minimum. No installed app was replaced and no
+public binary release was created
+
+The isolated 0.4 Preview opens separately. A 32-second offscreen scenery video
+shows all twelve views at 6.75× speed; it is not a recording of the application
+window or gameplay. Full-window and VoiceOver checks remain unverified
+
+Local 0.4-preview DMG SHA-256
+
+```text
+144189ccafc314a0fe582515c6f1a439f1f0584a148240cb8a0b4d859d7af42f
+```
+
 ## Earlier 0.3 mob preview
 
-The latest interface uses four local world panoramas, slow camera motion, ambient
+The 0.3 interface used four local world panoramas, slow camera motion, ambient
 particles, native 3D mobs, manual scene selection and automatic scene fades. A compact launch
 panel replaces the earlier poster card; setup progress assembles isometric
 blocks and shows sign-in, download, preparation and play as separate steps

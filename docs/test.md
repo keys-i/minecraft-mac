@@ -75,8 +75,8 @@ The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
 
 The live scenery renderer is capped at 20 fps. SwiftUI launch controls have no
-per-frame timeline, and the earlier 24 MiB of panorama image data is no longer
-loaded. World graphs use shared pixel textures and a single batched terrain mesh
+per-frame timeline, and the four earlier panoramas are no longer loaded or
+bundled. World graphs use shared pixel textures and a single batched terrain mesh
 The current Overworld/Nether/End/Sift graphs have 200/162/152/179 nodes,
 42,756/39,234/8,548/43,052 triangles and 29/17/17/22 materials respectively
 Native checks enforce budgets, multiple residents, three camera areas per realm,

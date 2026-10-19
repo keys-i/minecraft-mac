@@ -91,10 +91,13 @@ license audit of a future binary bundle.
 
 ## Artwork and screenshots
 
-The README poster and the Overworld/Nether/End/Sift launcher scenes are original
-AI-generated project artwork. Camera motion, particles and scene changes are
-drawn by the native launcher; its voxel creatures and portal are original
-procedural models in the project source. The scenery is not gameplay footage
+The README poster and earlier Overworld/Nether/End/Sift panoramas are original
+AI-generated project artwork. Version 0.4 uses authored procedural terrain,
+plants, structures and creatures in the native renderer; the earlier panoramas
+remain source references and are not bundled. Mob proportions and features use
+the official references listed in [asset notes](../assets/README.md), with
+authored pixel maps rather than copied game models or textures
+The scenery is not gameplay footage
 The Sift scene is an artistic interpretation, not a claim about the installed
 game's features. The launcher image
 is an unaltered screenshot of the locally running native launcher, captured on
