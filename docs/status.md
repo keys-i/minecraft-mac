@@ -34,6 +34,21 @@ record actual GPU/wall timings and distinguish preparation from listening tests
 Full-window input, VoiceOver, audible transitions and long-session memory remain
 unverified because the disposable preview is not accessible to Computer Use
 
+The separate full 0.10.0 candidate passes outer/deep signature verification
+Its native machine code matches the source build. All 1,051 resource hashes and
+21 runtime symlinks from 0.9.1 remain unchanged, including the helper, worker,
+runtime and poster. No installed app, world or account data was replaced
+The LZFSE local DMG verifies; minimum macOS remains 27. It is
+129,094,745 bytes with SHA-256:
+
+```text
+dd25705a63670edb56026d93b1d04b1820ee9cee97c97517db14a7f7b3290c27
+```
+
+All 125 explicitly reviewed source files pass the boundary and checksum checks
+The isolated preview uses a simulated worker; it is not a live game test
+No binary release is published
+
 ## Typography refinement in 0.9.1
 
 The main title retains Monocraft; actions and section titles use rounded system
