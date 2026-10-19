@@ -63,6 +63,11 @@ struct Journey {
 
     mutating func skip() { passage = nil; elapsed = 0 }
 
+    mutating func travel(_ step: Int) {
+        let count = world.biomes.count
+        area(((biome+step)%count+count)%count)
+    }
+
     mutating func tick(rotate: Bool) {
         guard passage != nil || rotate else { return }
         elapsed += 1

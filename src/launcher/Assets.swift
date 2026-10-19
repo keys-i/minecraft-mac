@@ -1,6 +1,7 @@
 import AppKit
 import SceneKit
 import simd
+import CoreText
 
 struct Archive {
     let data: Data
@@ -79,7 +80,7 @@ final class Assets {
         return operation
     }
 
-    func icons(completion: @escaping @MainActor ([World:NSImage],NSImage?) -> Void) {
+    func icons(completion: @escaping @MainActor ([World:NSImage],NSImage?,[String:NSImage],CTFont?,String) -> Void) {
         let operation = BlockOperation()
         operation.addExecutionBlock {
             let paths: [World:String] = [.overworld:"diamond_pickaxe",.nether:"flint_and_steel",.end:"ender_eye",.sift:"amethyst_shard"]
@@ -92,9 +93,31 @@ final class Assets {
             }
             let face = try? self.texture("textures/blocks/stone")
             let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
-            DispatchQueue.main.async { completion(images,stone) }
+            var frames: [String:NSImage] = [:]
+            for name in ["hotbar_0","selected_hotbar_slot","title"] {
+                if let material = try? self.texture("textures/ui/"+name) {
+                    let bitmap = material.diffuse.contents as! CGImage
+                    frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
+                }
+            }
+            var font: CTFont?
+            if let bytes = try? self.file("font/minecraft-ten.ttf"), bytes.count <= 4*1024*1024,
+               let provider = CGDataProvider(data:bytes as CFData), let face = CGFont(provider) {
+                font = CTFontCreateWithGraphicsFont(face,28,nil,nil)
+            }
+            let splashes = (try? self.json("splashes.json")["splashes"] as? [String]) ?? []
+            let splash = splashes.filter { !$0.isEmpty && $0.count <= 80 }.randomElement() ?? ""
+            self.releaseArchives()
+            DispatchQueue.main.async { completion(images,stone,frames,font,splash) }
         }
         queue.addOperation(operation)
+    }
+
+    func music() throws -> [String] {
+        try ["sounds/music/menu","sounds/music/game"].flatMap { directory in
+            try names(directory).filter { $0.hasSuffix(".ogg") && !$0.contains("/") && !$0.contains("\\") }
+                .map { directory+"/"+$0 }
+        }.prefix(128).map { $0 }
     }
 
     func releaseArchives() { archives.removeAll() }

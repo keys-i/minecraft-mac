@@ -68,6 +68,7 @@ ALLOWED_FILES = (
     'tools/legacy/run-windows.sh',
     'tools/build.py',
     'src/launcher/BedrockLauncher.swift',
+    'src/launcher/Music.swift',
     'src/launcher/Adventure.swift',
     'src/launcher/Assets.swift',
     'src/launcher/NBT.swift',

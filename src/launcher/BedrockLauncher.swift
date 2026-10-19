@@ -42,7 +42,10 @@ final class Launcher: ObservableObject {
     @Published var assets: Assets?
     @Published var sceneryFailed = false
     @Published var items: [World:NSImage] = [:]
+    @Published var frames: [String:NSImage] = [:]
     @Published var stone: NSImage?
+    @Published var gameFont: CTFont?
+    @Published var splash = ""
     #if LAUNCHER_TEST
     var previewImage: NSImage?
     init(status: Status, background: NSImage, assets: Assets) {
@@ -72,9 +75,10 @@ final class Launcher: ObservableObject {
         let development = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
         assets = try? Assets(data: !development.isEmpty && !FileManager.default.fileExists(atPath: data.path) ? installed : data)
         if let art = assets {
-            art.icons { [weak self] images,stone in
+            art.icons { [weak self] images,stone,frames,font,splash in
                 guard let self, self.assets === art else { return }
-                self.items = images; self.stone = stone
+                self.items = images; self.stone = stone; self.frames = frames
+                self.gameFont = font; self.splash = splash
             }
         }
     }
@@ -255,6 +259,28 @@ enum SceneryMotion {
     }
 }
 
+struct ShortcutHint {
+    private(set) var showing = true
+    private var deadline: TimeInterval?
+
+    mutating func focus(at time: TimeInterval) {
+        if showing {
+            if let deadline, time >= deadline { showing = false; self.deadline = time+70 }
+            else if deadline == nil { deadline = time+60 }
+        } else { deadline = time+70 }
+    }
+
+    mutating func advance(at time: TimeInterval) {
+        guard let deadline, time >= deadline else { return }
+        showing.toggle()
+        self.deadline = time+(showing ? 60 : 70)
+    }
+
+    mutating func dismiss(at time: TimeInterval) { showing = false; deadline = time+70 }
+    mutating func show(at time: TimeInterval) { showing = true; deadline = time+60 }
+    func delay(at time: TimeInterval) -> TimeInterval { max(0,(deadline ?? time)-time) }
+}
+
 private enum Blocks {
     static let grass = Color(red:0.48,green:0.78,blue:0.22)
     static let ink = Color(red:0.055,green:0.12,blue:0.025)
@@ -296,6 +322,33 @@ private struct BlockButton: ButtonStyle {
     }
 }
 
+private struct InventoryButton: ButtonStyle {
+    let selected: Bool
+    let slot: NSImage?
+    let selection: NSImage?
+    @Environment(\.isFocused) private var focused
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.frame(width:60,height:60)
+            .background {
+                if let slot { Image(nsImage:slot).resizable().interpolation(.none) }
+                else { Rectangle().fill(.black.opacity(0.65)).overlay { Rectangle().strokeBorder(.gray,lineWidth:3) } }
+            }
+            .overlay {
+                if selected {
+                    if let selection { Image(nsImage:selection).resizable().interpolation(.none).frame(width:72,height:72) }
+                    else { Rectangle().strokeBorder(.white,lineWidth:3).padding(-4) }
+                }
+            }
+            .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-6).opacity(focused ? 1 : 0) }
+            .brightness(configuration.isPressed ? -0.15 : hovered ? 0.12 : 0)
+            .opacity(enabled ? 1 : 0.45).contentShape(Rectangle())
+            .onHover { hovered = $0 }
+    }
+}
+
 private struct Slot: View {
     let world: World
     let image: NSImage?
@@ -317,7 +370,7 @@ private struct Slot: View {
                     context.fill(top,with:.color(colour));context.fill(left,with:.color(colour.opacity(0.65)));context.fill(right,with:.color(colour.opacity(0.85)))
                 }
             }
-        }.frame(width:30,height:30).accessibilityHidden(true)
+        }.frame(width:48,height:48).accessibilityHidden(true)
     }
 }
 
@@ -325,6 +378,8 @@ private struct Scenery: View {
     let journey: Journey
     let moving: Bool
     let exploring: Bool
+    let travel: (Int) -> Void
+    let finish: () -> Void
     @ObservedObject var launcher: Launcher
 
     var body: some View {
@@ -346,7 +401,8 @@ private struct Scenery: View {
 
     @ViewBuilder private var world: some View {
         if let assets = launcher.assets, !launcher.sceneryFailed {
-            Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring) { launcher.sceneryFailed = true }
+            Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
+                travel:travel,finish:finish) { launcher.sceneryFailed = true }
         }
     }
 }
@@ -367,6 +423,53 @@ private struct Experience: ProgressViewStyle {
     }
 }
 
+private struct GameTitle: View {
+    let image: NSImage?
+    let font: CTFont?
+    let splash: String
+    let width: CGFloat
+    let moving: Bool
+
+    private var splashText: some View {
+        Text(splash).font(Blocks.type(width*0.033)).foregroundStyle(.yellow)
+            .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.5)
+            .frame(width:width*0.48).shadow(color:.black.opacity(0.65),radius:0,x:1,y:1)
+    }
+
+    var body: some View {
+        VStack(spacing:-2) {
+            Group {
+                if let image { Image(nsImage:image).resizable().interpolation(.none).scaledToFit() }
+                else {
+                    Text("MINECRAFT").font(Blocks.type(width*0.082)).minimumScaleFactor(0.5)
+                        .lineLimit(1).shadow(color:.black.opacity(0.6),radius:0,y:3)
+                }
+            }.frame(width:width,height:width/5.52)
+            Text("MAC EDITION").font(font.map { Font(CTFontCreateCopyWithAttributes($0,width*0.042,nil,nil)) } ?? Blocks.type(width*0.042))
+                .foregroundStyle(.white).shadow(color:.black.opacity(0.85),radius:0,x:1,y:2)
+                .padding(.horizontal,20).padding(.vertical,3)
+                .background(Color(red:0.22,green:0.21,blue:0.20))
+                .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.18)).frame(height:2) }
+                .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.65)).frame(height:3) }
+                .overlay { Rectangle().strokeBorder(.black.opacity(0.85),lineWidth:2) }
+        }.frame(width:width)
+            .overlay(alignment:.bottomTrailing) {
+                if !splash.isEmpty {
+                    Group {
+                        if moving {
+                            splashText.phaseAnimator([false,true]) { content,small in
+                                content.scaleEffect(small ? 0.94 : 1)
+                            } animation: { _ in .easeInOut(duration:0.45) }
+                        } else { splashText }
+                    }.rotationEffect(.degrees(-20)).offset(x:width*0.19,y:2)
+                        .accessibilityHidden(true).allowsHitTesting(false)
+                }
+            }
+            .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft, Mac Edition")
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 struct LauncherView: View {
     @ObservedObject var launcher: Launcher
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -375,16 +478,39 @@ struct LauncherView: View {
     @Environment(\.openSettings) private var openSettings
     @AppStorage("animateScenery") private var animateScenery = true
     @AppStorage("rotateScenery") private var rotateScenery = true
+    @AppStorage("musicEnabled") private var musicEnabled = true
+    @AppStorage("musicVolume") private var musicVolume = 0.18
+    @StateObject private var music = Music()
     @State private var visible = true
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var exploring = false
     @State private var map = false
     @State private var search = ""
+    @State private var focused = false
+    @State private var hint = ShortcutHint()
+    @FocusState private var areaFocused: Bool
+    #if LAUNCHER_TEST
+    init(launcher: Launcher, exploring: Bool = false, hint: ShortcutHint = ShortcutHint()) {
+        _launcher = ObservedObject(wrappedValue:launcher)
+        _exploring = State(initialValue:exploring)
+        _hint = State(initialValue:hint)
+    }
+    #endif
     private var fresh: Bool { launcher.status.state == "new" }
     private var available: Bool { launcher.assets != nil && !launcher.sceneryFailed }
     private var moving: Bool {
         available && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery,lowPower:lowPower,
             active:scenePhase == .active,visible:visible,playing:launcher.status.state == "playing")
+    }
+    private var hintActive: Bool {
+        hintAvailable && visible && (hint.showing || focused && scenePhase == .active)
+    }
+    private var hintAvailable: Bool {
+        available && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
+    }
+    private var musicActive: Bool {
+        available && Music.enabled(muted:!musicEnabled,active:focused && scenePhase == .active,
+                                   visible:visible,playing:launcher.status.state == "playing")
     }
     private var primaryTitle: String {
         switch launcher.status.state {
@@ -402,7 +528,8 @@ struct LauncherView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Scenery(journey:launcher.journey,moving:moving,exploring:exploring,launcher:launcher)
+                Scenery(journey:launcher.journey,moving:moving,exploring:exploring,
+                    travel:{ launcher.journey.travel($0) },finish:{ explore(false) },launcher:launcher)
                     .frame(width:geometry.size.width,height:geometry.size.height).clipped().ignoresSafeArea().allowsHitTesting(exploring)
                 if exploring {
                     ZStack {
@@ -412,48 +539,63 @@ struct LauncherView: View {
                         .allowsHitTesting(false).accessibilityHidden(true)
                 }
                 VStack(spacing:0) {
-                    header.padding(.horizontal,28).padding(.top,28)
+                    header(width:geometry.size.width).padding(.horizontal,28).padding(.top,28)
                     Spacer(minLength:40)
-                    if exploring {
-                        Button { exploring = false } label: {
-                            Label("Drag to look around · Done",systemImage:"viewfinder").font(Blocks.action(13))
-                                .padding(.horizontal,18).frame(height:44)
-                        }.buttonStyle(BlockButton(texture:launcher.stone)).padding(.bottom,24)
-                    } else {
-                        VStack(spacing:16) {
-                            installation
-                            HStack(alignment:.center,spacing:12) {
-                                hotbar
-                                Button { exploring = true } label: {
-                                    VStack(spacing:5) {
-                                        Image(systemName:"viewfinder").font(.system(size:20))
-                                        Text("Look around").font(Blocks.action(10))
-                                    }.frame(width:72,height:64)
-                                }.buttonStyle(BlockButton(texture:launcher.stone))
-                                    .disabled(!available || launcher.journey.passage != nil)
-                                    .keyboardShortcut("l",modifiers:.command)
-                                    .help("Drag the world to look around. Escape returns to the trail")
-                            }
-                            location
-                        }.frame(maxWidth:640).padding(.horizontal,28)
-                        Text(launcher.sceneryFailed ? "Scenery unavailable for this game version" : available ? "1–4 change realms   ·   ⌘L look around" : "Install Minecraft to explore the live worlds")
-                            .font(.system(size:11)).foregroundStyle(.white.opacity(0.85))
-                            .shadow(color:.black.opacity(0.25),radius:2,y:1).padding(.top,14).padding(.bottom,18)
+                    VStack(spacing:22) {
+                        if !exploring { installation }
+                        hotbar
+                    }.frame(maxWidth:640).padding(.horizontal,28).padding(.bottom,24)
+                }
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        look.padding(24)
                     }
+                }
+                if hintAvailable && hint.showing {
+                    VStack {
+                        HStack { Spacer(); achievement }
+                        Spacer()
+                    }.padding(.trailing,28).padding(.top,exploring ? 96 : min(322,geometry.size.width*0.22+94))
+                        .transition(.opacity)
                 }
             }
         }
         .foregroundStyle(.white).environment(\.colorScheme,.dark)
         .frame(minWidth:760,minHeight:620)
-        .onExitCommand { if map { map = false } else if exploring { exploring = false } else if launcher.canCancel { launcher.cancel() } }
+        .onAppear {
+            if let window = NSApp?.keyWindow { focused = window.title == "Minecraft for MacOS" }
+        }
+        .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
+        .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
+        .onDisappear { music.stop() }
+        .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
+            focused = (notification.object as? NSWindow)?.title == "Minecraft for MacOS"
+        }
+        .onReceive(NotificationCenter.default.publisher(for:NSWindow.didResignKeyNotification)) { notification in
+            if (notification.object as? NSWindow)?.title == "Minecraft for MacOS" { focused = false }
+        }
+        .task(id:[hintActive,exploring]) {
+            guard hintActive else { return }
+            hint.focus(at:ProcessInfo.processInfo.systemUptime)
+            while !Task.isCancelled {
+                do { try await Task.sleep(for:.seconds(hint.delay(at:ProcessInfo.processInfo.systemUptime))) } catch { return }
+                guard !Task.isCancelled else { return }
+                hint.advance(at:ProcessInfo.processInfo.systemUptime)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration:0.18),value:hint.showing)
+        .onExitCommand { if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
         .onReceive(NotificationCenter.default.publisher(for:.NSProcessInfoPowerStateDidChange)) { _ in lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didChangeOcclusionStateNotification)) { _ in
             visible = NSApp.windows.contains { $0.title == "Minecraft for MacOS" && $0.occlusionState.contains(.visible) }
         }
         .onChange(of:reduceMotion) { if reduceMotion { launcher.journey.skip() } }
         .onChange(of:lowPower) { if lowPower { launcher.journey.skip() } }
-        .onChange(of:launcher.journey.world) { exploring = false }
-        .onChange(of:launcher.status.state) { if launcher.status.state == "playing" { exploring = false } }
+        .onChange(of:available) { if !available { explore(false) } }
+        .onChange(of:launcher.journey.world) { if launcher.journey.passage != nil { explore(false) } }
+        .onChange(of:launcher.status.state) { if launcher.status.state == "playing" { explore(false) } }
         .task(id:moving && !exploring && (rotateScenery || launcher.journey.passage != nil)) {
             guard moving, !exploring, rotateScenery || launcher.journey.passage != nil else { return }
             while !Task.isCancelled {
@@ -464,16 +606,16 @@ struct LauncherView: View {
         }
     }
 
-    private var header: some View {
-        ZStack(alignment:.top) {
-            VStack(spacing:4) {
-                Text("Minecraft").font(Blocks.type(42))
-                    .shadow(color:.black.opacity(0.3),radius:2,y:1)
-                Text("for MacOS").font(.system(size:13,weight:.semibold)).tracking(1.2).foregroundStyle(Blocks.gold)
-                    .shadow(color:.black.opacity(0.25),radius:1,y:1)
-            }.padding(.top,12).accessibilityElement(children:.combine).accessibilityAddTraits(.isHeader)
-            HStack(spacing:8) {
+    private func header(width: CGFloat) -> some View {
+        VStack(spacing:18) {
+            HStack(alignment:.top,spacing:8) {
+                location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
                 Spacer()
+                Button { musicEnabled.toggle() } label: {
+                    Image(systemName:musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill").frame(width:44,height:44)
+                }.help(musicEnabled ? "Mute music · \(music.title)" : "Play Minecraft music")
+                    .accessibilityLabel(musicEnabled ? "Mute music" : "Play Minecraft music")
+                    .disabled(!available)
                 Button { launcher.showHelp() } label: { Image(systemName:"questionmark").frame(width:44,height:44) }
                     .help("Help").accessibilityLabel("Help")
                 Button { openSettings() } label: { Image(systemName:"gearshape.fill").frame(width:44,height:44) }
@@ -483,53 +625,101 @@ struct LauncherView: View {
                     .help(reduceMotion ? "Reduced Motion is enabled" : lowPower ? "Scenery pauses in Low Power Mode" : "Pause or resume the adventure")
                     .disabled(reduceMotion || lowPower)
             }.buttonStyle(BlockButton(texture:launcher.stone))
-        }.frame(height:84)
+            if !exploring {
+                GameTitle(image:launcher.frames["title"],font:launcher.gameFont,splash:launcher.splash,
+                          width:min(700,width*0.67),moving:moving && focused && !map && launcher.status.state != "error")
+            }
+        }
     }
 
     private var location: some View {
-        HStack(alignment:.bottom) {
-            VStack(alignment:.leading,spacing:6) {
-                Text(launcher.journey.world == .sift ? "The Sift · interpretation" : launcher.journey.world.title).font(.system(size:12,weight:.semibold)).foregroundStyle(Blocks.gold)
-                Text(launcher.journey.title).font(Blocks.action(18))
-                    .shadow(color:.black.opacity(0.25),radius:2,y:1).lineLimit(2)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            Spacer(minLength:12)
-            if launcher.journey.passage != nil {
+        VStack(alignment:.leading,spacing:8) {
+            if let passage = launcher.journey.passage {
+                Text(passage == .mine ? "Mineshaft" : passage == .stronghold ? "Stronghold" : "Rift valley")
+                    .font(Blocks.action(18)).accessibilityAddTraits(.isHeader)
                 Button { launcher.journey.skip() } label: {
-                    Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,14).frame(height:44)
+                    Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,12).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             } else {
                 Button { search = ""; map = true } label: {
-                    Label("Explore biomes",systemImage:"map").font(Blocks.action(13))
-                        .padding(.horizontal,14).frame(height:44)
-                }.buttonStyle(BlockButton(texture:launcher.stone)).disabled(!available)
-                    .popover(isPresented:$map) { biomeMap }
+                    HStack(spacing:8) {
+                        Text(launcher.journey.title).font(Blocks.action(18))
+                            .lineLimit(2).multilineTextAlignment(.leading)
+                        Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
+                    }.frame(minHeight:44)
+                        .shadow(color:.black.opacity(0.25),radius:2,y:1)
+                }.buttonStyle(.plain).focused($areaFocused)
+                    .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(areaFocused ? 1 : 0) }
+                    .accessibilityLabel("Choose biome: " + launcher.journey.title)
+                    .help(launcher.journey.world == .sift ? "Sift interpretation · Choose biome" : "Choose biome or landmark")
+                    .disabled(!available).popover(isPresented:$map) { biomeMap }
             }
-        }.frame(maxWidth:.infinity)
+        }
     }
 
     private var hotbar: some View {
-        HStack(spacing:6) {
+        HStack(spacing:0) {
             ForEach(launcher.worlds.indices,id:\.self) { index in
                 let world = launcher.worlds[index]
-                Button {
-                    launcher.journey.select(world,animated:moving)
-                } label: {
-                    VStack(spacing:5) {
-                        Slot(world:world,image:launcher.items[world])
-                        Text(world.title).font(Blocks.action(10)).lineLimit(1)
-                    }.frame(width:66,height:64)
-                        .overlay(alignment:.topLeading) { Text("\(index+1)").font(.system(size:9,weight:.bold)).foregroundStyle(.white.opacity(0.5)).padding(5) }
+                Button { launcher.journey.select(world,animated:moving && !exploring) } label: {
+                    Slot(world:world,image:launcher.items[world])
                 }
-                .buttonStyle(BlockButton(selected:launcher.selection == index,texture:launcher.stone))
+                .buttonStyle(InventoryButton(selected:launcher.selection == index,
+                    slot:launcher.frames["hotbar_0"],selection:launcher.frames["selected_hotbar_slot"]))
                 .keyboardShortcut(KeyEquivalent(Character(String(index+1))),modifiers:[])
                 .disabled(!available)
                 .accessibilityLabel("\(world.title) scenery")
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
                 .help(world == .sift ? "Sift interpretation · 4" : "\(world.title) · \(index+1)")
             }
-        }.padding(6).background(.black.opacity(0.5))
+        }.padding(6).background(.black.opacity(0.3))
+            .accessibilityElement(children:.contain).accessibilityLabel("Realm hotbar")
+    }
+
+    private var look: some View {
+        Button { explore(!exploring) } label: {
+            VStack(spacing:1) {
+                Image(systemName:exploring ? "eye.fill" : "eye").font(.system(size:24,weight:.medium))
+                Image(systemName:"arrow.left.and.right").font(.system(size:11,weight:.semibold))
+            }.frame(width:56,height:56)
+        }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone))
+            .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
+            .keyboardShortcut("l",modifiers:.command)
+            .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
+            .accessibilityHint("WASD flies, Space and Shift change height, arrow keys or dragging turn the view, brackets change biomes")
+            .help(exploring ? "WASD fly · Space/Shift height · Drag/arrows look · Scroll speed · [ ] biomes · Escape returns" : "Look around (⌘L) · Spectator flight")
+    }
+
+    private func explore(_ enabled: Bool) {
+        if enabled { hint.show(at:ProcessInfo.processInfo.systemUptime) }
+        else { hint.dismiss(at:ProcessInfo.processInfo.systemUptime) }
+        exploring = enabled
+    }
+
+    private var achievement: some View {
+        HStack(spacing:12) {
+            Image(systemName:"eye").font(.system(size:25,weight:.medium))
+                .frame(width:40,height:40).foregroundStyle(Blocks.gold)
+            if exploring {
+                VStack(alignment:.leading,spacing:5) {
+                    Text("Spectator mode").font(Blocks.type(13)).foregroundStyle(Blocks.gold)
+                    Text("WASD fly · Drag to look").font(.system(size:12,weight:.medium))
+                    Text("Space/Shift height · [ ] biomes").font(.system(size:11))
+                }
+            } else {
+                Text("\(Text("⌘ + L").font(.system(size:13,weight:.semibold)).foregroundColor(Blocks.gold)) to look around")
+                    .font(Blocks.type(13)).lineLimit(1)
+            }
+        }.padding(.horizontal,14).frame(height:exploring ? 88 : 64)
+            .background {
+                Rectangle().fill(Color(white:0.12))
+                    .shadow(color:.black.opacity(0.3),radius:2,y:3)
+            }
+            .overlay { Rectangle().strokeBorder(Color(white:0.5),lineWidth:2) }
+            .overlay { Rectangle().strokeBorder(.black.opacity(0.75),lineWidth:1).padding(3) }
+            .accessibilityElement(children:.combine)
+            .accessibilityLabel(exploring ? "Spectator mode: WASD flies, Space and Shift change height, arrow keys or dragging turn the view, brackets change biomes" : "Press Command L to look around")
+            .allowsHitTesting(false)
     }
 
     private var biomeMap: some View {
@@ -653,6 +843,8 @@ struct LauncherView: View {
 private struct Preferences: View {
     @AppStorage("animateScenery") private var animateScenery = true
     @AppStorage("rotateScenery") private var rotateScenery = true
+    @AppStorage("musicEnabled") private var musicEnabled = true
+    @AppStorage("musicVolume") private var musicVolume = 0.18
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
@@ -668,6 +860,13 @@ private struct Preferences: View {
             Section("Minecraft") {
                 Text("Change game graphics, sound, controls and accessibility inside Minecraft.")
                     .foregroundStyle(.secondary)
+            }
+            Section("Launcher music") {
+                Toggle("Play Minecraft menu and game music",isOn:$musicEnabled)
+                Slider(value:$musicVolume,in:0...1) { Text("Volume") }
+                    .disabled(!musicEnabled).accessibilityValue("\(Int(musicVolume*100)) percent")
+                Text("Uses your installed game’s music. Pauses when you leave the launcher or start Minecraft.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped).padding(16).frame(width: 460)

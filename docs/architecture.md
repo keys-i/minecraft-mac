@@ -46,13 +46,41 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 
 The native title screen places a central Play button and compact four-slot realm
 hotbar over one live SceneKit world. Busy/error states use a separate status panel
-Monocraft supplies the main title; rounded system type identifies actions and
-section titles, and plain system type supplies supporting copy
-Original installed item icons identify the realms
+The installed game supplies the original title artwork, Minecraft Ten subtitle
+font and splash pool. The Mac Edition plaque follows the Pocket Edition treatment
+The yellow splash uses a native repeating scale animation, removed when motion
+is disabled, the launcher loses focus or a game/error/biome picker takes priority
+Monocraft supplies the fallback title and shortcut toast; rounded system type
+identifies actions, and plain system type supplies supporting copy
+Original installed item icons and hotbar/selection textures supply the connected
+inventory bar. Realm names and number shortcuts remain in help/accessibility labels
 Stone controls use the installed stone texture and share hover, press and focus states
-The searchable biome picker and native menus give direct access to every area
-Look around pauses the camera route and lets a pan gesture turn the view
-Leaving that mode restores the route; dismantling removes the recogniser
+The top-left biome name opens the searchable picker; native menus also give direct access
+The bottom-right eye control or ⌘L enters spectator flight in `FlightView`
+Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
+arrows turn, dragging aims and scrolling changes speed between 2 and 32 blocks/s
+A 20 Hz timer exists only while movement/turning keys are held; focus loss,
+responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
+Crossing an authored area boundary or pressing brackets loads the next/previous
+biome in the current realm. Only one graph is presented; obsolete builds cancel
+Arrival wraps to the opposite edge, preserves direction/relative height and
+uses a safe landing when an End island gives way to void. These are authored
+area swaps, not continuous Minecraft generation. Realm slots remain available
+Leaving flight restores the current area route; teardown removes the recogniser
+`ShortcutHint` owns the 60-second toast and subsequent 70-second focused wait
+The view uses key-window notifications so Settings does not count as launcher focus
+One cancellable sleeping task handles deadlines without polling; a hidden toast's
+wait restarts after focus is lost, while an already visible toast keeps its expiry
+Entering flight replaces it with 60-second movement instructions; leaving
+dismisses it. Setup, errors, passages and a running game suppress the toast
+A running game disables Look around
+`Music.swift` owns one native AVAudioPlayer and one cancellable load on the
+existing serial asset queue. It reads original installed menu/game Ogg tracks
+on demand, avoids an immediate repeat and limits each source to 32 MiB/20 minutes
+The visible speaker button and Settings share a mute preference and volume
+(default 18%). Losing launcher focus, occlusion or game launch pauses playback
+Closing the view cancels the pending load and releases the player. Artwork,
+fonts and audio remain in the owner’s installation and are never redistributed
 `Assets.swift` reads original models, textures and structure templates from the
 owner's installed `game/data` directory. `NBT.swift` decodes bounded gzip/NBT
 structures; the archive reader supports the game's versioned `.brarchive` packs

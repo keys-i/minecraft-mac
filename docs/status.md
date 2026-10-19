@@ -10,6 +10,30 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Spectator title screen in 0.10
+
+The native launcher now uses the owner’s original Minecraft title artwork and
+splash pool, a Minecraft Ten Mac Edition subtitle and a connected item hotbar
+The permanent keyboard footer is replaced by a 60-second achievement-style hint
+that returns after 70 uninterrupted seconds of launcher-window focus
+The top-left control shows only the biome; Look around stays in the lower corner
+
+Spectator view adds WASD/Space/Shift flight, arrow/drag aiming, scroll speed and
+bracket/boundary travel between authored habitats. It keeps one current graph,
+cancels replaced loads and clears held input on focus loss. Area changes are
+scene swaps, not continuous game world generation
+Original installed menu/game music uses native AVAudioPlayer, with a visible
+mute control, Settings volume and focus/visibility/gameplay pause gates
+No game artwork, font or audio is added to source or distribution
+
+The 92 Python tests, native fixtures and installed-art integration pass
+Source-rendered layouts include flight, narrow, hidden-hint, error and missing-art
+states. Four elevated views stay within the existing 50 ms scenery budget
+[The method and results](test.md#spectator-flight-title-artwork-and-music-in-010)
+record actual GPU/wall timings and distinguish preparation from listening tests
+Full-window input, VoiceOver, audible transitions and long-session memory remain
+unverified because the disposable preview is not accessible to Computer Use
+
 ## Typography refinement in 0.9.1
 
 The main title retains Monocraft; actions and section titles use rounded system

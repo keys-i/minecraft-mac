@@ -44,14 +44,34 @@ not a resumable transfer. Avoid starting multiple copies of the app.
 
 ## Background scenery
 
-After Minecraft is installed, use the map menu to choose a biome or landmark
-The realm buttons travel through a mine's Nether portal, a stronghold's End
-portal or an artistic Sift rift. Choose **Skip journey** to go straight there
-Each stop now has its own landscape and resident groups. Explore village farms,
-a pillager outpost, woodland mansion, coral reef, Trial Chamber, bastion and the
-End City's towers, bridges and ship. Nether entry travels down a mine before
-crossing the portal; End entry passes a stronghold library and Silverfish spawner
+After Minecraft is installed, click the biome name at the top left to find an
+area. Choose realms with the four item slots in the inventory bar or keys **1–4**
+Normal realm changes pass through a mine’s Nether portal, a stronghold’s End
+portal or an artistic Sift rift. **Skip journey** goes straight there
 Pause motion beside Help, or change automatic touring in Settings
+
+The eye-and-arrows button at the bottom right or **⌘L** enters spectator view
+Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by dragging
+or with the **arrow keys**. Scroll to change flight speed
+Cross an area’s edge or press **[ / ]** to travel to the previous/next biome
+The biome name and hotbar still work. These are 40 authored areas with scene
+changes between them, rather than an infinitely generated Minecraft world
+Use the same eye button, **⌘L** or **Escape** to return to the camera route
+
+The achievement-style shortcut hint stays for one minute, then returns after
+70 uninterrupted seconds of launcher-window focus. Settings and other apps
+restart that wait. Flight replaces it briefly with movement instructions
+Hints stay out of the way during setup, errors and portal journeys
+
+The title uses the installed game’s artwork and yellow splash list, with a
+Mac Edition subtitle. Splash motion follows your scenery and macOS motion settings
+
+Use the speaker button to mute/unmute original Minecraft menu and game music
+**Settings → Launcher music** changes its volume, initially 18%
+Music pauses when another window/app takes focus, the launcher is hidden or
+Minecraft is running. No music download is added; tracks come from your own
+installed copy, including **Sweden** when available. No **Stockholm** track was
+found in the tested installation
 
 The background reads art from your installed game. Before installation, the
 poster stays visible. An unsupported art format also falls back to the poster
@@ -135,12 +155,6 @@ workflow.
 releases and offers the Releases page for manual review. It distinguishes app
 DMGs from source archives and does not replace your installation. Use **Settings…**
 for scenery preferences; game graphics and controls stay in Minecraft's settings
-Use **Explore biomes** to search and jump to any biome or landmark.
-Choose realms with the four hotbar slots or keys **1–4**. **Look around** or **⌘L** lets you
-drag the world; **Done** or **Escape** returns to the camera route
-
-Realm changes include a mine,
-stronghold or artistic rift crossing; **Skip journey** goes straight to the destination
 
 There is no automatic app or game updater. For an app update, back up the prefix,
 close the game and launcher, and replace only the application in Applications.

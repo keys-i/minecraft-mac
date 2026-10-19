@@ -51,7 +51,7 @@ Compile the interface on a Mac with Command Line Tools:
 ```sh
 python3 minecraft.py build launcher
 xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
+  src/launcher/BedrockLauncher.swift src/launcher/Music.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
@@ -89,6 +89,43 @@ The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
 
 The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
+
+### Spectator flight, title artwork and music in 0.10
+
+On October 19, 2026, the native synthetic and installed-art checks pass, alongside
+all 92 Python tests. New regressions cover the 60/70-second hint deadlines,
+refocus, dismissal, flight direction, diagonal normalisation, delta caps,
+vertical movement, arrow aiming, boundary debounce, safe arrivals across all
+areas, Escape/disposal, biome wrapping and all four audio pause gates
+Synthetic silent audio checks native playback, pause/resume, stop and cancelled
+loads without audible output. Installed-art integration checks the original
+hotbar/title, subtitle font, splash pool, menu/Sweden paths and native Ogg decoding
+This verifies decoding/preparation, not an audible listening session
+
+Source-generated layouts cover normal, narrow, long biome, portal, first-run,
+progress, error, long scroll-backed detail, playing, spectator, hidden-hint and
+missing-art states. The title/splash/hint overlap was corrected before packaging
+The real preview window, physical flight input, timed focus transitions,
+VoiceOver, audible transitions and long-session memory remain manual checks
+
+The same M3 Pro / 36 GB Metal method compares the current route with an elevated
+flight viewpoint (12, 72, 24), looking at (0, 4, −30). Each of eight views uses ten
+warm-up and sixty measured frames at 1040 × 760 with 4× MSAA. Chrome for Testing
+stays running; other render probes finish before measurement
+
+| Area | Route GPU p95 | Flight GPU p95 | Flight wall p95 |
+| --- | --- | --- | --- |
+| Meadow village | 7.27 ms | 7.64 ms | 10.88 ms |
+| Jungle temple | 7.39 ms | 8.14 ms | 11.46 ms |
+| Crimson Forest / bastion | 8.66 ms | 8.51 ms | 11.95 ms |
+| End City / ship | 7.31 ms | 7.51 ms | 9.10 ms |
+
+These views retain the same 264–557 nodes and 103,064–264,190 logical triangles
+Route and flight remain inside the existing 50 ms scenery budget. This is a
+sample of elevated views, not exhaustive flight coverage or game FPS evidence
+The flight timer runs only while keys are held; scenery remains capped at 20 fps
+Music retains one player and one pending load, with source bytes bounded to
+32 MiB and track duration to twenty minutes. No memory reduction is claimed
 
 ### Gameplay-reference composition in 0.9
 

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SceneKit
+import CoreText
 
 @main
 struct LauncherChecks {
@@ -28,6 +29,83 @@ struct LauncherChecks {
                                                 lowPower: disabled == 2, active: disabled != 3,
                                                 visible: disabled != 4, playing: disabled == 5))
         }
+        precondition(Music.enabled(muted:false,active:true,visible:true,playing:false))
+        for disabled in 0..<4 {
+            precondition(!Music.enabled(muted:disabled == 0,active:disabled != 1,
+                                        visible:disabled != 2,playing:disabled == 3))
+        }
+        var shortcut = ShortcutHint()
+        shortcut.focus(at:10)
+        precondition(shortcut.showing && shortcut.delay(at:10) == 60)
+        shortcut.advance(at:69)
+        precondition(shortcut.showing)
+        shortcut.advance(at:70)
+        precondition(!shortcut.showing && shortcut.delay(at:70) == 70)
+        shortcut.focus(at:90)
+        shortcut.advance(at:159)
+        precondition(!shortcut.showing)
+        shortcut.advance(at:160)
+        precondition(shortcut.showing && shortcut.delay(at:160) == 60)
+        shortcut.focus(at:190)
+        precondition(shortcut.delay(at:190) == 30)
+        shortcut.focus(at:230)
+        precondition(!shortcut.showing && shortcut.delay(at:230) == 70)
+        shortcut.advance(at:300)
+        shortcut.dismiss(at:305)
+        precondition(!shortcut.showing && shortcut.delay(at:305) == 70)
+        shortcut.show(at:310)
+        precondition(shortcut.showing && shortcut.delay(at:310) == 60)
+        let flying = FlightView(frame:.init(x:0,y:0,width:320,height:200))
+        let flightScene = SCNScene(), eye = SCNNode()
+        eye.camera = SCNCamera(); eye.position = .init(0,10,0)
+        flightScene.rootNode.addChildNode(eye)
+        flying.scene = flightScene; flying.pointOfView = eye
+        flying.install(eye,area:.meadow); flying.exploring = true
+        func key(_ code: UInt16, type: NSEvent.EventType = .keyDown, flags: NSEvent.ModifierFlags = []) -> NSEvent {
+            NSEvent.keyEvent(with:type,location:.zero,modifierFlags:flags,timestamp:0,windowNumber:0,
+                context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:code)!
+        }
+        flying.keyDown(with:key(13))
+        flying.advance(seconds:0.1)
+        precondition(abs(eye.position.z+0.8)<0.001 && eye.position.x == 0)
+        flying.keyDown(with:key(2))
+        let before = eye.position
+        flying.advance(seconds:10)
+        precondition(abs(hypot(eye.position.x-before.x,eye.position.z-before.z)-0.8)<0.001)
+        flying.stop(); precondition(flying.keys.isEmpty)
+        flying.keyDown(with:key(49)); flying.advance(seconds:0.1)
+        precondition(abs(eye.position.y-10.8)<0.001)
+        flying.keyUp(with:key(49,type:.keyUp))
+        flying.flagsChanged(with:key(56,type:.flagsChanged,flags:.shift)); flying.advance(seconds:0.1)
+        precondition(abs(eye.position.y-10)<0.001)
+        flying.stop()
+        flying.keyDown(with:key(124)); flying.advance(seconds:0.1)
+        precondition(-eye.simdWorldTransform.columns.2.x > 0)
+        flying.stop()
+        flying.keyDown(with:key(126)); flying.advance(seconds:0.1)
+        precondition(-eye.simdWorldTransform.columns.2.y > 0)
+        flying.stop()
+        var trips = 0
+        flying.travel = { step in precondition(step == 1); trips += 1 }
+        eye.position = .init(81,12,0)
+        flying.advance(seconds:0.1); flying.advance(seconds:0.1)
+        precondition(trips == 1)
+        let nextEye = SCNNode(); nextEye.camera = SCNCamera(); flightScene.rootNode.addChildNode(nextEye)
+        flying.pointOfView = nextEye; flying.install(nextEye,area:.forest)
+        precondition(nextEye.position.x == -76 && nextEye.position.y > Terrain(biome:.forest).height(-76,0))
+        for area in Biome.allCases {
+            let arrival = FlightView.arrival(area,point:.init(81,20,-113),height:10)
+            precondition(Terrain(biome:area).height(arrival.x,arrival.z) > -90 && arrival.y.isFinite)
+        }
+        var exited = false
+        flying.finish = { exited = true }; flying.keyDown(with:key(53))
+        precondition(exited && flying.keys.isEmpty)
+        flying.dispose(); precondition(flying.controller.pointOfView == nil)
+        var roaming = Journey()
+        roaming.travel(-1)
+        precondition(roaming.biome == World.overworld.biomes.count-1 && roaming.passage == nil)
+        roaming.travel(1)
+        precondition(roaming.biome == 0 && roaming.world == .overworld)
         let releases = [
             AppRelease(tag_name: "v1", html_url: URL(string: "https://github.com/keys-i/minecraft-mac/releases/tag/v1")!, assets: [.init(name: "App.dmg")]),
             AppRelease(tag_name: "v1", html_url: URL(string: "https://example.com/releases/tag/v1")!, assets: [.init(name: "App.dmg")]),
@@ -91,6 +169,32 @@ struct LauncherChecks {
             try Data([UInt8(value)]).write(to:pack.appendingPathComponent("precedence"))
         }
         let art = try Assets(data:fixture)
+        let silent = Data(base64Encoded:"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=")!
+        var wave = silent
+        let samples = Data(count:16000)
+        wave.append(samples)
+        func size(_ number: UInt32, at offset: Int) {
+            var little = number.littleEndian
+            withUnsafeBytes(of:&little) { wave.replaceSubrange(offset..<offset+4,with:$0) }
+        }
+        size(UInt32(wave.count-8),at:4); size(UInt32(samples.count),at:40)
+        let songs = fixture.appendingPathComponent("resource_packs/vanilla/sounds/music/menu")
+        try FileManager.default.createDirectory(at:songs,withIntermediateDirectories:true)
+        try wave.write(to:songs.appendingPathComponent("fixture.ogg"))
+        let music = Music()
+        music.update(assets:art,active:true,volume:0)
+        let musicLimit = Date().addingTimeInterval(5)
+        while music.pending && Date() < musicLimit { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+        precondition(music.isPlaying && music.title == "Fixture")
+        music.update(assets:art,active:false,volume:0)
+        precondition(!music.isPlaying && !music.pending)
+        music.update(assets:art,active:true,volume:0)
+        precondition(music.isPlaying)
+        music.stop(); precondition(!music.isPlaying && !music.pending)
+        music.update(assets:art,active:true,volume:0); music.stop()
+        art.queue.waitUntilAllOperationsAreFinished()
+        RunLoop.main.run(until:Date().addingTimeInterval(0.02))
+        precondition(!music.isPlaying && !music.pending)
         precondition(art.resources.map(\.lastPathComponent) == ["vanilla","vanilla_1.9","vanilla_1.10"])
         let latest = try art.file("precedence")
         precondition(latest == Data([10]))
@@ -187,6 +291,25 @@ struct LauncherChecks {
             return
         }
         let assets = try Assets(data:URL(fileURLWithPath:data)), factory = Mobs(assets:try Assets(data:URL(fileURLWithPath:data)))
+        var frames: [String:NSImage]?
+        assets.icons { images,stone,loaded,font,splash in
+            precondition(Thread.isMainThread && images.count == 4 && stone != nil)
+            precondition(font.map { CTFontCopyPostScriptName($0) as String } == "Minecraft-Ten" && !splash.isEmpty && loaded["title"] != nil)
+            frames = loaded
+        }
+        let artLimit = Date().addingTimeInterval(5)
+        while frames == nil && Date() < artLimit { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+        precondition(frames?["hotbar_0"] != nil && frames?["selected_hotbar_slot"] != nil)
+        let tracks = try assets.music()
+        precondition(tracks.contains("sounds/music/game/sweden.ogg") && tracks.contains("sounds/music/menu/menu1.ogg"))
+        var decoded = false
+        assets.song(excluding:nil) { song in
+            precondition(song != nil && song!.0.duration > 0 && !song!.0.isPlaying)
+            decoded = true
+        }
+        let audioLimit = Date().addingTimeInterval(10)
+        while !decoded && Date() < audioLimit { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+        precondition(decoded)
         var loaded: SCNScene?
         let queued = Date()
         assets.load(.overworld,biome:0,passage:nil) { result in
