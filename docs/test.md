@@ -70,9 +70,10 @@ To check the art from your own installation as well:
 BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
 ```
 
-This read-only integration constructs all 46 residents, hero rigs, eleven pages
-and three passages. It checks distinct Blaze rods, mirrored dragon bounds,
-node/triangle budgets and camera-action replacement. It does not launch Minecraft
+This read-only integration constructs all 62 resident types, the dragon, 37
+independent habitats and three passages. It checks distinct Blaze rods, Breeze
+wind layers, mirrored dragon bounds, mob placement away from void, node/triangle
+budgets, camera-action replacement and portal endpoints. It does not launch Minecraft
 
 Use `python3 minecraft.py build preview` to inspect first-run, progress,
 cancellation, retry and running-game states without touching a real account

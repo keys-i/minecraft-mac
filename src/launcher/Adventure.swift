@@ -1,5 +1,6 @@
 import AppKit
 import SceneKit
+import SpriteKit
 import SwiftUI
 
 enum World: String, CaseIterable {
@@ -47,9 +48,7 @@ struct Adventure: NSViewRepresentable {
     final class Coordinator {
         var world: World?
         var biome: Int?
-        var page: Int?
         var passage: Passage?
-        var focused: Int?
         var moving = false
         var request = 0
         var operation: Operation?
@@ -69,36 +68,26 @@ struct Adventure: NSViewRepresentable {
     func updateNSView(_ view: SCNView, context: Context) {
         let coordinator = context.coordinator
         coordinator.moving = moving
-        coordinator.biome = biome
         if coordinator.world != world || coordinator.passage != passage
-            || (passage == nil && coordinator.page != world.page(biome)) {
-            view.scene?.isPaused = true
-            view.scene = nil
+            || (passage == nil && coordinator.biome != biome) {
             coordinator.operation?.cancel()
             coordinator.request += 1
             let request = coordinator.request
             coordinator.world = world
-            coordinator.page = world.page(biome)
+            coordinator.biome = biome
             coordinator.passage = passage
-            coordinator.focused = nil
             coordinator.operation = assets.load(world, biome: biome, passage: passage) { [weak view, weak coordinator] result in
                 guard let view, let coordinator, coordinator.request == request else { return }
                 switch result {
                 case .success(let scene):
-                    if passage == nil {
-                        let selected = coordinator.biome ?? biome
-                        Landscape.focus(scene, world: world, biome: selected, animated: false)
-                        coordinator.focused = selected
-                    }
-                    view.scene = scene
-                    view.pointOfView = scene.rootNode.childNode(withName: "camera", recursively: false)
+                    let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
+                    if coordinator.moving, view.scene != nil {
+                        view.present(scene,with:.crossFade(withDuration:0.65),incomingPointOfView:camera,completionHandler:nil)
+                    } else { view.scene = scene; view.pointOfView = camera }
                     Self.motion(view, enabled: coordinator.moving)
                 case .failure: failed()
                 }
             }
-        } else if passage == nil, coordinator.focused != biome, let scene = view.scene {
-            Landscape.focus(scene, world: world, biome: biome, animated: moving)
-            coordinator.focused = biome
         }
         Self.motion(view, enabled: moving)
     }

@@ -51,32 +51,45 @@ structures; the archive reader supports the game's versioned `.brarchive` packs
 Newer packs override older packs in numeric version order, and empty archive
 stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`Biome.swift` defines 31 selectable habitat and landmark areas across four realms
-`Landscape.swift` builds three neighbouring areas at a time and releases the old
-graph when its page changes. Static blocks share meshes with buried faces omitted
-`Mobs.swift` uses 46 original resident models plus the Happy Ghast and dragon
-Original rig parts supply the Blaze's orbiting rods and the dragon's assembly
-Ambient actions are native animation, not Minecraft's full animation engine
+`Biome.swift` defines 37 selectable habitats and landmark visits across four realms
+`Landscape.swift` builds one complete habitat per selection, replacing the former
+three-biome strips. Terrain uses a sampled height field with buried faces omitted
+Original block materials supply strata, vegetation, roots, fungi, chorus plants,
+waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
+particles move independently of the camera
 
-`Structures.swift` imports the original village houses, igloo, ruined portals,
-Ancient City centre, bastion entrance, fossils, shipwreck and End City pieces
-Code-generated landmarks and passages use the installed game's block textures
+`Mobs.swift` shares original geometry/skins within each scene and places 62 types
+in habitat-specific groups. Aquatic residents use water pockets, Striders use lava,
+and fortress residents use bridge height. The dragon stays at the central island
+Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
+from the installed assets. Ambient actions do not reproduce the game's AI or
+complete animation system
+
+`Structures.swift` imports original village, outpost, mansion, igloo, ruined portal,
+Trial Chamber, Ancient City, bastion, fossil, shipwreck and End City pieces
+The chamber exposes its near walls and roof for an interior view. Mansion panels
+and End City towers/bridges are composed locally from original templates
+Code-generated temples, huts, fortresses and passages use installed block textures
 Some partial blocks and structure entities remain simplified; the launcher does
-not reproduce the game renderer, world generation, AI or Molang interpreter
+not reproduce world generation, the game renderer or its Molang interpreter
 
 | Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | 14 | Villages, snow, peaks, deserts, badlands, mangroves, jungle, mushroom fields, Pale Garden, coast, lush caves and Ancient City |
-| Nether | All five biomes | Piglins, hoglins, striders, Ghasts, Blazes, skeletons and magma cubes; fortress, bastion and fossils |
-| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; towers, crystals, chorus plants, city and ship |
+| Overworld | 20 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef ruins, lush/dripstone caves, Trial Chamber and Ancient City |
+| Nether | All five biomes | Piglins, brutes, Hoglins, Striders, Ghasts, Blazes, Wither Skeletons and magma cubes; fortress, bastion and fossils |
+| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; caged crystals, chorus branches, gateway, city towers, bridges and ship |
 | Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
 
-`Journey.swift` owns bounded selection, the 18-second area clock and three
-14-second passage scenes. Nether entry follows a mine's rails through a 4 × 5
-obsidian portal. End entry crosses an Overworld stronghold library and descends
-into a 12-frame End portal. Sift uses an explicitly artistic rift crossing
+`Journey.swift` owns bounded selection and the 18-second area clock
+The 22-second Nether entry descends a supported, ore-lined mine past side shafts,
+cobwebs, a minecart and bats, then crosses a 4 × 5 obsidian portal into a lava/
+fortress vista. The 20-second End entry descends an Overworld stronghold, passes
+side libraries and a Silverfish spawner, then approaches a raised 12-frame portal
+Sift has a 16-second explicitly artistic rift approach
 **Skip journey** cancels a passage; another selection replaces it immediately
 Reduced Motion and Low Power Mode select the destination directly
+The existing graph remains visible during loading. Native crossfades join scenes
+only while motion is enabled; cancellation rejects obsolete graph results
 
 The renderer is capped at 20 fps. Native checks bound each page to 1,200 nodes
 and 150,000 triangles; actual measurements are recorded in [Testing](test.md)

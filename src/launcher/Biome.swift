@@ -8,6 +8,8 @@ enum Biome: String, CaseIterable {
     case snow = "Snowy taiga", peaks = "Jagged peaks", desert = "Desert temple"
     case badlands = "Badlands mineshaft", mangrove = "Mangrove swamp", jungle = "Jungle temple"
     case mushroom = "Mushroom fields", pale = "Pale Garden at dusk", coast = "Coast & shipwreck"
+    case savanna = "Savanna · Outpost", swamp = "Swamp · Witch hut", reef = "Warm ocean · Coral reef"
+    case mansion = "Dark forest · Woodland mansion", trial = "Trial Chambers", dripstone = "Dripstone caves"
     case lush = "Lush caves", deep = "Deep Dark · Ancient City"
     case wastes = "Nether Wastes · Fortress", crimson = "Crimson Forest · Bastion"
     case warped = "Warped Forest", soul = "Soul Sand Valley", basalt = "Basalt Deltas"
@@ -16,26 +18,32 @@ enum Biome: String, CaseIterable {
     case terraces = "Coral terraces", grove = "Luminous grove", valley = "Rift valley"
     case shards = "Floating shards", ruins = "Illager expedition", sculk = "Sculk fissures"
 
-    var underground: Bool { self == .lush || self == .deep }
+    var underground: Bool { [.lush, .deep, .trial, .dripstone].contains(self) }
 
     var residents: [Species] {
         switch self {
         case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem]
-        case .forest: return [.pig, .wolf, .bee, .creeper]
+        case .forest: return [.pig, .wolf, .bee, .creeper, .sniffer]
         case .cherry: return [.bee, .sheep, .rabbit]
-        case .snow: return [.fox, .wolf, .rabbit]
+        case .snow: return [.fox, .wolf, .rabbit, .polarBear]
         case .peaks: return [.goat, .llama]
-        case .desert: return [.camel, .rabbit, .villager]
+        case .desert: return [.camel, .rabbit, .villager, .husk]
         case .badlands: return [.armadillo, .rabbit, .spider]
         case .mangrove: return [.frog, .slime, .bee]
         case .jungle: return [.panda, .parrot, .ocelot]
         case .mushroom: return [.mooshroom]
         case .pale: return [.creaking, .spider, .zombie]
-        case .coast: return [.turtle, .dolphin, .squid]
+        case .coast: return [.turtle, .dolphin, .squid, .drowned, .cod]
+        case .savanna: return [.horse, .llama, .armadillo, .illager, .ravager]
+        case .swamp: return [.witch, .frog, .slime, .bogged]
+        case .reef: return [.guardian, .cod, .salmon, .dolphin, .turtle]
+        case .mansion: return [.vindicator, .illager, .allay, .spider]
+        case .trial: return [.breeze, .bogged, .skeleton, .spider, .silverfish]
+        case .dripstone: return [.bat, .spider, .zombie]
         case .lush: return [.axolotl, .glowsquid, .bat]
         case .deep: return [.warden]
-        case .wastes: return [.piglin, .strider, .blaze]
-        case .crimson: return [.hoglin, .piglin, .strider]
+        case .wastes: return [.piglin, .zombifiedPiglin, .strider, .blaze, .witherSkeleton]
+        case .crimson: return [.hoglin, .piglin, .piglinBrute, .strider]
         case .warped: return [.enderman, .strider]
         case .soul: return [.skeleton, .ghast]
         case .basalt: return [.magma, .strider]
@@ -52,9 +60,12 @@ enum Biome: String, CaseIterable {
     var surface: String {
         switch self {
         case .snow, .peaks: return "snow"
-        case .desert, .coast: return "sand"
+        case .desert, .coast, .reef: return "sand"
+        case .trial: return "tuff_bricks"
+        case .dripstone: return "dripstone_block"
         case .badlands: return "red_sand"
         case .mangrove: return "mud"
+        case .swamp: return "grass_block"
         case .mushroom: return "mycelium"
         case .lush: return "moss_block"
         case .deep: return "sculk"
@@ -77,6 +88,9 @@ enum Biome: String, CaseIterable {
         case .meadow, .forest: return "oak"
         case .cherry, .grove: return "cherry"
         case .snow: return "spruce"
+        case .savanna: return "acacia"
+        case .swamp: return "oak"
+        case .mansion: return "dark_oak"
         case .mangrove: return "mangrove"
         case .jungle: return "jungle"
         case .pale: return "pale_oak"
@@ -90,6 +104,10 @@ enum Biome: String, CaseIterable {
         case .desert, .badlands: return 0xD6BF9B
         case .pale: return 0x444B58
         case .lush: return 0x263D42
+        case .trial: return 0x263D43
+        case .dripstone: return 0x342F2B
+        case .swamp, .mansion: return 0x81999A
+        case .reef: return 0x9ECFDF
         case .deep: return 0x101E2C
         case .wastes, .crimson, .basalt: return 0x4B2536
         case .warped: return 0x24474B
@@ -105,7 +123,7 @@ extension World {
     var biomes: [Biome] {
         switch self {
         case .overworld: return [.meadow, .forest, .cherry, .snow, .peaks, .desert, .badlands,
-                                .mangrove, .jungle, .mushroom, .pale, .coast, .lush, .deep]
+                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .coast, .reef, .lush, .dripstone, .trial, .deep]
         case .nether: return [.wastes, .crimson, .warped, .soul, .basalt]
         case .end: return [.central, .highlands, .midlands, .islands, .barrens, .city]
         case .sift: return [.terraces, .grove, .valley, .shards, .ruins, .sculk]
@@ -113,6 +131,4 @@ extension World {
     }
 
     func index(_ biome: Int) -> Int { min(biomes.count - 1, max(0, biome)) }
-    func page(_ biome: Int) -> Int { index(biome) / 3 }
-    func areas(_ biome: Int) -> [Biome] { (0..<3).map { biomes[index(page(biome) * 3 + $0)] } }
 }

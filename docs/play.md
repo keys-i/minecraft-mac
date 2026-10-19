@@ -47,6 +47,10 @@ not a resumable transfer. Avoid starting multiple copies of the app.
 After Minecraft is installed, use the map menu to choose a biome or landmark
 The realm buttons travel through a mine's Nether portal, a stronghold's End
 portal or an artistic Sift rift. Choose **Skip journey** to go straight there
+Each stop now has its own landscape and resident groups. Explore village farms,
+a pillager outpost, woodland mansion, coral reef, Trial Chamber, bastion and the
+End City's towers, bridges and ship. Nether entry travels down a mine before
+crossing the portal; End entry passes a stronghold library and Silverfish spawner
 Pause motion beside Help, or change automatic touring in Settings
 
 The background reads art from your installed game. Before installation, the

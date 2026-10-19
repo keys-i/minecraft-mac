@@ -181,6 +181,15 @@ final class Assets {
             material.emission.intensity = 0.4
         }
         let model = try node(definition,material:material)
+        if name == "breeze", let wind = textures["breeze_wind"] {
+            for key in ["breeze_wind_top", "breeze_wind_mid", "breeze_wind_bottom"] {
+                guard let identifier = geometries[key] else { throw AssetError.model }
+                let layer = try node(geometry(identifier, entity: name), material: texture(wind))
+                layer.name = key
+                layer.runAction(.repeatForever(.rotateBy(x:0,y:.pi*2,z:0,duration:4)))
+                model.addChildNode(layer)
+            }
+        }
         assemble(model, name: name)
         model.name = name
         if let script = description["scripts"] as? [String: Any] {
@@ -396,8 +405,14 @@ extension Assets {
 
     private func resolve(_ name: String, states: [String: String]) throws -> [SCNMaterial] {
         var name = name.replacingOccurrences(of:"minecraft:",with:"")
+        if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
+        if name.contains("banner") { return Array(repeating:try texture("textures/entity/banner/banner_illager"),count:6) }
         if name == "planks" { name = (states["variant"] ?? "oak")+"_planks" }
         if name == "wooden_door" { name = "oak_door" }
+        if name == "red_mushroom_block" || name == "brown_mushroom_block" {
+            let skin = try texture("textures/blocks/mushroom_block_skin_"+(name == "red_mushroom_block" ? "red" : "brown"))
+            return [skin,skin,skin,skin,skin,try texture("textures/blocks/mushroom_block_inside")]
+        }
         if name == "grass_block" || name == "grass" {
             let side = try texture("textures/blocks/grass_side_carried")
             return [side,side,side,side,try texture("textures/blocks/grass_top",tint:0x91BD59),try texture("textures/blocks/dirt")]
@@ -428,7 +443,9 @@ extension Assets {
             }
         }
         if name.hasSuffix("_bed") { return Array(repeating:try texture("textures/blocks/wool_colored_"+name.replacingOccurrences(of:"_bed",with:"")),count:6) }
-        let aliases = ["stone_bricks":"stonebrick", "mossy_stone_bricks":"stonebrick_mossy", "cracked_stone_bricks":"stonebrick_cracked",
+        let aliases = ["dirt_path":"grass_path", "cobblestone_stairs":"cobblestone", "mossy_cobblestone_stairs":"mossy_cobblestone",
+                       "stone_brick_stairs":"stonebrick", "stone_brick_slab":"stonebrick", "polished_andesite_stairs":"stone_andesite_smooth",
+                       "cut_copper_stairs":"cut_copper", "cut_copper_slab":"cut_copper", "tuff_brick_stairs":"tuff_bricks", "tuff_brick_slab":"tuff_bricks", "stone_bricks":"stonebrick", "mossy_stone_bricks":"stonebrick_mossy", "cracked_stone_bricks":"stonebrick_cracked",
                        "chiseled_stone_bricks":"stonebrick_carved", "end_stone_bricks":"end_bricks", "nether_bricks":"nether_brick",
                        "white_stained_glass_pane":"glass", "glass_pane":"glass", "wall_torch":"torch", "terracotta":"hardened_clay",
                        "piston_head":"piston_top_normal", "redstone_wall_torch":"redstone_torch_on", "snow_block":"snow", "repeater":"repeater_off", "comparator":"comparator_off", "mushroom_stem":"mushroom_block_skin_stem", "pink_terracotta":"hardened_clay_stained_pink",
@@ -446,7 +463,7 @@ extension Assets {
             let entry = catalog[key] as? [String: Any]
             let value = entry?["textures"]
             let path = value as? String ?? (value as? [String])?.first ?? "textures/blocks/"+key
-            return try texture(path)
+            return try texture(path,tint:name == "mangrove_leaves" ? 0x78A73F : nil)
         }
     }
 

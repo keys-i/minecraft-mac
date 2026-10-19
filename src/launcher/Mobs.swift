@@ -7,9 +7,11 @@ enum Species: String, CaseIterable {
     case warden, bat, bee, spider, slime, villager, golem
     case piglin, hoglin, strider, blaze, skeleton, ghast, magma, enderman, endermite, shulker
     case illager, vindicator, allay, vex
+    case horse, polarBear, witch, guardian, drowned, breeze, bogged, witherSkeleton, piglinBrute, zombifiedPiglin
+    case cod, salmon, sniffer, husk, ravager, silverfish
 
-    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl].contains(self) }
+    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .drowned, .cod, .salmon].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -22,6 +24,11 @@ final class Mobs {
     func make(_ species: Species, biome: Biome? = nil) throws -> SCNNode {
         let name: String
         switch species {
+        case .horse: name = "horse_v3"
+        case .polarBear: name = "polar_bear"
+        case .witherSkeleton: name = "wither_skeleton"
+        case .piglinBrute: name = "piglin_brute"
+        case .zombifiedPiglin: name = "zombie_pigman"
         case .golem: name = "copper_golem"
         case .ironGolem: name = "iron_golem"
         case .glowsquid: name = "glow_squid"
@@ -31,6 +38,7 @@ final class Mobs {
         }
         let texture: String
         switch species {
+        case .horse: texture = "base_brown"
         case .wolf: texture = "pale_default"
         case .fox: texture = biome == .snow ? "arctic" : "red"
         case .rabbit: texture = biome == .snow ? "white" : "brown"

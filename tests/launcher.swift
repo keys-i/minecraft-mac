@@ -132,12 +132,12 @@ struct LauncherChecks {
         while !failureDelivered && Date() < deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
         precondition(failureDelivered && !cancelledDelivered)
         print("Original synthetic archive, NBT, UV, bind pose, parent and malformed-model fixtures passed")
-        precondition(Landscape.height(.lush, x: 1, z: 3, centre: 0) == 0)
-        precondition(Landscape.height(.coast, x: 1, z: 3, centre: 0) == 0)
+        precondition(Landscape.height(.lush, x: 1, z: 3, centre: 0) == -3)
+        precondition(Landscape.height(.coast, x: 1, z: 3, centre: 0) == -4)
         precondition(Landscape.height(.coast, x: 1, z: 8, centre: 0) > 0)
         let roster = Set(World.allCases.flatMap { $0.biomes.flatMap(\.residents) })
         precondition(roster == Set(Species.allCases))
-        precondition(World.overworld.biomes.count == 14 && World.nether.biomes.count == 5)
+        precondition(World.overworld.biomes.count == 20 && World.nether.biomes.count == 5)
         var journey = Journey()
         for _ in 0..<18 { journey.tick(rotate: false) }
         precondition(journey.biome == 0 && journey.elapsed == 0)
@@ -162,7 +162,7 @@ struct LauncherChecks {
         for passage in [Passage.mine, .stronghold, .rift] {
             let first = passage.pose(at: -1), last = passage.pose(at: 999)
             precondition(first.eye.z > last.eye.z)
-            for tick in 0...140 {
+            for tick in 0...(passage.duration*10) {
                 let pose = passage.pose(at: Double(tick) / 10)
                 precondition(pose.eye.x.isFinite && pose.eye.y.isFinite && pose.eye.z.isFinite)
                 if tick > 0 {
@@ -181,7 +181,10 @@ struct LauncherChecks {
         let queued = Date()
         assets.load(.overworld,biome:0,passage:nil) { result in
             precondition(Thread.isMainThread)
-            if case .success(let scene) = result { loaded = scene }
+            switch result {
+            case .success(let scene): loaded = scene
+            case .failure(let error): fatalError("Habitat load failed: \(error)")
+            }
         }
         let enqueue = Date().timeIntervalSince(queued)*1000
         let limit = Date().addingTimeInterval(5)
@@ -190,6 +193,8 @@ struct LauncherChecks {
         print("Asset queue returned in \(String(format:"%.2f",enqueue)) ms and delivered an original-art graph on the main thread")
         loaded = nil
         for species in Species.allCases { _ = try factory.make(species) }
+        let breeze = try factory.make(.breeze)
+        precondition(breeze.childNodes.filter { $0.name?.hasPrefix("breeze_wind_") == true }.count == 3)
         let blaze = try factory.make(.blaze)
         let rods = blaze.childNodes.filter { $0.name?.hasPrefix("rod-orbit-") == true }.flatMap(\.childNodes)
         precondition(rods.count == 12)
@@ -198,27 +203,43 @@ struct LauncherChecks {
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
         let start = Date()
         for world in World.allCases {
-            for page in stride(from:0,to:world.biomes.count,by:3) {
-                let scene = try Landscape.scene(world,biome:page,assets:assets)
+            for index in world.biomes.indices {
+                let scene = try Landscape.scene(world,biome:index,assets:assets)
                 var nodes = 0, triangles = 0
                 scene.rootNode.enumerateChildNodes { node,_ in
                     nodes += 1
                     triangles += node.geometry?.elements.reduce(0) { $0+$1.primitiveCount } ?? 0
                 }
+                print("\(world) \(world.biomes[index]): \(nodes) nodes, \(triangles) triangles")
+                fflush(stdout)
                 precondition(nodes < 1200 && triangles < 150_000)
-                for index in page..<min(page+3,world.biomes.count) {
-                    Landscape.focus(scene,world:world,biome:index,animated:false)
-                    Landscape.focus(scene,world:world,biome:index,animated:true)
+                precondition(scene.rootNode.childNode(withName:"habitat-detail",recursively:false) != nil)
+                for animated in [false,true] {
+                    Landscape.focus(scene,world:world,biome:index,animated:animated)
                     precondition(scene.rootNode.childNode(withName:"camera",recursively:false)!.actionKeys == ["journey"])
                 }
-                print("\(world) page \(page/3): \(nodes) nodes, \(triangles) triangles")
+                let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("resident-") == true }
+                precondition(residents.count >= world.biomes[index].residents.count*2 || world.biomes[index] == .deep)
+                precondition(residents.count <= 40)
+                for resident in residents {
+                    let p = resident.position
+                    precondition(Landscape.height(world.biomes[index],x:p.x,z:p.z) > -90)
+                }
             }
         }
         for passage in [Passage.mine,.stronghold,.rift] {
             let scene = try passage.scene(assets:assets)
             precondition(scene.rootNode.childNode(withName:"camera",recursively:false)!.actionKeys == ["passage"])
             precondition(scene.rootNode.childNode(withName:passage == .stronghold ? "end-portal" : "portal-surface",recursively:true) != nil)
+            if passage == .mine {
+                precondition(scene.rootNode.childNode(withName:"landmark-wastes",recursively:true) != nil)
+                let last = passage.pose(at:Double(passage.duration))
+                precondition(last.eye.z < -34)
+            } else if passage == .stronghold {
+                let portal = scene.rootNode.childNode(withName:"end-portal",recursively:true)!
+                precondition(passage.pose(at:Double(passage.duration)).eye.y > portal.position.y+0.05 && passage.pose(at:Double(passage.duration)).eye.y <= portal.position.y+0.15)
+            }
         }
-        print("Installed art: \(Species.allCases.count) species, heroes, 31 areas and three passages passed in \(Int(Date().timeIntervalSince(start)*1000)) ms")
+        print("Installed art: \(Species.allCases.count) species, heroes, \(World.allCases.reduce(0) { $0+$1.biomes.count }) areas and three passages passed in \(Int(Date().timeIntervalSince(start)*1000)) ms")
     }
 }
