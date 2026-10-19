@@ -10,6 +10,50 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Player-height worlds and Minecraft controls in 0.8
+
+Version 0.8 replaces the elevated diorama framing with low routes through wider,
+chunked terrain. River bends, frozen water, deeper sea floors and shaped cave
+ceilings put residents into their own habitats. A full Trial Chamber surrounds
+the camera. Mansion entrances face the approach and saved window panes connect
+to their neighbours. Original fluid and portal atlas frames supply surface motion
+
+The native interface uses pixel titles, stone buttons, a four-slot item hotbar,
+a searchable biome picker and an experience-style setup meter. Look around stops
+the camera route and lets the user drag the world; Done or Escape restores it
+Realm slots also use keys 1–4. Existing macOS menus and the setup/account protocol
+remain in place. Long details scroll inside the setup panel
+The mine and stronghold share the terrain builder for their forest approaches
+The Sift remains an artistic interpretation using existing Minecraft blocks and mobs
+
+Local validation passed on October 19, 2026: all 92 Python tests, native fixtures,
+installed-art checks, all 40 area renders, 24 passage views and 40 paused comparisons
+Source-generated SwiftUI layouts cover first-run, ready, progress, errors and
+playing at narrow, normal and wide sizes. These do not verify window interaction
+The 49-view Metal probe's highest GPU p95 is 9.57 ms and highest wall p95 is
+11.86 ms against the unchanged 50 ms frame budget. See [the method and limits](test.md#player-height-worlds-and-launcher-08-measurements)
+
+The separate full 0.8.0 candidate preserves every one of the 1,048 resources
+inventoried in 0.7, including runtime, worker, account helper and poster bytes
+It adds the unmodified Monocraft font, its full OFL licence and current vendor
+notices, producing a 1,051-file resource inventory. Launcher machine code matches
+the source build; the outer ad-hoc signature and LZFSE disk image verify
+No nested runtime/helper binary was rebuilt or re-signed
+The DMG is 128,049,140 bytes and retains the runtime's macOS 27 minimum
+
+```text
+e308367cd42e022148b118885cdbf529a0945b9cbefe19533dda578b7647bc60
+```
+
+The isolated UI preview uses a simulated worker and reads only installed game art
+The 138-second local video shows the scenery and passages, rather than gameplay
+Full-window interaction, keyboard, VoiceOver, live-game performance and long-session
+memory remain unverified. Computer Use denied the earlier preview session; no
+alternate desktop automation or desktop capture was used
+The installed app, worlds and account data remain untouched. No binary release
+is published; Developer ID signing, notarisation and clean-Mac installation
+remain release gates
+
 ## Expanded habitats and journeys in 0.7
 
 Version 0.7 replaces the three-biome strips with 37 independent habitats and

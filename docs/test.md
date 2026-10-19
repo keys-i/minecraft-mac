@@ -90,6 +90,56 @@ to its disposable preview, so these visible checks remain unverified
 
 The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
 
+### Player-height worlds and launcher 0.8 measurements
+
+On October 19, 2026, all 92 Python tests, native source fixtures and installed-art
+integration passed. Integration builds 65 species, the hero actors, 40 habitats
+and three passages. It samples camera ground/headroom every half-second and
+checks swimming depth, original fluid atlases, connected mansion panes, shared
+room geometry, cancellation and the existing motion gates
+
+All 40 habitat renders and 24 passage viewpoints were reviewed offscreen
+The paused graphs at scene times 4 and 8 stayed within one 8-bit channel step
+Ready, first-run, download, error, long-detail and playing layouts were rendered
+at 760 × 620, 1040 × 760 and 1440 × 900 points. SwiftUI ImageRenderer uses an
+injected SceneKit snapshot; an offscreen NSHostingView verifies the scroll-backed
+long detail that ImageRenderer omits. These are source-generated views, not a
+desktop capture or an interactive window test
+
+The M3 Pro / 36 GB Metal probe uses a 1040 × 760 render target, 4× MSAA, ten
+warm-up frames and sixty measured command buffers per view. Scene time advances
+in 1/20-second steps and command completion is awaited for GPU and wall timings
+The testing browser remains running. The probe covers all habitats and three
+viewpoints per passage, 49 views in total
+
+| Realm or passage | Views | GPU median range | Highest GPU p95 | Highest wall p95 |
+| --- | --- | --- | --- | --- |
+| Overworld | 23 | 4.32–6.45 ms | 9.57 ms | 11.86 ms |
+| Nether | 5 | 5.93–6.34 ms | 8.28 ms | 9.95 ms |
+| End | 6 | 2.01–5.08 ms | 7.51 ms | 8.48 ms |
+| Sift interpretation | 6 | 4.43–5.78 ms | 7.63 ms | 9.45 ms |
+| Mine crossing | 3 | 1.86–3.48 ms | 6.76 ms | 7.46 ms |
+| Stronghold crossing | 3 | 1.52–2.31 ms | 6.36 ms | 7.01 ms |
+| Rift crossing | 3 | 2.25–2.41 ms | 5.89 ms | 6.49 ms |
+
+The 50 ms frame budget and 1,200-node ceiling remain unchanged. The wider worlds
+raise the logical-triangle ceiling to 350,000; observed graphs contain 107–717
+nodes and 23,902–302,838 triangles. Mangrove is the largest mesh. Visible chunks
+allow SceneKit to cull distant surfaces separately
+Sequential graph construction measured 19.66–161.05 ms with a fresh Assets owner,
+shared material/metadata caches between stops and archive release after each build
+Construction remains on the existing serial background queue
+
+These wider, denser scenes cost more than the 0.7 compositions. Different views
+and normal background load prevent a controlled before/after FPS comparison
+No gameplay, Windows-speed, input-latency, memory-reduction or long-session claim
+follows from this scenery probe
+
+The local 138-second tour shows all areas at 9× scenery speed and the 22-second
+mine, 20-second stronghold and 16-second artistic rift in real time
+Full-window gestures, keyboard focus, VoiceOver, accessibility preferences and
+long-session growth still require manual checks
+
 ### Expanded habitat 0.7 measurements
 
 On October 19, 2026, the installed-art check constructed 62 mob types, the dragon,
