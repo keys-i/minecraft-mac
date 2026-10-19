@@ -283,12 +283,12 @@ struct ShortcutHint {
 
 private enum Blocks {
     static let grass = Color(red:0.48,green:0.78,blue:0.22)
-    static let ink = Color(red:0.055,green:0.12,blue:0.025)
+    static let play = Color(red:0.12,green:0.47,blue:0.03)
     static let stone = Color(red:0.20,green:0.21,blue:0.19)
     static let gold = Color(red:1,green:0.83,blue:0.37)
 
     static func type(_ size: CGFloat) -> Font { .custom("Monocraft",size:size,relativeTo:.body) }
-    static func action(_ size: CGFloat) -> Font { .system(size:size,weight:.semibold,design:.rounded) }
+    static func action(_ size: CGFloat) -> Font { type(size) }
 }
 
 private struct BlockButton: ButtonStyle {
@@ -302,7 +302,7 @@ private struct BlockButton: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(colour == Blocks.grass ? Blocks.ink : .white)
+            .foregroundStyle(.white)
             .background {
                 colour.brightness(hovered ? 0.08 : 0)
                     .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3)
@@ -461,7 +461,7 @@ private struct GameTitle: View {
                                 content.scaleEffect(small ? 0.94 : 1)
                             } animation: { _ in .easeInOut(duration:0.45) }
                         } else { splashText }
-                    }.rotationEffect(.degrees(-20)).offset(x:width*0.19,y:2)
+                    }.rotationEffect(.degrees(-20)).offset(x:width*0.04,y:-width*0.075)
                         .accessibilityHidden(true).allowsHitTesting(false)
                 }
             }
@@ -544,21 +544,33 @@ struct LauncherView: View {
                     VStack(spacing:22) {
                         if !exploring { installation }
                         hotbar
-                    }.frame(maxWidth:640).padding(.horizontal,28).padding(.bottom,24)
+                    }.frame(maxWidth:640).padding(.horizontal,28).padding(.bottom,56)
                 }
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        look.padding(24)
+                        look.padding(.trailing,24).padding(.bottom,56)
                     }
+                }
+                VStack {
+                    Spacer()
+                    HStack {
+                        Link("@Keys-i",destination:URL(string:"https://keysi.dev")!)
+                            .buttonStyle(.plain).tint(.white)
+                            .accessibilityLabel("Developer Keys-i, open keysi.dev")
+                        Spacer()
+                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.10.1"))
+                    }.font(Blocks.type(13)).foregroundStyle(.white)
+                        .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
+                        .padding(.horizontal,24).padding(.bottom,16)
                 }
                 if hintAvailable && hint.showing {
                     VStack {
                         HStack { Spacer(); achievement }
                         Spacer()
                     }.padding(.trailing,28).padding(.top,exploring ? 96 : min(322,geometry.size.width*0.22+94))
-                        .transition(.opacity)
+                        .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
                 }
             }
         }
@@ -612,24 +624,26 @@ struct LauncherView: View {
                 location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
                 Spacer()
                 Button { musicEnabled.toggle() } label: {
-                    Image(systemName:musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill").frame(width:44,height:44)
+                    glyph("sound_glyph",fallback:musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .opacity(musicEnabled ? 1 : 0.35).frame(width:44,height:44)
                 }.help(musicEnabled ? "Mute music · \(music.title)" : "Play Minecraft music")
                     .accessibilityLabel(musicEnabled ? "Mute music" : "Play Minecraft music")
                     .disabled(!available)
-                Button { launcher.showHelp() } label: { Image(systemName:"questionmark").frame(width:44,height:44) }
+                Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
                     .help("Help").accessibilityLabel("Help")
-                Button { openSettings() } label: { Image(systemName:"gearshape.fill").frame(width:44,height:44) }
+                Button { openSettings() } label: { glyph("icon_setting",fallback:"gearshape.fill").frame(width:44,height:44) }
                     .help("Settings").accessibilityLabel("Settings")
-                Button { animateScenery.toggle() } label: { Image(systemName:animateScenery ? "pause.fill" : "play.fill").frame(width:44,height:44) }
-                    .accessibilityLabel(animateScenery ? "Pause scenery" : "Resume scenery")
-                    .help(reduceMotion ? "Reduced Motion is enabled" : lowPower ? "Scenery pauses in Low Power Mode" : "Pause or resume the adventure")
-                    .disabled(reduceMotion || lowPower)
             }.buttonStyle(BlockButton(texture:launcher.stone))
             if !exploring {
                 GameTitle(image:launcher.frames["title"],font:launcher.gameFont,splash:launcher.splash,
                           width:min(700,width*0.67),moving:moving && focused && !map && launcher.status.state != "error")
             }
         }
+    }
+
+    @ViewBuilder private func glyph(_ name: String, fallback: String) -> some View {
+        if let image = launcher.frames[name] { Image(nsImage:image).resizable().interpolation(.none).scaledToFit().frame(width:24,height:24) }
+        else { Image(systemName:fallback).font(.system(size:22,weight:.medium)) }
     }
 
     private var location: some View {
@@ -672,22 +686,22 @@ struct LauncherView: View {
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
                 .help(world == .sift ? "Sift interpretation · 4" : "\(world.title) · \(index+1)")
             }
-        }.padding(6).background(.black.opacity(0.3))
+        }.padding(6)
             .accessibilityElement(children:.contain).accessibilityLabel("Realm hotbar")
     }
 
     private var look: some View {
         Button { explore(!exploring) } label: {
             VStack(spacing:1) {
-                Image(systemName:exploring ? "eye.fill" : "eye").font(.system(size:24,weight:.medium))
+                glyph("camera-small",fallback:exploring ? "eye.fill" : "eye")
                 Image(systemName:"arrow.left.and.right").font(.system(size:11,weight:.semibold))
             }.frame(width:56,height:56)
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone))
             .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
             .keyboardShortcut("l",modifiers:.command)
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
-            .accessibilityHint("WASD flies, Space and Shift change height, arrow keys or dragging turn the view, brackets change biomes")
-            .help(exploring ? "WASD fly · Space/Shift height · Drag/arrows look · Scroll speed · [ ] biomes · Escape returns" : "Look around (⌘L) · Spectator flight")
+            .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
+            .help(exploring ? "WASD fly · Mouse look · Space/Shift height · Control sprint · Scroll speed · Escape returns" : "Look around (⌘L) · Spectator flight")
     }
 
     private func explore(_ enabled: Bool) {
@@ -698,17 +712,19 @@ struct LauncherView: View {
 
     private var achievement: some View {
         HStack(spacing:12) {
-            Image(systemName:"eye").font(.system(size:25,weight:.medium))
-                .frame(width:40,height:40).foregroundStyle(Blocks.gold)
+            glyph("spyglass",fallback:"eye").frame(width:40,height:40).foregroundStyle(Blocks.gold)
             if exploring {
                 VStack(alignment:.leading,spacing:5) {
                     Text("Spectator mode").font(Blocks.type(13)).foregroundStyle(Blocks.gold)
-                    Text("WASD fly · Drag to look").font(.system(size:12,weight:.medium))
-                    Text("Space/Shift height · [ ] biomes").font(.system(size:11))
+                    Text("WASD fly · Mouse to look").font(Blocks.type(11))
+                    Text("Space/Shift · Esc to return").font(Blocks.type(10))
                 }
             } else {
-                Text("\(Text("⌘ + L").font(.system(size:13,weight:.semibold)).foregroundColor(Blocks.gold)) to look around")
-                    .font(Blocks.type(13)).lineLimit(1)
+                VStack(alignment:.leading,spacing:5) {
+                    Text("New perspective!").font(Blocks.type(12)).foregroundStyle(Blocks.gold)
+                    Text("\(Text("⌘ + L").font(.system(size:13,weight:.semibold))) to look around")
+                        .font(Blocks.type(12)).lineLimit(1)
+                }
             }
         }.padding(.horizontal,14).frame(height:exploring ? 88 : 64)
             .background {
@@ -718,7 +734,7 @@ struct LauncherView: View {
             .overlay { Rectangle().strokeBorder(Color(white:0.5),lineWidth:2) }
             .overlay { Rectangle().strokeBorder(.black.opacity(0.75),lineWidth:1).padding(3) }
             .accessibilityElement(children:.combine)
-            .accessibilityLabel(exploring ? "Spectator mode: WASD flies, Space and Shift change height, arrow keys or dragging turn the view, brackets change biomes" : "Press Command L to look around")
+            .accessibilityLabel(exploring ? "Spectator mode: WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns" : "Press Command L to look around")
             .allowsHitTesting(false)
     }
 
@@ -730,7 +746,9 @@ struct LauncherView: View {
                 Button { map = false } label: { Image(systemName:"xmark").frame(width:32,height:32) }
                     .buttonStyle(.plain).accessibilityLabel("Close biomes")
             }
-            TextField("Find a biome or landmark",text:$search).textFieldStyle(.roundedBorder)
+            TextField("Find a biome or landmark",text:$search).textFieldStyle(.plain)
+                .padding(10).background(.black.opacity(0.35))
+                .overlay { Rectangle().strokeBorder(.white.opacity(0.35),lineWidth:1) }
                 .accessibilityLabel("Find a biome or landmark")
             ScrollView {
                 LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible()),GridItem(.flexible())],spacing:8) {
@@ -764,9 +782,9 @@ struct LauncherView: View {
 
     private func playButton(width: CGFloat) -> some View {
         Button { launcher.start() } label: {
-            Label(primaryTitle,systemImage:"play.fill").font(.system(size:width>200 ? 24 : 18,weight:.bold,design:.rounded))
+            Text(primaryTitle).font(Blocks.type(width>200 ? 24 : 18))
                 .frame(width:width,height:62)
-        }.buttonStyle(BlockButton(colour:Blocks.grass)).keyboardShortcut(.defaultAction)
+        }.buttonStyle(BlockButton(colour:Blocks.play)).keyboardShortcut(.defaultAction)
     }
 
     private var setupSteps: some View {

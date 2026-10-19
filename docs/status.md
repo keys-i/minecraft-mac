@@ -10,6 +10,34 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Material and interaction fidelity in 0.10.1
+
+Water now uses the installed biome palette, cached alpha-preserving RGB tinting
+and the original alpha once. Lava keeps its original colours without doubled
+emission. Variant-specific geometry takes precedence over the default body
+Current warm/cold animals use matching installed models/skins
+
+The splash overlaps the original title. Pixel actions and installed utility
+icons share the block controls’ styling. The lower-left **@Keys-i** credit links
+to **keysi.dev**, with the actual launcher version at lower right. The scenery
+Play/pause button and extra hotbar backing are removed; motion preferences stay
+in Settings/View. The advancement-style hint keeps its 60/70-second timing
+
+Idle scenery follows a continuous twelve-second hover. Overworld scenes have a
+twenty-minute daylight rig with original sun/moon art, batched stars, dusk colours
+and once-per-second lighting/fog updates. Nether and End retain realm lighting
+Mouse-look captures relative movement and releases the cursor on focus loss,
+Escape or teardown. WASD, Space/Shift, Control sprint and scroll speed remain
+Native synthetic and installed-art checks and all 92 Python tests pass locally
+
+Residents gain bounded terrain/water-aware strolls, diagonal gait timing,
+unsynchronised idling, sheep grazing and hopping. Eligible base-pack classic
+pigs, cows, chickens and wolves have a launcher-only 10% daylight / 15% night
+selection chance. These additions do not reproduce every game block/state,
+combat, breeding, village jobs or the complete Minecraft simulation
+[Testing and remaining manual checks](test.md#material-hover-and-input-fidelity-in-0101)
+keep that limitation explicit
+
 ## Spectator title screen in 0.10
 
 The native launcher now uses the owner’s original Minecraft title artwork and

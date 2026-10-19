@@ -90,6 +90,49 @@ to its disposable preview, so these visible checks remain unverified
 
 The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
 
+### Material, hover and input fidelity in 0.10.1
+
+The October 19, 2026 native fixtures cover alpha-preserving RGB tinting, matching
+warm/cold geometry, river water versus land travel, the twelve-second hover loop,
+Control sprint, twenty-minute daylight endpoints and bounded classic chances
+Installed-art integration builds all 65 species, four supported base-pack classic
+variants, warm/cold variants, 40 habitats and three passages. It verifies installed
+plains/river water colours, fluid alpha/lighting, day/night sky visibility and the
+existing scene/camera budgets. All 92 Python tests also pass locally
+
+Source-generated layouts include native offscreen host renders of the developer
+Link and long errors. Narrow/normal/wide views verify the splash over the title,
+pixel actions/glyphs, lower-left developer, lower-right version, advancement hint
+and removal of the scenery Play/pause button and extra hotbar backing
+Day, dusk and night views were generated for meadow, river and reef, alongside
+Nether and End views. Isolated before/after fluids reproduce the grey-water fault
+and verify the blue biome tint and removal of doubled lava brightness
+
+The existing M3 Pro / 36 GB probe compares four route views with four elevated
+flight views at 1040 × 760, 4× MSAA, ten warm-up and sixty measured frames
+Chrome for Testing stays open; other render probes finish first
+
+| Area | Route GPU p95 | Flight GPU p95 | Flight wall p95 |
+| --- | --- | --- | --- |
+| Meadow village | 8.69 ms | 10.05 ms | 14.21 ms |
+| Jungle temple | 9.96 ms | 10.60 ms | 14.56 ms |
+| Crimson Forest / bastion | 9.09 ms | 8.80 ms | 12.13 ms |
+| End City / ship | 9.52 ms | 9.10 ms | 10.76 ms |
+
+The highest GPU p95 rises from 8.66 ms in the 0.10 eight-view sample to 10.60 ms
+The highest wall p95 rises from 11.95 to 14.56 ms. All sampled views remain inside
+the unchanged 50 ms budget; no speedup is claimed. Overworld daylight adds four
+nodes and 1,156 logical triangles per scene. The complete area integration stays
+within the existing 1,200-node / 350,000-triangle ceilings
+
+The renderer still does not implement every Minecraft block/state or the full
+Molang, navigation, combat, breeding, village-job or spawning systems. Classic
+appearances use retained base-pack art at a launcher-only 10–15% chance, chosen
+when an area is built. They are not an authentic modern-Minecraft spawning rule
+Full-window mouse capture/release, developer-link activation, VoiceOver, a complete
+real-time twenty-minute cycle and long-session memory remain manual checks
+No desktop capture or substitute UI automation bypassed the earlier access denial
+
 ### Spectator flight, title artwork and music in 0.10
 
 On October 19, 2026, the native synthetic and installed-art checks pass, alongside

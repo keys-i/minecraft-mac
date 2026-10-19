@@ -22,6 +22,18 @@ struct LauncherChecks {
         precondition(status(nil, state: "playing").stage == 3)
         precondition(status(0.5, state: "error").stage == nil)
         precondition(SceneryMotion.interval >= 1.0 / 20)
+        precondition(Daylight.light(at:0) == 1 && Daylight.light(at:600) == 0 && Daylight.light(at:1200) == 1)
+        precondition(abs(Mobs.classicChance(daylight:1)-0.10)<0.0001)
+        precondition(abs(Mobs.classicChance(daylight:0)-0.15)<0.0001)
+        let hover = Landscape.pose(.meadow,at:0).eye, nextHover = Landscape.pose(.meadow,at:0.1).eye
+        precondition(hypot(hover.x-nextHover.x,hover.z-nextHover.z)>0.05)
+        let loop = Landscape.pose(.meadow,at:12).eye
+        precondition(hypot(hover.x-loop.x,hover.z-loop.z)<0.001)
+        let river = Terrain(biome:.river)
+        let swimming = SCNVector3(4+Terrain.noise(0,0,scale:32,seed:9)*9,-1.8,0)
+        precondition(Mobs.walkable(from:swimming,to:swimming,species:.cod,terrain:river))
+        precondition(!Mobs.walkable(from:swimming,to:swimming,species:.cow,terrain:river))
+        precondition(!Mobs.walkable(from:.init(50,-1.8,0),to:.init(50,-1.8,0),species:.cod,terrain:river))
         precondition(SceneryMotion.enabled(reduced: false, paused: false, lowPower: false,
                                           active: true, visible: true, playing: false))
         for disabled in 0..<6 {
@@ -78,6 +90,12 @@ struct LauncherChecks {
         flying.keyUp(with:key(49,type:.keyUp))
         flying.flagsChanged(with:key(56,type:.flagsChanged,flags:.shift)); flying.advance(seconds:0.1)
         precondition(abs(eye.position.y-10)<0.001)
+        flying.stop()
+        flying.flagsChanged(with:key(59,type:.flagsChanged,flags:.control))
+        flying.keyDown(with:key(13))
+        let sprint = eye.position
+        flying.advance(seconds:0.1)
+        precondition(abs(hypot(eye.position.x-sprint.x,eye.position.z-sprint.z)-1.6)<0.001)
         flying.stop()
         flying.keyDown(with:key(124)); flying.advance(seconds:0.1)
         precondition(-eye.simdWorldTransform.columns.2.x > 0)
@@ -154,9 +172,12 @@ struct LauncherChecks {
                                       samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
         for x in 0..<2 { for y in 0..<2 { pixels.setColor(NSColor(deviceRed:1,green:1,blue:1,alpha:1),atX:x,y:y) } }
         let texture = fixture.appendingPathComponent("resource_packs/vanilla/textures/entity")
+        pixels.setColor(NSColor(deviceRed:0,green:0,blue:0,alpha:0),atX:0,y:0)
         try FileManager.default.createDirectory(at:texture,withIntermediateDirectories:true)
         try pixels.representation(using:.png,properties:[:])!.write(to:texture.appendingPathComponent("fixture.png"))
-        try write("entity/fixture.entity.json",["minecraft:client_entity":["description":["geometry":["default":"geometry.fixture"],"textures":["default":"textures/entity/fixture"]]]])
+        try write("entity/fixture.entity.json",["minecraft:client_entity":["description":["geometry":["default":"geometry.fixture","warm":"geometry.fixture.warm"],"textures":["default":"textures/entity/fixture","warm":"textures/entity/fixture"]]]])
+        try write("models/entity/fixture_warm.geo.json",["geometry.fixture.warm":["texturewidth":2,"textureheight":2,
+            "bones":[["name":"body","cubes":[["origin":[0,0,0],"size":[2,1,1],"uv":[0,0]]]]]]])
         func model(_ bones: [[String:Any]]) throws {
             try write("models/entity/fix_ture.geo.json",["geometry.fixture":["texturewidth":2,"textureheight":2,"bones":bones]])
         }
@@ -169,6 +190,13 @@ struct LauncherChecks {
             try Data([UInt8(value)]).write(to:pack.appendingPathComponent("precedence"))
         }
         let art = try Assets(data:fixture)
+        let tinted = try art.texture("textures/entity/fixture",tint:0x2080E0)
+        let bitmap = tinted.diffuse.contents as! CGImage
+        let rgba = Array(bitmap.dataProvider!.data! as Data)
+        let tintSamples = stride(from:0,to:rgba.count,by:4).map { Array(rgba[$0..<$0+4]) }
+        precondition(tintSamples.contains([32,128,224,255]) && tintSamples.contains(where: { $0[3] == 0 }),"Tinted RGBA: \(tintSamples)")
+        let warm = try art.actor("fixture",texture:"warm")
+        precondition(abs(warm.boundingBox.max.x-warm.boundingBox.min.x-0.125)<0.001)
         let silent = Data(base64Encoded:"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=")!
         var wave = silent
         let samples = Data(count:16000)
@@ -326,6 +354,11 @@ struct LauncherChecks {
         print("Asset queue returned in \(String(format:"%.2f",enqueue)) ms and delivered an original-art graph on the main thread")
         loaded = nil
         for species in Species.allCases { _ = try factory.make(species) }
+        for species in [Species.pig,.cow,.chicken,.wolf] { _ = try factory.make(species,classic:true) }
+        _ = try factory.make(.cow,biome:.desert)
+        _ = try factory.make(.chicken,biome:.snow)
+        let plainsWater = try assets.water(.meadow), riverWater = try assets.water(.river)
+        precondition(plainsWater == 0x44AFF5 && riverWater == 0x0084FF)
         let breeze = try factory.make(.breeze)
         let fish = try factory.make(.tropical,variant:3)
         precondition(fish.childNode(withName:"fish-pattern",recursively:true) != nil)
@@ -344,6 +377,7 @@ struct LauncherChecks {
             let image = material.diffuse.contents as! CGImage
             precondition(image.height > image.width && image.height%image.width == 0)
             precondition(abs(material.diffuse.contentsTransform.m22-Double(image.width)/Double(image.height)) < 0.0001)
+            precondition(material.transparency == 1 && material.lightingModel == .constant)
             if lava { precondition(material.emission.contentsTransform.m22 == material.diffuse.contentsTransform.m22) }
         }
         let start = Date()
@@ -362,6 +396,10 @@ struct LauncherChecks {
                     precondition((scene.background.contents as? [CGImage])?.count == 6)
                 }
                 if world.biomes[index] == .meadow {
+                    Daylight.apply(scene,area:.meadow,seconds:600)
+                    precondition(scene.rootNode.childNode(withName:"daylight",recursively:false)?.childNode(withName:"stars",recursively:false)?.opacity == 1)
+                    Daylight.apply(scene,area:.meadow,seconds:0)
+                    precondition(scene.rootNode.childNode(withName:"daylight",recursively:false)?.childNode(withName:"sun",recursively:false)?.opacity == 1)
                     let crowns = scene.rootNode.childNodes.filter { $0.name == "wind-canopy" }
                     precondition(crowns.count > 2 && crowns.allSatisfy { $0.geometry === crowns[0].geometry })
                 }
@@ -369,7 +407,7 @@ struct LauncherChecks {
                 for step in 0...36 {
                     let eye = Landscape.pose(area,at:Double(step)/2).eye
                     let floor = terrain.height(eye.x.rounded(),eye.z.rounded())
-                    precondition(floor > -90 && eye.y > floor+0.1)
+                    precondition(floor > -90 && eye.y > floor+0.1,"Camera ground at \(area), t=\(Double(step)/2), eye=\(eye), floor=\(floor)")
                     if area.underground || world == .nether {
                         precondition(eye.y < max(floor+9,terrain.ceiling(eye.x,eye.z))-0.1)
                     }

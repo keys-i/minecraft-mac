@@ -54,11 +54,18 @@ Monocraft supplies the fallback title and shortcut toast; rounded system type
 identifies actions, and plain system type supplies supporting copy
 Original installed item icons and hotbar/selection textures supply the connected
 inventory bar. Realm names and number shortcuts remain in help/accessibility labels
-Stone controls use the installed stone texture and share hover, press and focus states
+Stone controls and installed utility glyphs share hover, press and focus states
+Action headings/buttons now use pixel type. The hotbar has no extra backing
+The splash overlaps the title; the bottom corners hold a native developer Link
+and the actual launcher bundle version. Scenery motion controls remain in Settings/View
 The top-left biome name opens the searchable picker; native menus also give direct access
 The bottom-right eye control or ⌘L enters spectator flight in `FlightView`
 Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
-arrows turn, dragging aims and scrolling changes speed between 2 and 32 blocks/s
+arrows turn, captured relative mouse movement aims, and scrolling changes speed
+between 2 and 32 blocks/s. Control doubles travel speed while held
+Capture owns one local event monitor and restores cursor association/visibility
+and the window’s previous mouse-event preference on release. It never installs
+a global monitor, event tap or Input Monitoring service
 A 20 Hz timer exists only while movement/turning keys are held; focus loss,
 responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
 Crossing an authored area boundary or pressing brackets loads the next/previous
@@ -93,6 +100,14 @@ three-biome strips. `Terrain.swift` owns deterministic interpolated noise, groun
 height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
 The same mesh builder supplies the forest above the mine and stronghold approaches
 Camera routes stay at player height or low spectator height, including underwater
+Texture tint is baked once into cached RGB pixels while preserving original
+alpha. Fluids use original biome colours, one alpha application and native atlas
+frames at 20 fps for water / 10 fps for lava, without doubled lava emission
+`Daylight` owns a twenty-minute Overworld sky rig with original sun/moon art,
+batched stars and once-per-second lighting/fog updates. A shared asset epoch
+preserves time between areas; motion gates pause visible updates. Nether, End
+and underground scenes retain their environmental lighting
+Idle camera routes form a continuous twelve-second hover loop
 Original block materials supply strata, vegetation, roots, fungi, chorus plants,
 waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
 particles move independently of the camera
@@ -108,7 +123,14 @@ in habitat-specific groups. Aquatic residents use water pockets, Striders use la
 and fortress residents use bridge height. River residents follow the actual
 channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
 use original skin variants. Tropical fish add the original pattern layer and colour
-variants. Residents alternate idle and local walking phases
+variants. Variant-specific geometry now takes precedence over default geometry
+Residents use unsynchronised bounded strolls, original movement/stroll attributes
+where available, sampled terrain/water bounds, diagonal gait timing, sheep
+grazing and species-specific hops. Flying hero actors follow circular paths
+Four eligible classic species use base-pack models at a daylight-dependent
+10–15% launcher-only chance, selected once during scene construction
+Classic prototypes stay within the current scene factory; no old-version
+download, separate simulation, combat, breeding or village job system is added
 The dragon stays at the central island
 Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
 from the installed assets. Ambient actions do not reproduce the game's AI or

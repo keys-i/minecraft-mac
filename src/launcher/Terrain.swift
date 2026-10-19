@@ -158,7 +158,7 @@ extension Terrain {
         let stone = try assets.tiles(world == .nether ? "netherrack" : world == .end ? "end_stone" : area == .deep ? "deepslate" : "stone")
         let dirt = try assets.tiles("dirt")
         let fluid = world == .overworld && area != .ice || world == .nether || area == .grove
-        let water = fluid ? try Landscape.flow(assets:assets,lava:world == .nether) : nil
+        let water = fluid ? try Landscape.flow(assets:assets,lava:world == .nether,biome:area) : nil
         let ice = area == .ice ? try assets.tiles("ice") : nil
         var heights: [Int:Double] = [:]
         func key(_ px: Int, _ pz: Int) -> Int { (px-x.lowerBound+1)*(z.count+2)+pz-z.lowerBound+1 }

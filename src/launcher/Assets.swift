@@ -35,6 +35,7 @@ enum AssetError: Error {
 }
 
 final class Assets {
+    let started = ProcessInfo.processInfo.systemUptime
     // The live launcher transfers completed graphs from this serial builder to the main thread
     let queue: OperationQueue = {
         let queue = OperationQueue()
@@ -52,13 +53,14 @@ final class Assets {
     private var tilesets: [String: [SCNMaterial]] = [:]
     private var tables: [String: [String: Any]] = [:]
 
-    init(data: URL) throws {
+    init(data: URL, classic: Bool = false) throws {
         func packs(_ directory: String) throws -> [URL] {
             try FileManager.default.contentsOfDirectory(at:data.appendingPathComponent(directory),includingPropertiesForKeys:nil)
                 .filter { $0.lastPathComponent == "vanilla" || $0.lastPathComponent.hasPrefix("vanilla_") }
                 .sorted { $0.lastPathComponent.compare($1.lastPathComponent,options:.numeric) == .orderedAscending }
         }
-        resources = try packs("resource_packs"); behaviours = try packs("behavior_packs")
+        resources = try packs("resource_packs").filter { !classic || $0.lastPathComponent == "vanilla" }
+        behaviours = try packs("behavior_packs")
         guard !resources.isEmpty else { throw AssetError.missing("vanilla resource pack") }
     }
 
@@ -94,8 +96,8 @@ final class Assets {
             let face = try? self.texture("textures/blocks/stone")
             let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
             var frames: [String:NSImage] = [:]
-            for name in ["hotbar_0","selected_hotbar_slot","title"] {
-                if let material = try? self.texture("textures/ui/"+name) {
+            for name in ["hotbar_0","selected_hotbar_slot","title","icon_setting","sound_glyph","how_to_play_button_default","camera-small","spyglass"] {
+                if let material = try? self.texture((name == "spyglass" ? "textures/items/" : "textures/ui/")+name) {
                     let bitmap = material.diffuse.contents as! CGImage
                     frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
                 }
@@ -174,8 +176,20 @@ final class Assets {
         guard data.count <= 8*1024*1024, let image = NSImage(data:data),
               let decoded = image.cgImage(forProposedRect:nil,context:nil,hints:nil),
               decoded.width <= 2048, decoded.height <= 4096 else { throw AssetError.image }
-        let bitmap = !animated && path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
+        var bitmap = !animated && path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
             ? decoded.cropping(to:CGRect(x:0,y:0,width:decoded.width,height:decoded.width))! : decoded
+        if let tint {
+            guard let context = CGContext(data:nil,width:bitmap.width,height:bitmap.height,bitsPerComponent:8,bytesPerRow:bitmap.width*4,
+                space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue),
+                  let data = context.data else { throw AssetError.image }
+            context.draw(bitmap,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
+            let pixels = data.assumingMemoryBound(to:UInt8.self)
+            for i in stride(from:0,to:bitmap.width*bitmap.height*4,by:4) {
+                for channel in 0..<3 { pixels[i+channel] = UInt8(UInt32(pixels[i+channel])*((tint >> ((2-channel)*8)) & 255)/255) }
+            }
+            guard let tinted = context.makeImage() else { throw AssetError.image }
+            bitmap = tinted
+        }
         let material = SCNMaterial()
         material.name = path
         material.diffuse.contents = bitmap
@@ -189,7 +203,6 @@ final class Assets {
         // Minecraft cutouts must not hide the opaque mesh beneath them
         material.shaderModifiers = [.fragment: "if (_output.color.a < 0.1) { discard_fragment(); }"]
         material.isDoubleSided = true
-        if let tint { material.multiply.contents = Landscape.colour(tint) }
         materials[key] = material
         return material
     }
@@ -198,7 +211,7 @@ final class Assets {
         let document = try json("entity/"+name+".entity.json")
         guard let entity = document["minecraft:client_entity"] as? [String: Any],
               let description = entity["description"] as? [String: Any],
-              let geometries = description["geometry"] as? [String: String], let identifier = geometries["default"] ?? geometries[key],
+              let geometries = description["geometry"] as? [String: String], let identifier = geometries[key] ?? geometries["default"],
               let textures = description["textures"] as? [String: String], let image = textures[key] else { throw AssetError.model }
         let definition = try geometry(identifier, entity: name)
         let skin = try texture(image)
@@ -440,12 +453,25 @@ extension Assets {
             let data = try Data(contentsOf:path)
             guard data.count <= 8*1024*1024,
                   let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String: Any] else { throw AssetError.model }
-            if name == "textures/terrain_texture.json" {
+            if name == "biomes_client.json" {
+                table.merge(object["biomes"] as? [String: Any] ?? [:]) { _,value in value }
+            } else if name == "textures/terrain_texture.json" {
                 table.merge(object["texture_data"] as? [String: Any] ?? [:]) { _,value in value }
             } else { table.merge(object) { _,value in value } }
         }
         tables[name] = table
         return table
+    }
+
+    func water(_ biome: Biome) throws -> UInt32 {
+        let names: [Biome:String] = [.swamp:"swampland",.mangrove:"mangrove_swamp",.river:"river",.reef:"warm_ocean",
+            .monument:"deep_ocean",.coast:"beach",.desert:"desert",.jungle:"jungle",.snow:"taiga",.ice:"frozen_ocean"]
+        let biomes = try table("biomes_client.json")
+        let entry = biomes["minecraft:"+(names[biome] ?? "plains")] as? [String:Any]
+        let fallback = biomes["default"] as? [String:Any]
+        let colour = entry?["water_surface_color"] as? String ?? fallback?["water_surface_color"] as? String ?? "#44AFF5"
+        guard colour.count == 7, colour.first == "#", let value = UInt32(colour.dropFirst(),radix:16) else { throw AssetError.model }
+        return value
     }
 
     func tiles(_ name: String, states: [String: String] = [:]) throws -> [SCNMaterial] {

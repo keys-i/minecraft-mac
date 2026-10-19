@@ -45,6 +45,11 @@ final class FlightView: SCNView {
     private(set) var keys: Set<UInt16> = []
     private(set) var speed: Float = 8
     private var descending = false
+    private var sprinting = false
+    private var mouse: Any?
+    private weak var inputWindow: NSWindow?
+    private var acceptedMouse = false
+    private(set) var captured = false
     private var timer: Timer?
     private var last = 0.0
     private var loading = false
@@ -54,8 +59,9 @@ final class FlightView: SCNView {
         didSet {
             guard exploring != oldValue else { return }
             stop()
-            if exploring { window?.makeFirstResponder(self) }
+            if exploring { capture() }
             else {
+                release()
                 entry = nil
                 if window?.firstResponder === self { window?.makeFirstResponder(nil) }
             }
@@ -67,18 +73,43 @@ final class FlightView: SCNView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self,name:NSWindow.didResignKeyNotification,object:nil)
-        stop()
+        stop(); release()
         if let window {
             NotificationCenter.default.addObserver(self,selector:#selector(lostFocus),name:NSWindow.didResignKeyNotification,object:window)
         }
     }
 
-    override func resignFirstResponder() -> Bool { stop(); return super.resignFirstResponder() }
-    @objc private func lostFocus() { stop() }
+    override func resignFirstResponder() -> Bool { stop(); release(); return super.resignFirstResponder() }
+    @objc private func lostFocus() { stop(); release() }
 
     override func mouseDown(with event: NSEvent) {
-        if exploring { window?.makeFirstResponder(self) }
+        if exploring { capture(); return }
         super.mouseDown(with:event)
+    }
+
+    private func capture() {
+        guard exploring, !captured, let window, window.isKeyWindow else { return }
+        window.makeFirstResponder(self)
+        guard CGAssociateMouseAndMouseCursorPosition(0) == .success else { return }
+        inputWindow = window; acceptedMouse = window.acceptsMouseMovedEvents; window.acceptsMouseMovedEvents = true
+        captured = true; NSCursor.hide()
+        mouse = NSEvent.addLocalMonitorForEvents(matching:[.mouseMoved,.leftMouseDragged,.rightMouseDragged]) { [weak self] event in
+            guard let self, self.captured else { return event }
+            self.aim(x:Float(event.deltaX),y:Float(-event.deltaY))
+            return nil
+        }
+    }
+
+    private func release() {
+        if let mouse { NSEvent.removeMonitor(mouse); self.mouse = nil }
+        inputWindow?.acceptsMouseMovedEvents = acceptedMouse; inputWindow = nil
+        if captured { CGAssociateMouseAndMouseCursorPosition(1); NSCursor.unhide(); captured = false }
+    }
+
+    func aim(x: Float, y: Float) {
+        guard exploring, !loading else { return }
+        controller.rotateBy(x:-x*0.15,y:y*0.15)
+        needsDisplay = true
     }
 
     override func keyDown(with event: NSEvent) {
@@ -103,6 +134,7 @@ final class FlightView: SCNView {
     override func flagsChanged(with event: NSEvent) {
         guard exploring else { super.flagsChanged(with:event); return }
         descending = event.modifierFlags.contains(.shift)
+        sprinting = event.modifierFlags.contains(.control)
         if descending { start() } else if keys.isEmpty { suspend() }
     }
 
@@ -126,7 +158,7 @@ final class FlightView: SCNView {
         start()
     }
 
-    func stop() { suspend(); keys.removeAll(); descending = false }
+    func stop() { suspend(); keys.removeAll(); descending = false; sprinting = false }
     private func suspend() { timer?.invalidate(); timer = nil }
 
     private func start() {
@@ -140,7 +172,7 @@ final class FlightView: SCNView {
 
     @objc private func tick() {
         guard exploring, window?.isKeyWindow == true, window?.occlusionState.contains(.visible) == true,
-              NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); return }
+              NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); release(); return }
         let now = ProcessInfo.processInfo.systemUptime
         advance(seconds:now-last); last = now
     }
@@ -153,7 +185,7 @@ final class FlightView: SCNView {
         let rotated = camera.simdWorldTransform*local
         var direction = SIMD3<Float>(rotated.x,rotated.y,rotated.z)
         direction.y += key(49)-(descending ? 1 : 0)
-        if simd_length_squared(direction)>0 { camera.simdWorldPosition += simd_normalize(direction)*speed*dt }
+        if simd_length_squared(direction)>0 { camera.simdWorldPosition += simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt }
         camera.position.y = min(90,max(-28,camera.position.y))
         let yaw = key(124)-key(123), pitch = key(126)-key(125)
         if yaw != 0 || pitch != 0 { controller.rotateBy(x:-yaw*70*dt,y:pitch*70*dt) }
@@ -187,7 +219,7 @@ final class FlightView: SCNView {
     }
 
     func dispose() {
-        stop(); travel = nil; finish = nil; controller.pointOfView = nil; entry = nil
+        stop(); release(); travel = nil; finish = nil; controller.pointOfView = nil; entry = nil
         NotificationCenter.default.removeObserver(self)
     }
 }
@@ -215,7 +247,7 @@ struct Adventure: NSViewRepresentable {
         var operation: Operation?
 
         @objc func pan(_ gesture: NSPanGestureRecognizer) {
-            guard exploring, let view else { return }
+            guard exploring, let view, !view.captured else { return }
             if gesture.state == .began { view.window?.makeFirstResponder(view) }
             let movement = gesture.translation(in:view)
             view.controller.rotateBy(x:-Float(movement.x)*0.22,y:Float(movement.y)*0.22)
