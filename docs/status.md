@@ -10,6 +10,52 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Original Minecraft art in 0.6
+
+Version 0.6 replaces the rejected procedural creatures with original models and
+textures read from the owner's installed Minecraft. Original templates supply
+villages, igloos, ruined portals, fossils, the Ancient City, bastions, shipwrecks
+and End City pieces. No Minecraft assets are added to source or the DMG
+
+The 31 area views and three portal journeys remain selectable. The catalogue
+contains 46 resident types plus the Happy Ghast and dragon. The mine camera stays
+below its support beams, Nether frames are 4 × 5 blocks, and the stronghold uses
+a 12-frame End portal. Shulkers stay still and the dragon stays at the central island
+Sift remains an artistic interpretation using existing Minecraft art
+
+Scene construction now runs on a serial asset queue, with queued cancellation,
+obsolete-result rejection and main-thread presentation. First-run and unsupported
+art fall back to the approved poster. Shared materials and metadata remain cached;
+archive buffers and the old scene graph are released after construction/replacement
+
+Local checks passed on October 19, 2026: 91 Python tests, the native CI fixtures,
+installed-art integration, 31 area renders, fifteen passage viewpoints and eleven
+identical paused-frame comparisons. The native fixtures cover malformed archives,
+gzip/NBT, numeric pack precedence, empty archive stubs, UV direction, plane faces,
+bind transforms, parent cycles, cancellation and main-thread completion
+The 121-file source boundary, source hashes and diff checks also pass
+
+The forty-view M3 Pro probe's highest GPU p95 is 11.45 ms and highest wall p95 is
+13.45 ms against the 50 ms frame budget. Cold graph construction reached 646.27 ms
+on the asset queue; enqueueing returned in 0.03 ms in the native check
+These are offscreen/API results, not application input latency or game benchmarks
+See [Testing](test.md#original-asset-06-measurements) for the method and per-realm results
+
+The separate full 0.6.0 candidate contains 1,048 inventoried resources. The 1,046 existing
+resources apart from the notice match exactly, including the runtime, worker,
+helper and licences. The notice is updated and the approved poster is added. Launcher machine code matches the
+source build, and its ad-hoc bundle signature and LZFSE disk image verify
+The image is 126,714,712 bytes and retains the runtime's macOS 27 minimum
+
+```text
+1ba47ac1fb5b8f10410ad44a0d752e1fd81381c65c1a385c08cb4002f10bd3d6
+```
+
+The 104-second local video is an offscreen scenery tour. The isolated UI preview
+uses a simulated worker and reads only public art from the installed game
+Full-window, keyboard, VoiceOver, long-session memory and live-game checks remain
+unverified. The installed app and public binary release have not been replaced
+
 ## Earlier 0.5 procedural preview
 
 The 0.5 artwork was rejected for visual fidelity and is superseded by 0.6
