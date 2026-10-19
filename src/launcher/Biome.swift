@@ -7,7 +7,7 @@ enum Biome: String, CaseIterable {
     case meadow = "Meadow village", forest = "Oak forest", cherry = "Cherry grove"
     case snow = "Snowy taiga", peaks = "Jagged peaks", desert = "Desert temple"
     case badlands = "Badlands mineshaft", mangrove = "Mangrove swamp", jungle = "Jungle temple"
-    case mushroom = "Mushroom fields", pale = "Pale Garden at dusk", coast = "Ocean ruins"
+    case mushroom = "Mushroom fields", pale = "Pale Garden at dusk", coast = "Coast & shipwreck"
     case lush = "Lush caves", deep = "Deep Dark · Ancient City"
     case wastes = "Nether Wastes · Fortress", crimson = "Crimson Forest · Bastion"
     case warped = "Warped Forest", soul = "Soul Sand Valley", basalt = "Basalt Deltas"
@@ -20,8 +20,8 @@ enum Biome: String, CaseIterable {
 
     var residents: [Species] {
         switch self {
-        case .meadow: return [.cow, .sheep, .villager, .golem]
-        case .forest: return [.pig, .wolf, .fox, .bee]
+        case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem]
+        case .forest: return [.pig, .wolf, .bee, .creeper]
         case .cherry: return [.bee, .sheep, .rabbit]
         case .snow: return [.fox, .wolf, .rabbit]
         case .peaks: return [.goat, .llama]
@@ -29,11 +29,11 @@ enum Biome: String, CaseIterable {
         case .badlands: return [.armadillo, .rabbit, .spider]
         case .mangrove: return [.frog, .slime, .bee]
         case .jungle: return [.panda, .parrot, .ocelot]
-        case .mushroom: return [.mooshroom, .rabbit]
-        case .pale: return [.creaking, .spider]
+        case .mushroom: return [.mooshroom]
+        case .pale: return [.creaking, .spider, .zombie]
         case .coast: return [.turtle, .dolphin, .squid]
         case .lush: return [.axolotl, .glowsquid, .bat]
-        case .deep: return [.warden, .bat]
+        case .deep: return [.warden]
         case .wastes: return [.piglin, .strider, .blaze]
         case .crimson: return [.hoglin, .piglin, .strider]
         case .warped: return [.enderman, .strider]
@@ -49,53 +49,38 @@ enum Biome: String, CaseIterable {
         }
     }
 
-    // Ground, foliage and sky carry habitat identity before any landmark appears
-    var ground: UInt32 {
+    var surface: String {
         switch self {
-        case .snow, .peaks: return 0xE1E9E6
-        case .desert, .coast: return 0xDBC28A
-        case .badlands: return 0xBA663E
-        case .mangrove: return 0x536747
-        case .jungle: return 0x4E993C
-        case .mushroom: return 0x8F7B8E
-        case .pale: return 0x8A9890
-        case .lush: return 0x4C8156
-        case .deep: return 0x273D42
-        case .wastes: return 0x73343D
-        case .crimson: return 0xA23B48
-        case .warped: return 0x30988C
-        case .soul: return 0x816A5A
-        case .basalt: return 0x50515C
-        case .central, .highlands, .midlands, .islands, .barrens: return 0xD1CB95
-        case .city: return 0xC9BF95
-        case .terraces: return 0xE2AD9F
-        case .grove: return 0x7CC7AF
-        case .valley: return 0xB49ACA
-        case .shards: return 0x83B7CF
-        case .ruins: return 0xCCAD9F
-        case .sculk: return 0x377A83
-        default: return 0x76A449
+        case .snow, .peaks: return "snow"
+        case .desert, .coast: return "sand"
+        case .badlands: return "red_sand"
+        case .mangrove: return "mud"
+        case .mushroom: return "mycelium"
+        case .lush: return "moss_block"
+        case .deep: return "sculk"
+        case .wastes: return "netherrack"
+        case .crimson: return "crimson_nylium"
+        case .warped: return "warped_nylium"
+        case .soul: return "soul_sand"
+        case .basalt: return "basalt"
+        case .central, .highlands, .midlands, .islands, .barrens, .city: return "end_stone"
+        case .terraces, .ruins: return "pink_terracotta"
+        case .grove: return "moss_block"
+        case .valley, .shards: return "purple_terracotta"
+        case .sculk: return "sculk"
+        default: return "grass_block"
         }
     }
 
-    var foliage: UInt32 {
+    var tree: String? {
         switch self {
-        case .cherry: return 0xE9AAC9
-        case .snow, .peaks: return 0x447463
-        case .mangrove: return 0x557749
-        case .jungle: return 0x36893B
-        case .mushroom: return 0xB93D45
-        case .pale: return 0xB6C0B7
-        case .lush: return 0x7FA657
-        case .deep: return 0x2C7074
-        case .crimson: return 0xBC3548
-        case .warped: return 0x35B4A8
-        case .central, .highlands, .midlands, .islands, .barrens, .city: return 0x795884
-        case .terraces, .ruins: return 0xEFA9C8
-        case .grove: return 0x65D8BC
-        case .valley, .sculk: return 0xBE9BDF
-        case .shards: return 0xBDDDEA
-        default: return 0x4D8246
+        case .meadow, .forest: return "oak"
+        case .cherry, .grove: return "cherry"
+        case .snow: return "spruce"
+        case .mangrove: return "mangrove"
+        case .jungle: return "jungle"
+        case .pale: return "pale_oak"
+        default: return nil
         }
     }
 

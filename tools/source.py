@@ -68,6 +68,8 @@ ALLOWED_FILES = (
     'tools/build.py',
     'src/launcher/BedrockLauncher.swift',
     'src/launcher/Adventure.swift',
+    'src/launcher/Assets.swift',
+    'src/launcher/NBT.swift',
     'src/launcher/Landscape.swift',
     'src/launcher/Biome.swift',
     'src/launcher/Mobs.swift',

@@ -162,13 +162,14 @@ def build_launcher():
     cache = ROOT / 'build/swift-module-cache'
     executable.parent.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
-    for name in ('poster.webp', 'overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
+    for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
         (resources / name).unlink(missing_ok=True)
+    shutil.copy2(ROOT / 'assets/poster.webp', resources / 'poster.webp')
     cache.mkdir(parents=True, exist_ok=True)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-O', '-target',
                     'arm64-apple-macos15.0', '-module-cache-path', str(cache),
                     str(ROOT / 'src/launcher/BedrockLauncher.swift'), str(ROOT / 'src/launcher/Adventure.swift'),
-                    str(ROOT / 'src/launcher/Landscape.swift'),
+                    str(ROOT / 'src/launcher/Landscape.swift'), str(ROOT / 'src/launcher/Assets.swift'), str(ROOT / 'src/launcher/NBT.swift'),
                     str(ROOT / 'src/launcher/Biome.swift'), str(ROOT / 'src/launcher/Mobs.swift'), str(ROOT / 'src/launcher/Structures.swift'), str(ROOT / 'src/launcher/Journey.swift'), '-o', str(executable)], check=True)
     icon = ROOT / 'build/make-icon'
     iconset = ROOT / 'build/AppIcon.iconset'
@@ -179,7 +180,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='5', CFBundleShortVersionString='0.5.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='6', CFBundleShortVersionString='0.6.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)

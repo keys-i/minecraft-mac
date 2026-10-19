@@ -38,6 +38,9 @@ final class Launcher: ObservableObject {
     @Published var running = false
     @Published var checkingUpdates = false
     @Published var journey = Journey()
+    @Published var assets: Assets?
+    @Published var sceneryFailed = false
+    let poster = Bundle.main.url(forResource: "poster", withExtension: "webp").flatMap { NSImage(contentsOf: $0) }
     var selection: Int { worlds.firstIndex(of: journey.world)! }
     private var process: Process?
     private var buffer = Data()
@@ -47,7 +50,16 @@ final class Launcher: ObservableObject {
     init() {
         let path = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
         root = path.isEmpty ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Bedrock for Mac") : URL(fileURLWithPath: path)
+        refreshAssets()
         start(check: true)
+    }
+
+    private func refreshAssets() {
+        guard assets == nil else { return }
+        let installed = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Bedrock for Mac/game/data")
+        let data = root.appendingPathComponent("game/data")
+        let development = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
+        assets = try? Assets(data: !development.isEmpty && !FileManager.default.fileExists(atPath: data.path) ? installed : data)
     }
 
     func start(check: Bool = false, signOut: Bool = false) {
@@ -112,6 +124,11 @@ final class Launcher: ObservableObject {
             if let next = try? JSONDecoder().decode(Status.self, from: line) {
                 let announce = next.title != status.title || next.state != status.state
                 status = next
+                if ["ready", "playing"].contains(next.state), assets == nil || sceneryFailed {
+                    assets = nil
+                    sceneryFailed = false
+                    refreshAssets()
+                }
                 if announce {
                     NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                         userInfo: [.announcement: next.title, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
@@ -253,10 +270,16 @@ private struct LaunchButton: ButtonStyle {
 private struct Scenery: View {
     let journey: Journey
     let moving: Bool
+    @ObservedObject var launcher: Launcher
 
     var body: some View {
         ZStack {
-            Adventure(world: journey.world, biome: journey.biome, moving: moving, passage: journey.passage)
+            if let poster = launcher.poster {
+                Image(nsImage: poster).resizable().scaledToFill()
+            }
+            if let assets = launcher.assets, !launcher.sceneryFailed {
+                Adventure(world: journey.world, biome: journey.biome, moving: moving, passage: journey.passage, assets: assets) { launcher.sceneryFailed = true }
+            }
             LinearGradient(colors: [.black.opacity(0.48), .clear], startPoint: .leading, endPoint: .trailing)
             LinearGradient(colors: [.clear, .black.opacity(0.12), .black.opacity(0.86)], startPoint: .top, endPoint: .bottom)
         }
@@ -348,7 +371,7 @@ struct LauncherView: View {
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     private var fresh: Bool { launcher.status.state == "new" }
     private var moving: Bool {
-        SceneryMotion.enabled(reduced: reduceMotion, paused: !animateScenery, lowPower: lowPower,
+        launcher.assets != nil && !launcher.sceneryFailed && SceneryMotion.enabled(reduced: reduceMotion, paused: !animateScenery, lowPower: lowPower,
                               active: scenePhase == .active, visible: visible,
                               playing: launcher.status.state == "playing")
     }
@@ -370,7 +393,8 @@ struct LauncherView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Scenery(journey: launcher.journey, moving: moving)
+                Scenery(journey: launcher.journey, moving: moving, launcher: launcher)
+                    .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: launcher.selection)
                     .ignoresSafeArea()
                 ScrollView {
@@ -397,7 +421,9 @@ struct LauncherView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                sceneryNavigation.padding(.top, 92).padding(.trailing, 36)
+                if launcher.assets != nil && !launcher.sceneryFailed {
+                    sceneryNavigation.padding(.top, 92).padding(.trailing, 36)
+                }
             }
         }
         .foregroundStyle(.white)
@@ -544,7 +570,7 @@ struct LauncherView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("Unofficial launcher").font(.caption).foregroundStyle(.white.opacity(0.68))
+            Text(launcher.sceneryFailed ? "Scenery unavailable for this game version" : launcher.assets == nil ? "Install Minecraft to explore the scenery" : "Unofficial launcher").font(.caption).foregroundStyle(.white.opacity(0.68))
             Spacer()
             ForEach(launcher.worlds.indices, id: \.self) { index in
                 Button {
@@ -558,9 +584,10 @@ struct LauncherView: View {
                     .background(.white.opacity(launcher.selection == index ? 0.18 : 0.04), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .disabled(launcher.assets == nil || launcher.sceneryFailed)
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
                 .accessibilityLabel("\(launcher.worlds[index].title) scenery")
-                .help(launcher.worlds[index] == .sift ? "Artistic Sift preview — announced for Java and Bedrock in 2027" : "Choose \(launcher.worlds[index].title) scenery")
+                .help(launcher.worlds[index] == .sift ? "Artistic Sift interpretation" : "Choose \(launcher.worlds[index].title) scenery")
             }
         }
     }
@@ -619,11 +646,13 @@ private struct LauncherMenus: Commands {
                 launcher.journey.select(launcher.worlds[(launcher.selection + 1) % launcher.worlds.count], animated: animate)
             }
             .keyboardShortcut("]", modifiers: .command)
+            .disabled(launcher.assets == nil || launcher.sceneryFailed)
             Menu("Choose Biome or Landmark") {
                 ForEach(launcher.journey.world.biomes.indices, id: \.self) { index in
                     Button(launcher.journey.world.biomes[index].rawValue) { launcher.journey.area(index) }
                 }
             }
+            .disabled(launcher.assets == nil || launcher.sceneryFailed)
             Button("Skip Portal Journey") { launcher.journey.skip() }
                 .disabled(launcher.journey.passage == nil)
         }

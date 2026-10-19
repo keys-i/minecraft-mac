@@ -42,6 +42,10 @@ The README uses labelled links, image descriptions, headings and expandable
 sections. The poster's message is repeated in ordinary text so the image is
 not required to understand what the project does
 
+The area and realm controls are unavailable until installed game art is ready
+An unsupported scenery format falls back to the approved poster without blocking
+the setup controls
+
 ## Known limits
 
 Large text, display zoom, increased contrast, keyboard focus and VoiceOver

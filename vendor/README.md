@@ -92,14 +92,21 @@ license audit of a future binary bundle.
 ## Artwork and screenshots
 
 The README poster and earlier Overworld/Nether/End/Sift panoramas are original
-AI-generated project artwork. Versions 0.4 and 0.5 use authored procedural terrain,
-plants, structures and creatures in the native renderer; the earlier panoramas
-remain source references and are not bundled. Mob proportions and features use
-the official references listed in [asset notes](../assets/README.md), with
-authored pixel maps rather than copied game models or textures
-The scenery is not gameplay footage
-The Sift scene is an artistic interpretation, not a claim about the installed
-game's features. The launcher image
-is an unaltered screenshot of the locally running native launcher, captured on
-October 19, 2026. The [artwork prompt and screenshot sources](../assets/README.md)
-are recorded separately
+AI-generated project artwork. The approved poster is bundled for first-run and
+unsupported-scenery fallback; the earlier panoramas remain source references
+
+Version 0.6 reads Minecraft's original model geometry, textures and NBT structure
+templates from the owner's installed game data. These assets remain the property
+of Mojang/Microsoft and are not included in this source package or the app bundle
+The `.brarchive` reader follows the publicly documented
+[archive format](https://github.com/bedrock-crustaceans/brarchive/blob/main/FORMAT.md)
+No code was copied from that implementation
+
+The launcher composes its own terrain and ambient animation around those assets
+Some partial blocks and generated structures are simplified. The scenery is not
+gameplay footage, and Sift areas remain artistic interpretations
+Earlier 0.4/0.5 procedural models were rejected for visual fidelity and are no
+longer used. Historical artwork references remain in [asset notes](../assets/README.md)
+
+The launcher image is an unaltered screenshot of the earlier locally running
+native launcher, captured on October 19, 2026. It does not show the 0.6 scenery

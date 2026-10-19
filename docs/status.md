@@ -10,7 +10,10 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
-## Expanded realm journeys
+## Earlier 0.5 procedural preview
+
+The 0.5 artwork was rejected for visual fidelity and is superseded by 0.6
+The measurements below describe that earlier candidate
 
 Version 0.5 adds 31 selectable habitat and landmark areas, with 42 species in
 the resident catalogue alongside the original Happy Ghast and dragon rigs
@@ -32,6 +35,24 @@ All 31 area renders, fifteen passage viewpoints and eleven paused-frame comparis
 pass. The forty-view GPU probe stays within the 50 ms budget for 20 fps, with a
 maximum 11.67 ms GPU p95; methods and limits are in [Testing](test.md#native-app-and-helper)
 The README poster, game runtime, worker, account helper and installed app are unchanged
+
+The separate 0.5.0 full candidate preserves 1,046 resource hashes from 0.4,
+including every runtime, worker, helper and licence file. Only the scenery
+notice changes among its 1,047 inventoried resources. Its launcher machine code
+matches the native source build; the ad-hoc signature and LZFSE DMG verify
+The runtime still requires macOS 27. No installed app or public release was replaced
+
+The isolated interface preview opened as a separate process. Its sign-in,
+download and play worker is simulated and does not use account or world data
+Full-window, keyboard and VoiceOver workflows remain unverified because
+Computer Use access to the earlier preview was denied
+
+The local DMG is 127,446,320 bytes. Its SHA-256 is
+
+```text
+7b726a9d791e5980f6fd9ff0ad7d942d6fcdc64ff3efcf7f72a3b9b60ac36b96
+```
+
 
 ## Earlier 0.4 live realm preview
 

@@ -17,10 +17,10 @@ enum Passage: String, Sendable {
         let eyes: [SCNVector3], aims: [SCNVector3]
         switch self {
         case .mine:
-            eyes = [.init(0,14,31),.init(0,10,12),.init(0,3,-8),.init(0,2.8,-24),.init(0,2.8,-27.86)]
-            aims = [.init(0,7,8),.init(0,4,-3),.init(0,2.8,-28),.init(0,2.8,-29),.init(0,2.8,-30)]
+            eyes = [.init(0,17,30),.init(0,9.4,14),.init(0,4.6,-3),.init(0,1.62,-24),.init(0,1.62,-27.98)]
+            aims = [.init(0,8,14),.init(0,4,-3),.init(0,2.5,-28),.init(0,2.5,-29),.init(0,2.5,-30)]
         case .stronghold:
-            eyes = [.init(0,3,16),.init(0,3,3),.init(0,4,-8),.init(0,6,-16),.init(0,1.12,-18)]
+            eyes = [.init(0,3,16),.init(0,3,3),.init(0,4,-8),.init(0,5.2,-16),.init(0,1.27,-18)]
             aims = [.init(0,2,-6),.init(0,2,-13),.init(0,1,-18),.init(0,1,-18),.init(0,-2,-18.1)]
         case .rift:
             eyes = [.init(0,9,22),.init(0,7,10),.init(0,5,-2),.init(0,4.8,-10),.init(0,4.8,-13.86)]
@@ -31,7 +31,12 @@ enum Passage: String, Sendable {
         func blend(_ a: SCNVector3, _ b: SCNVector3) -> SCNVector3 {
             .init(a.x+(b.x-a.x)*eased,a.y+(b.y-a.y)*eased,a.z+(b.z-a.z)*eased)
         }
-        return (blend(eyes[index],eyes[index+1]),blend(aims[index],aims[index+1]))
+        var eye = blend(eyes[index],eyes[index+1])
+        if self == .mine {
+            // Stay below support beams while following the stepped rail bed
+            eye.y = max(0,(eye.z+12)/4)+1.62+max(0,eye.z-18)/12*3.88
+        }
+        return (eye,blend(aims[index],aims[index+1]))
     }
 }
 
@@ -70,115 +75,89 @@ struct Journey {
     }
 }
 
-@MainActor
 extension Passage {
-    func scene() -> SCNScene {
-        let scene = SCNScene(), factory = Mobs()
+    func scene(assets: Assets) throws -> SCNScene {
+        let scene = SCNScene(), factory = Mobs(assets: assets)
         scene.background.contents = Landscape.colour(self == .mine ? 0x9EC9DF : self == .rift ? 0x514267 : 0x17202A)
         scene.fogColor = Landscape.colour(self == .rift ? 0x514267 : 0x17202A)
-        scene.fogStartDistance = 28; scene.fogEndDistance = 65
+        scene.fogStartDistance = 30; scene.fogEndDistance = 75
         let camera = SCNNode(); camera.name = "camera"; camera.camera = SCNCamera()
         camera.camera?.fieldOfView = 58; camera.camera?.zNear = 0.05; camera.camera?.zFar = 120
         camera.camera?.wantsHDR = true; camera.camera?.wantsExposureAdaptation = false
-        camera.camera?.bloomIntensity = 0.3; camera.camera?.bloomThreshold = 1.2
         scene.rootNode.addChildNode(camera)
-        let pose = pose(at:0); camera.position = pose.eye; camera.look(at:pose.aim)
-        camera.runAction(.customAction(duration:Double(duration)) { node,elapsed in
-            let pose = self.pose(at:Double(elapsed))
-            node.position = pose.eye; node.look(at:pose.aim)
-        },forKey:"passage")
+        let pose = pose(at: 0); camera.position = pose.eye; camera.look(at: pose.aim)
+        camera.runAction(.customAction(duration: Double(duration)) { node, elapsed in
+            let pose = self.pose(at: Double(elapsed))
+            node.position = pose.eye; node.look(at: pose.aim)
+        }, forKey: "passage")
         let fill = SCNNode(); fill.light = SCNLight(); fill.light?.type = .ambient
-        fill.light?.intensity = self == .rift ? 420 : 270
+        fill.light?.intensity = self == .rift ? 500 : 370
         scene.rootNode.addChildNode(fill)
         var mesh = Voxels()
-        let rock = factory.paint(self == .stronghold ? 0x626D69 : 0x66676D)
-        let wood = factory.paint(0x805D3E), metal = factory.paint(0xA6AAA5)
-        func cube(_ size: SCNVector3, _ at: SCNVector3, _ material: SCNMaterial) {
-            mesh.cube(size,at:at,material:material)
+        func cube(_ size: SCNVector3, _ at: SCNVector3, _ block: String) throws {
+            let tiles = try assets.tiles(block)
+            mesh.cube(size, at: at, material: tiles[0], faceMaterials: tiles)
         }
         if self == .mine {
-            cube(.init(42,9,25),.init(0,4.5,31),factory.paint(0x806047))
-            cube(.init(42,0.3,25),.init(0,9,31),factory.paint(0x76A449))
             for side in [-1.0,1] {
-                cube(.init(25,15,48),.init(side*17.5,7.5,-4),rock)
-                cube(.init(25,0.3,48),.init(side*17.5,15,-4),factory.paint(0x76A449))
-                cube(.init(1,6,1),.init(side*10,12,24),wood)
-                cube(.init(5,2,5),.init(side*10,15,24),factory.paint(0x4D8246))
+                try cube(.init(25,14,70),.init(side*15,5,-4),"stone")
+                try cube(.init(25,1,70),.init(side*15,12.5,-4),"grass_block")
             }
         }
-        for index in 0..<15 {
-            let z = 18-Double(index)*3.5
-            let floor = self == .mine ? max(0,9-(15-z)*0.28) : self == .rift ? max(2,5-Double(index)*0.2) : 0
-            let material = self == .rift ? factory.paint(index%2 == 0 ? 0xA487BA : 0x77AEBD) : rock
-            cube(.init(self == .rift ? 5 : 10,1,3.5),.init(0,floor-0.5,z),material)
+        for index in 0..<65 {
+            let z = 34-Double(index)
+            let floor = self == .mine ? max(0,ceil((z+12)/4)) : self == .rift ? 2 : 0
+            try cube(.init(self == .rift ? 5 : self == .stronghold ? 15 : 5,1,1),.init(0,floor-0.5,z),self == .stronghold ? "stone_bricks" : self == .rift ? "purple_terracotta" : "stone")
             if self == .mine {
-                for side in [-1.0,1] {
-                    cube(.init(3,9,3.5),.init(side*5,floor+4,z),rock)
-                    cube(.init(0.3,4.5,0.3),.init(side*2.3,floor+2.2,z),wood)
-                    cube(.init(0.1,0.08,3.5),.init(side*0.6,floor+0.08,z),metal)
+                for side in [-1.0,1] { try cube(.init(2,5,1),.init(side*(z < -20 ? 4.5 : 2.5),floor+2.5,z),"stone") }
+                if z < 12 { try cube(.init(z < -20 ? 11 : 7,1,1),.init(0,floor+(z < -20 ? 6.5 : 4.5),z),"stone") }
+                if index%4 == 0 && z >= -20 {
+                    for side in [-1.0,1] { try cube(.init(0.375,2,0.375),.init(side*1.3,floor+1,z),"oak_fence") }
+                    try cube(.init(3,1,1),.init(0,floor+2.5,z),"oak_planks")
                 }
-                cube(.init(5,0.35,0.35),.init(0,floor+4.3,z),wood)
-                cube(.init(1.6,0.08,0.25),.init(0,floor+0.06,z),wood)
-                if z < 10 { cube(.init(10,2,3.5),.init(0,floor+6,z),rock) }
-                if index%3 == 0 {
-                    cube(.init(0.8,0.7,0.8),.init(3.6,floor+1,z),factory.paint(index%2 == 0 ? 0x68BEB8 : 0xBC8B50))
+                let rail = try assets.texture("textures/blocks/rail_normal")
+                let first = mesh.vertices.count
+                mesh.cube(.init(1,0,1),at:.init(0,floor+0.02,z),material:rail,faces:16)
+                let rise = max(0,ceil((z+13)/4))-floor
+                for vertex in first..<mesh.vertices.count {
+                    if mesh.vertices[vertex].z > z { mesh.vertices[vertex].y += rise }
+                    mesh.normals[vertex] = .init(0,1/sqrt(1+rise*rise),-rise/sqrt(1+rise*rise))
                 }
             } else if self == .stronghold {
                 let chamber = z < -7
                 for side in [-1.0,1] {
-                    cube(.init(1,6,3.5),.init(side*(chamber ? 7 : 3.5),3,z),rock)
-                    cube(.init(0.7,5.5,0.7),.init(side*(chamber ? 5.8 : 3),2.7,z),factory.paint(0x4D6252))
-                    if index < 5 {
-                        cube(.init(0.3,3,2.5),.init(side*3,2,z),wood)
-                        for book in 0..<4 { cube(.init(0.35,0.55,0.28),.init(side*2.8,1.2+Double(book%2),z+Double(book/2)*0.8),factory.paint(book%2 == 0 ? 0x94494B : 0xB7AD70)) }
-                    }
+                    try cube(.init(1,6,1),.init(side*(chamber ? 6 : 3),3,z),index%7 == 0 ? "mossy_stone_bricks" : index%5 == 0 ? "cracked_stone_bricks" : "stone_bricks")
+                    if !chamber && index%4 != 0 { try cube(.init(1,4,1),.init(side*2.5,2,z),"bookshelf") }
                 }
-                cube(.init(chamber ? 15 : 8,1,3.5),.init(0,6.5,z),rock)
-            } else {
-                for side in [-1.0,1] {
-                    let h = 4+Double(index%4)
-                    cube(.init(1.5,h,2),.init(side*(5+Double(index%3)),floor+h/2-2,z),material)
-                    cube(.init(2,0.3,2),.init(side*7,floor+h,z),factory.paint(0xC1A9DB))
-                }
+                try cube(.init(chamber ? 13 : 7,1,1),.init(0,6.5,z),"stone_bricks")
+            } else if index%4 == 0 {
+                for side in [-1.0,1] { try cube(.init(2,5+Double(index%3),2),.init(side*6,3,z),"amethyst_block") }
             }
-            if index%3 == 0 {
-                let torch = SCNNode(); torch.light = SCNLight(); torch.light?.type = .omni
-                torch.light?.color = Landscape.colour(self == .stronghold ? 0xABC4A2 : self == .rift ? 0x8CDADF : 0xF2B775)
-                torch.light?.intensity = 350; torch.light?.attenuationEndDistance = 16
-                torch.position = .init(2,floor+3,z)
-                scene.rootNode.addChildNode(torch)
-                cube(.init(0.18,0.6,0.18),.init(2.3,floor+2.5,z),wood)
-                cube(.init(0.3,0.3,0.3),.init(2.3,floor+2.9,z),factory.paint(0xE9BF67))
+            if index%8 == 0 {
+                let light = SCNNode(); light.light = SCNLight(); light.light?.type = .omni
+                light.light?.color = Landscape.colour(self == .rift ? 0x8CDADF : 0xF2C080)
+                light.light?.intensity = 280; light.light?.attenuationEndDistance = 12
+                light.position = .init(0,floor+2.6,z); scene.rootNode.addChildNode(light)
+                let torch = try assets.texture("textures/blocks/torch_on")
+                mesh.cube(.init(1,1,0),at:.init(1.48,floor+1.8,z),material:torch,faces:1)
             }
         }
         if self == .stronghold {
-            cube(.init(8,0.6,8),.init(0,0.3,-18),rock)
-            let green = factory.paint(0x4C8876)
+            try cube(.init(7,1,7),.init(0,0,-18),"stone_bricks")
             for side in [-1.0,1] {
-                for index in -1...1 {
-                    let offset = Double(index)*1.1
-                    for p in [SCNVector3(side*2.2,1,-18+offset),SCNVector3(offset,1,-18+side*2.2)] {
-                        cube(.init(1.1,0.7,1.1),p,green)
-                        cube(.init(0.5,0.18,0.5),.init(p.x,p.y+0.44,p.z),factory.paint(0xA2C4A1))
-                    }
-                }
+                try cube(.init(1,2,5),.init(side*4,1,-18),"lava")
+                for index in -2...2 { try cube(.init(0.125,3,0.125),.init(side*5.5,2,Double(index)-18),"iron_bars") }
             }
-            let material = VoxelAdventure.material([0x080C1B,0x111829,0x151F36,0xA5ABCE,0x080C1B,0x080C1B,0x080C1B])
-            material.isDoubleSided = true; material.lightingModel = .constant
-            material.diffuse.contentsTransform = SCNMatrix4MakeScale(12,12,1)
-            let plane = SCNPlane(width:3.3,height:3.3); plane.firstMaterial = material
-            let surface = SCNNode(geometry:plane); surface.name = "end-portal"
-            surface.position = .init(0,1.05,-18); surface.eulerAngles.x = -.pi/2
-            scene.rootNode.addChildNode(surface)
+            try Structures.endPortal(scene.rootNode,at:.init(0,0.5,-18),assets:assets)
         } else {
-            Structures.portal(scene.rootNode,at:.init(0,self == .rift ? 2 : 0,self == .rift ? -14 : -28),factory:factory,sift:self == .rift)
+            try Structures.portal(scene.rootNode,at:.init(0,self == .rift ? 2 : 0,self == .rift ? -14 : -28),assets:assets,sift:self == .rift)
         }
         scene.rootNode.addChildNode(mesh.node("passage-masonry"))
         if self == .mine {
             for index in 0..<3 {
-                let bat = factory.make(.bat)
-                bat.position = .init(Double(index-1),5,-Double(index)*5)
-                bat.runAction(.repeatForever(.sequence([.moveBy(x:1,y:0.3,z:-1,duration:3),.moveBy(x:-1,y:-0.3,z:1,duration:3)])))
+                let bat = try factory.make(.bat)
+                bat.position = .init(Double(index-1),3.4,-Double(index)*5-10)
+                bat.runAction(.repeatForever(.sequence([.moveBy(x:0.3,y:0.2,z:-1,duration:3),.moveBy(x:-0.3,y:-0.2,z:1,duration:3)])))
                 scene.rootNode.addChildNode(bat)
             }
         }

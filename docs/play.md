@@ -42,6 +42,17 @@ service running until Minecraft exits. Reopen the app to return to its window.
 Choose **Continue** to retry. An interrupted game-file download restarts; it is
 not a resumable transfer. Avoid starting multiple copies of the app.
 
+## Background scenery
+
+After Minecraft is installed, use the map menu to choose a biome or landmark
+The realm buttons travel through a mine's Nether portal, a stronghold's End
+portal or an artistic Sift rift. Choose **Skip journey** to go straight there
+Pause motion beside Help, or change automatic touring in Settings
+
+The background reads art from your installed game. Before installation, the
+poster stays visible. An unsupported art format also falls back to the poster
+and does not prevent setup or Play. Sift scenery does not add a realm to the game
+
 ## Understand the Mac prompts
 
 Permission to open a downloaded app and permission to read saved credentials

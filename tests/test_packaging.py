@@ -20,17 +20,20 @@ spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
-    def test_launcher_needs_no_panorama_assets_and_keeps_installation_identity(self):
+    def test_launcher_bundles_only_poster_fallback_and_keeps_installation_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             resources = root / 'build/Minecraft for MacOS.app/Contents/Resources'
             resources.mkdir(parents=True)
+            (root / 'assets').mkdir()
+            (root / 'assets/poster.webp').write_bytes(b'approved poster')
             (resources / 'overworld.jpg').write_bytes(b'retired panorama')
             with patch.object(packager, 'ROOT', root), \
                     patch.object(packager.subprocess, 'run'), \
                     contextlib.redirect_stdout(io.StringIO()):
                 app = packager.build_launcher()
             self.assertEqual(app.name, 'Minecraft for MacOS.app')
+            self.assertEqual((resources / 'poster.webp').read_bytes(), b'approved poster')
             for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
                 self.assertFalse((app / 'Contents/Resources' / name).exists())
             with (app / 'Contents/Info.plist').open('rb') as file:

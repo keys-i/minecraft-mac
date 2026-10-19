@@ -51,16 +51,28 @@ Compile the interface on a Mac with Command Line Tools:
 ```sh
 python3 minecraft.py build launcher
 xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift tests/launcher.swift -o build/launcher-checks
+  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
-The native checks cover progress bounds, stage transitions, all six motion
-stop conditions, release URL/installer filtering and bounded scene graphs for
-all four worlds without opening a window. Texture checks enforce shared 16 × 16
-maps, sharp filtering, cubic Ghast bodies and attached, varied tentacles
-The Python preview test verifies an
-isolated bundle identity, internal fixture root, status output and cancellation
+The native checks cover progress bounds, stage transitions, all six motion stop
+conditions, release filtering, bounded selection and passage cancellation
+Original synthetic fixtures exercise archive bounds and empty stubs, numeric
+pack precedence, gzip/NBT decoding, UV orientation, legacy bind transforms,
+case-insensitive parents, cycles, malformed model vectors, queued cancellation
+and failure delivery on the main thread. CI needs no game art
+The Python fixture checks the approved poster fallback, isolated preview identity,
+simulated status output and cancellation
+
+To check the art from your own installation as well:
+
+```sh
+BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
+```
+
+This read-only integration constructs all 46 residents, hero rigs, eleven pages
+and three passages. It checks distinct Blaze rods, mirrored dragon bounds,
+node/triangle budgets and camera-action replacement. It does not launch Minecraft
 
 Use `python3 minecraft.py build preview` to inspect first-run, progress,
 cancellation, retry and running-game states without touching a real account
@@ -74,8 +86,41 @@ with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
 The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
 
-The live scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
-Version 0.5 streams three neighbouring areas into one graph instead of retaining
+The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
+
+### Original-asset 0.6 measurements
+
+On October 19, 2026, all 31 area views and fifteen passage viewpoints rendered
+successfully from the installed Minecraft art. Eleven paused-frame comparisons
+were identical. The pages contain 97–286 nodes and 15,682–86,500 triangles
+The 104-second local scenery video shows all areas at 9× tour speed and the
+three passages in real time; it is not a recording of the app window or gameplay
+
+The same M3 Pro/36 GB method below sampled forty views at 1040 × 760 with 4× MSAA,
+ten warm-up frames and sixty measured frames per view. Snapshot and movie tools
+had finished before measurement; unrelated user applications remained open
+
+| Realm or passage | Views | Median GPU range | Highest GPU p95 | Highest wall p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Overworld | 14 | 4.40–5.01 ms | 11.45 ms | 13.45 ms |
+| Nether | 5 | 4.68–5.45 ms | 10.67 ms | 12.27 ms |
+| End | 6 | 4.34–4.87 ms | 10.09 ms | 11.23 ms |
+| Sift | 6 | 4.62–4.98 ms | 10.49 ms | 12.45 ms |
+| Mine | 3 | 1.48–1.59 ms | 6.85 ms | 7.48 ms |
+| Stronghold | 3 | 1.20–1.73 ms | 6.13 ms | 6.69 ms |
+| Rift | 3 | 1.39–1.51 ms | 6.45 ms | 7.17 ms |
+
+All measured views fit the 50 ms frame budget. This does not establish application
+or game performance. Graph construction ranged from 4.57 to 646.27 ms, including
+cold asset reads; it now runs on the serial asset queue. Enqueueing a cold real-art
+scene returned in 0.03 ms in the native check and delivered the completed graph
+on the main thread. That is an API measurement, not measured input latency
+
+Compared with the earlier procedural preview below, original assets add cold
+loading work while retaining a similar GPU budget. No speedup is claimed
+
+### Earlier 0.5 measurements
+The superseded 0.5 preview streamed three neighbouring areas into one graph instead of retaining
 all 31 stops. Its eleven pages use 98–242 nodes, 8,138–38,848 triangles and 17–44
 materials. Native checks enforce fewer than 250 nodes, 45,000 triangles and at
 most 48 materials, plus at least six residents on each page

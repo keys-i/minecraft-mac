@@ -45,41 +45,53 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
 The native window places a scrollable launch panel over one live SceneKit world
-`Biome.swift` defines 31 selectable habitats and landmark areas across four realms
-`Landscape.swift` builds three neighbouring areas at a time, replacing that page
-when selection moves beyond it. Static blocks share one mesh with buried faces
-omitted; textures use shared 16 × 16 pixel maps. No panoramas are loaded or bundled
+`Assets.swift` reads original models, textures and structure templates from the
+owner's installed `game/data` directory. `NBT.swift` decodes bounded gzip/NBT
+structures; the archive reader supports the game's versioned `.brarchive` packs
+Newer packs override older packs in numeric version order, and empty archive
+stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`Mobs.swift` owns 42 species rigs and shares prototypes and materials within the
-current graph. `Structures.swift` builds the village, temples, igloo, mineshaft,
-Ancient City, Nether fortress, bastion, fossils, End City, ship and portal frames
-The original Ghast and dragon rigs remain in `Adventure.swift`, which also owns
-the renderer wrapper and releases the old graph when its world or page changes
+`Biome.swift` defines 31 selectable habitat and landmark areas across four realms
+`Landscape.swift` builds three neighbouring areas at a time and releases the old
+graph when its page changes. Static blocks share meshes with buried faces omitted
+`Mobs.swift` uses 46 original resident models plus the Happy Ghast and dragon
+Original rig parts supply the Blaze's orbiting rods and the dragon's assembly
+Ambient actions are native animation, not Minecraft's full animation engine
+
+`Structures.swift` imports the original village houses, igloo, ruined portals,
+Ancient City centre, bastion entrance, fossils, shipwreck and End City pieces
+Code-generated landmarks and passages use the installed game's block textures
+Some partial blocks and structure entities remain simplified; the launcher does
+not reproduce the game renderer, world generation, AI or Molang interpreter
 
 | Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | 14, from meadow and snowy taiga to mangroves, mushroom fields, Pale Garden, lush caves and Deep Dark | Farm animals, villagers, Copper Golem, wolves, foxes, goats, camels, armadillos, frogs, pandas, parrots, mooshrooms, Creaking at dusk, axolotls, Warden and more |
-| Nether | All five biomes | Piglins, hoglins, striders, Ghasts, Blazes, skeletons and magma cubes; fortress, bastion, basalt columns and fossils |
-| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; obsidian towers, crystals, gateway, chorus plants and ship |
-| Sift | Six artistic areas | Existing visiting illagers, vindicators, Allays and Vex; coral forms, ruins, floating shards and sculk fissures |
+| Overworld | 14 | Villages, snow, peaks, deserts, badlands, mangroves, jungle, mushroom fields, Pale Garden, coast, lush caves and Ancient City |
+| Nether | All five biomes | Piglins, hoglins, striders, Ghasts, Blazes, skeletons and magma cubes; fortress, bastion and fossils |
+| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; towers, crystals, chorus plants, city and ship |
+| Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
 
-`Journey.swift` owns bounded area/realm selection, the 18-second area clock and
-three 14-second passage scenes. Entering the Nether descends from a grassy mine
-entrance along rails into an obsidian portal. Entering the End returns to an
-Overworld stronghold, crosses its library corridor and descends into a horizontal
-End portal. Sift uses an explicitly artistic rift crossing
+`Journey.swift` owns bounded selection, the 18-second area clock and three
+14-second passage scenes. Nether entry follows a mine's rails through a 4 × 5
+obsidian portal. End entry crosses an Overworld stronghold library and descends
+into a 12-frame End portal. Sift uses an explicitly artistic rift crossing
+**Skip journey** cancels a passage; another selection replaces it immediately
+Reduced Motion and Low Power Mode select the destination directly
 
-A labelled area menu and **View → Choose Biome or Landmark** expose every stop
-without waiting for the automatic tour. **Skip journey** immediately cancels a
-passage; selecting another area or realm replaces it. One timer advances the
-current journey only while motion is allowed. Manual realm choices run their
-passage even when automatic changes are disabled; Reduced Motion and Low Power
-Mode select the destination directly
+The renderer is capped at 20 fps. Native checks bound each page to 1,200 nodes
+and 150,000 triangles; actual measurements are recorded in [Testing](test.md)
+A serial asset queue builds scenes away from the interface thread. Cancelling a
+selection drops queued work and ignores obsolete results; completed graphs move
+to the main thread before presentation. The loader retains shared materials and bounded JSON metadata, drops archive
+buffers after graph construction and keeps mob prototypes within the current page
+`Adventure.swift` pauses and releases its scene when dismantled
 
-Each page remains below 250 nodes, 45,000 triangles and 48 materials at 20 fps
-Camera actions replace their previous journey on rapid selection. The renderer
-pauses with the shared motion gate and releases its graph when dismantled
-No video generator, AI model, network service or game textures are needed at runtime
+Before game art exists, or when scenery is unsupported, the approved poster
+remains visible and scenery navigation is unavailable. Setup and Play still work
+The art loader refreshes after successful installation. A development or isolated
+preview may read public art from the normal installed game directory, while its
+worker remains isolated from accounts and worlds. No game art is redistributed
+in source or the DMG, and no scenery service or model download is required
 
 The Sift scenery follows the colourful terrain, rifts and illager presence in
 [Mojang's Dungeons II announcement](https://www.minecraft.net/en-us/article/minecraft-dungeons-ii-is-live)
