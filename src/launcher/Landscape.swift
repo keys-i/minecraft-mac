@@ -1,5 +1,6 @@
 import AppKit
 import SceneKit
+import simd
 
 struct Voxels {
     var vertices: [SCNVector3] = []
@@ -641,15 +642,53 @@ enum Landscape {
                 route.append(Collision.clear(scene.rootNode,from:start,to:candidate,radius:body) ? candidate : start)
             }
             group.position = route[0]
+            scene.rootNode.addChildNode(group)
+            let healing: (@Sendable (CGFloat) -> Void)?
+            if area == .central { healing = try heal(group,root:scene.rootNode,assets:factory.assets) }
+            else { healing = nil }
             group.runAction(.repeatForever(.customAction(duration:duration) { node,time in
                 let phase = Double(time)/duration*64, t = phase<=32 ? phase : 64-phase
                 let index = min(31,max(0,Int(t))), fraction = min(1,max(0,t-Double(index)))
                 let a = route[index], b = route[index+1]
                 node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
                 node.eulerAngles.y = atan2(b.x-a.x,b.z-a.z)+(phase>32 ? .pi : 0)
+                healing?(time)
             }))
-            scene.rootNode.addChildNode(group)
         }
+    }
+
+    private static func heal(_ dragon: SCNNode, root: SCNNode, assets: Assets) throws -> @Sendable (CGFloat) -> Void {
+        var crystals = [SCNNode]()
+        root.enumerateChildNodes { node,_ in
+            if node.name == "ender_crystal", let shell = node.childNode(withName:"outerglass",recursively:true) { crystals.append(shell) }
+        }
+        let material = try assets.texture("textures/entity/endercrystal/endercrystal_beam").copy() as! SCNMaterial
+        material.lightingModel = .constant; material.blendMode = .add; material.writesToDepthBuffer = false
+        material.diffuse.wrapT = .repeat
+        let geometry = SCNCone(topRadius:0.12,bottomRadius:0.65,height:1)
+        geometry.radialSegmentCount = 8; geometry.firstMaterial = material
+        let beam = SCNNode(geometry:geometry); beam.name = "crystal-healing-beam"
+        beam.isHidden = true; root.addChildNode(beam)
+        let update: @Sendable (CGFloat) -> Void = { [weak root,weak dragon,weak beam,crystals] time in
+            guard let root, let dragon, let beam else { return }
+            let target = dragon.convertPosition(.init(0,0.6,0),to:root)
+            var source: SCNVector3?, nearest = 32.0*32
+            for crystal in crystals where !crystal.isHidden {
+                let point = crystal.convertPosition(SCNVector3Zero,to:root)
+                let distance = pow(target.x-point.x,2)+pow(target.y-point.y,2)+pow(target.z-point.z,2)
+                if distance < nearest { source = point; nearest = distance }
+            }
+            guard let source, nearest > 0.001 else { beam.isHidden = true; return }
+            beam.isHidden = false
+            let from = SIMD3<Float>(Float(source.x),Float(source.y),Float(source.z))
+            let to = SIMD3<Float>(Float(target.x),Float(target.y),Float(target.z))
+            beam.simdPosition = (from+to)/2
+            beam.simdScale = .init(1,sqrt(Float(nearest)),1)
+            beam.simdOrientation = simd_quatf(from:.init(0,1,0),to:simd_normalize(to-from))
+            material.diffuse.contentsTransform = SCNMatrix4MakeTranslation(0,-CGFloat(time)/2,0)
+        }
+        update(0)
+        return update
     }
 }
 

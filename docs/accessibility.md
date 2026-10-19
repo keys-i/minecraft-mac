@@ -18,7 +18,7 @@ sign-in window also depends on those applications
 | Look around | The spyglass button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change areas with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
 | Mute or unmute launcher music | **Settings → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
-| Scenery preferences | **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd> |
+| Scenery preferences | The gear button, **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd>; the top-right **×** or <kbd>Escape</kbd> closes the menu |
 | Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
 | Reopen the launcher | **Window → Show Launcher**, or <kbd>⌘</kbd> + <kbd>0</kbd> |
 | Review published app updates | **Minecraft for MacOS → Check for Updates…** |
@@ -40,6 +40,11 @@ Low Power Mode also stops ambient motion and automatic scene changes. Waiting
 states use text rather than a spinner. Reduce Transparency gives the launch
 panel an opaque background. The window can be resized down to 760 × 620 points
 Long status details scroll inside the setup panel and remain selectable
+Settings uses the launcher window without a separate title bar. Its text and controls
+scale up with window size, with a 20-point action-label and 16-point body-copy floor
+The content scrolls independently of its persistent heading and 48-point close
+button. Background launcher controls and keyboard shortcuts are disabled while
+Settings is open; the volume control retains arrow and accessibility adjustments
 Original installed artwork supplies the main title and Minecraft Ten supplies
 the subtitle. Pixel typography identifies the fallback title and shortcut toast; pixel type identifies
 actions and section titles, while explanatory copy uses plain system type

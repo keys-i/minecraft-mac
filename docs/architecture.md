@@ -77,7 +77,8 @@ uses a safe landing when an End island gives way to void. These are authored
 area swaps, not continuous Minecraft generation. Realm slots remain available
 Leaving flight restores the current area route; teardown removes the recogniser
 `ShortcutHint` owns the 60-second toast and subsequent 70-second focused wait
-The view uses key-window notifications so Settings does not count as launcher focus
+The view uses key-window notifications; the in-window Settings menu suppresses
+shortcut hints, spectator capture and automatic scenery motion while open
 One cancellable sleeping task handles deadlines without polling; a hidden toast's
 wait restarts after focus is lost, while an already visible toast keeps its expiry
 Entering flight replaces it with 60-second movement instructions; leaving
@@ -86,6 +87,11 @@ A running game disables Look around
 `Music.swift` owns one native AVAudioPlayer and one cancellable load on the
 existing serial asset queue. It reads original installed menu/game Ogg tracks
 on demand, avoids an immediate repeat and limits each source to 32 MiB/20 minutes
+Settings opens inside the launcher from the gear button or the app menu's ⌘, action
+It has a persistent top-right close button and Escape dismissal, without a separate
+preferences window or title bar. Text, spacing and hit targets scale with its bounds
+from 20-point action labels / 16-point body copy to a maximum 1.5× scale
+Content scrolls at compact sizes while the heading and close button stay visible
 Settings owns the launcher’s master-volume control (default 18%); zero mutes it
 The header has no separate sound control Losing launcher focus, occlusion or game launch pauses playback
 Closing the view cancels the pending load and releases the player. Artwork,
@@ -154,7 +160,12 @@ Four eligible classic species use base-pack models at a daylight-dependent
 10–15% launcher-only chance, selected once during scene construction
 Classic prototypes stay within the current scene factory; no old-version
 download, separate simulation, combat, breeding or village job system is added
-The dragon stays at the central island
+The dragon stays at the central island. A single octagonal healing beam uses the
+installed End crystal beam texture, follows the closest crystal shell within 32
+blocks and disappears out of range. The dragon’s movement action owns its
+transform and UV updates, keeping the endpoint aligned without a separate action
+or geometry rebuilds. Reduced Motion retains a static connection
+This illustrates the crystal connection without adding a combat/health simulation
 Enderman and Blaze native shader alpha is treated as material data, preserving
 opaque bodies and emissive eyes; the copper golem also receives its eye layer
 Blaze rods, dragon parts and the Breeze's three original wind layers are assembled

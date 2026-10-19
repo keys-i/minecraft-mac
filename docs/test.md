@@ -5,6 +5,30 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Responsive Settings and dragon healing beams in 0.14
+
+Settings is an in-window Minecraft menu with a top-right close button, Escape
+and ⌘, support. Its heading and close button stay visible while content scrolls
+Action labels start at 20 points and body copy at 16 points; available width and
+height scale the layout up to 1.5×. Native renders cover 760 × 620, 1040 × 760 and
+1440 × 1000 launcher windows. The former fixed-width preferences title bar is gone
+
+Regression checks cover bounded/monotonic scaling and mutually exclusive Help
+and Settings state. The volume control keeps its pointer, keyboard and accessibility
+adjustments; menu visibility suppresses spectator capture, hints and scenery motion
+
+The central island now has one healing beam from the closest crystal within
+32 blocks to the moving dragon. It uses the owner's original beam texture and
+an eight-sided native mesh, with UV/transform updates instead of geometry rebuilds
+Native animation checks verify the static Reduced Motion connection, its moving
+dragon endpoint and removal beyond range
+The central scene adds one node and 96 triangles. All 93 Python tests and
+70-species/42-area/three-passage installed-art checks pass
+Live Computer Use opened Settings through the gear and ⌘, inside the launcher
+The × and Escape closed it while preserving the launcher; its volume accessibility
+actions remained exposed. VoiceOver and display-zoom workflows were not exercised
+This is a visible healing connection in authored scenery, with no combat/health model
+
 ## Flight, destinations and repeat-launch checks in 0.13
 
 All 93 Python tests and installed-art native checks for 70 species, 42 areas and

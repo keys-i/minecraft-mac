@@ -9,6 +9,11 @@ struct LauncherChecks {
         func status(_ progress: Double?, state: String = "busy") -> Status {
             Status(state: state, title: "Fixture", detail: "", progress: progress)
         }
+        let compactSettings = Preferences.scale(in:.init(width:700,height:560))
+        let largeSettings = Preferences.scale(in:.init(width:1040,height:800))
+        precondition(compactSettings >= 1 && largeSettings > compactSettings)
+        precondition(Preferences.scale(in:.zero) == compactSettings)
+        precondition(Preferences.scale(in:.init(width:4000,height:3000)) <= 1.5)
         precondition(status(nil).stage == nil)
         precondition(status(-0.1).fraction == 0)
         precondition(status(1.5).fraction == 1)
@@ -208,6 +213,10 @@ struct LauncherChecks {
             try Data([UInt8(value)]).write(to:pack.appendingPathComponent("precedence"))
         }
         let art = try Assets(data:fixture)
+        let menus = Launcher(status:.init(state:"ready",title:"Ready",detail:"",progress:nil),background:NSImage(),assets:art)
+        menus.showSettings(); precondition(menus.settings && !menus.help)
+        menus.showHelp(); precondition(menus.help && !menus.settings)
+        menus.showSettings(); precondition(menus.settings && !menus.help)
         let behaviours = fixture.appendingPathComponent("behavior_packs/vanilla/entities")
         try FileManager.default.createDirectory(at:behaviours,withIntermediateDirectories:true)
         let absent = try Mobs(assets:art).locomotion(.pig)
@@ -535,6 +544,26 @@ struct LauncherChecks {
                 precondition(nodes < 1200 && triangles < 350_000)
                 if world == .end {
                     precondition((scene.background.contents as? [CGImage])?.count == 6)
+                }
+                if world.biomes[index] == .central {
+                    let beam = scene.rootNode.childNode(withName:"crystal-healing-beam",recursively:false)!
+                    let dragon = scene.rootNode.childNode(withName:"sky-resident",recursively:false)!
+                    precondition(!beam.isHidden,"Reduced Motion must retain the static healing connection")
+                    SCNTransaction.flush()
+                    let flight = SCNRenderer(device:nil,options:nil); flight.scene = scene; flight.isPlaying = true
+                    for frame in 0...20 { flight.update(atTime:Double(frame)/10) }
+                    precondition(!beam.isHidden && beam.scale.y > 0 && beam.scale.y <= 32)
+                    let endpoint = beam.convertPosition(.init(0,0.5,0),to:scene.rootNode)
+                    let target = dragon.convertPosition(.init(0,0.6,0),to:scene.rootNode)
+                    precondition(abs(endpoint.x-target.x)+abs(endpoint.y-target.y)+abs(endpoint.z-target.z)<0.1,"Crystal healing beam follows the dragon: \(endpoint) vs \(target)")
+                    let landmark = scene.rootNode.childNode(withName:"landmark-central",recursively:true)!
+                    let position = landmark.position
+                    landmark.position.x += 1000
+                    SCNTransaction.flush()
+                    flight.update(atTime:2.1)
+                    precondition(beam.isHidden,"Distant dragons must not retain a healing connection")
+                    landmark.position = position
+                    flight.scene = nil
                 }
                 if world.biomes[index] == .city {
                     let eye = Landscape.pose(.city,at:0).eye

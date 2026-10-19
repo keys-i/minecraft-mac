@@ -47,6 +47,7 @@ final class Launcher: ObservableObject {
     @Published var gameFont: CTFont?
     @Published var splash = ""
     @Published var help = false
+    @Published var settings = false
     #if LAUNCHER_TEST
     var previewImage: NSImage?
     init(status: Status, background: NSImage, assets: Assets) {
@@ -179,7 +180,13 @@ final class Launcher: ObservableObject {
     }
 
     func showHelp() {
+        settings = false
         help = true
+    }
+
+    func showSettings() {
+        help = false
+        settings = true
     }
 
     func checkUpdates() {
@@ -512,7 +519,6 @@ struct LauncherView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openSettings) private var openSettings
     @AppStorage("animateScenery") private var animateScenery = true
     @AppStorage("rotateScenery") private var rotateScenery = true
     @AppStorage("musicEnabled") private var musicEnabled = true
@@ -535,14 +541,14 @@ struct LauncherView: View {
     private var fresh: Bool { launcher.status.state == "new" }
     private var available: Bool { launcher.assets != nil && !launcher.sceneryFailed }
     private var moving: Bool {
-        available && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery,lowPower:lowPower,
+        available && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery || launcher.settings,lowPower:lowPower,
             active:scenePhase == .active,visible:visible,playing:launcher.status.state == "playing")
     }
     private var hintActive: Bool {
         hintAvailable && visible && (hint.showing || focused && scenePhase == .active)
     }
     private var hintAvailable: Bool {
-        available && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
+        available && !launcher.settings && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
     }
     private var musicActive: Bool {
         available && Music.enabled(muted:!musicEnabled,active:focused && scenePhase == .active,
@@ -596,7 +602,7 @@ struct LauncherView: View {
                             .buttonStyle(.plain).tint(.white)
                             .accessibilityLabel("Developer Keys-i, open keysi.dev")
                         Spacer()
-                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.13.0"))
+                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.14.0"))
                     }.font(Blocks.type(13)).foregroundStyle(.white)
                         .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                         .padding(.horizontal,24).padding(.bottom,16)
@@ -610,16 +616,21 @@ struct LauncherView: View {
                 }
             }
         }
-        .disabled(map).accessibilityHidden(map)
+        .disabled(map || launcher.settings).accessibilityHidden(map || launcher.settings)
         .overlay {
-            if map {
+            if map || launcher.settings {
                 GeometryReader { geometry in
                     ZStack {
-                        Color.black.opacity(0.65).onTapGesture { map = false }
-                        Biomes(world:launcher.journey.world,selected:launcher.journey.biome,
-                            frames:launcher.frames,stone:launcher.stone,
-                            choose:{ launcher.journey.area($0); map = false },close:{ map = false })
-                            .frame(width:min(600,geometry.size.width-56),height:min(580,geometry.size.height-56))
+                        Color.black.opacity(0.65).onTapGesture { map = false; launcher.settings = false }
+                        if launcher.settings {
+                            Preferences(launcher:launcher,close:{ launcher.settings = false })
+                                .frame(width:min(1040,geometry.size.width-48),height:min(800,geometry.size.height-48))
+                        } else {
+                            Biomes(world:launcher.journey.world,selected:launcher.journey.biome,
+                                frames:launcher.frames,stone:launcher.stone,
+                                choose:{ launcher.journey.area($0); map = false },close:{ map = false })
+                                .frame(width:min(600,geometry.size.width-56),height:min(580,geometry.size.height-56))
+                        }
                     }.frame(maxWidth:.infinity,maxHeight:.infinity)
                 }
             }
@@ -650,10 +661,13 @@ struct LauncherView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration:0.18),value:hint.showing)
-        .onExitCommand { if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
+        .onExitCommand { if launcher.settings { launcher.settings = false } else if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
         .onReceive(NotificationCenter.default.publisher(for:.NSProcessInfoPowerStateDidChange)) { _ in lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didChangeOcclusionStateNotification)) { _ in
             visible = NSApp.windows.contains { $0.title == "Minecraft for MacOS" && $0.occlusionState.contains(.visible) }
+        }
+        .onChange(of:launcher.settings) {
+            if launcher.settings { map = false; explore(false) }
         }
         .onChange(of:reduceMotion) { if reduceMotion { launcher.journey.skip() } }
         .onChange(of:lowPower) { if lowPower { launcher.journey.skip() } }
@@ -677,7 +691,7 @@ struct LauncherView: View {
                 Spacer()
                 Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
                     .help("Help").accessibilityLabel("Help")
-                Button { openSettings() } label: { glyph("icon_setting",fallback:"gearshape.fill").frame(width:44,height:44) }
+                Button { launcher.showSettings() } label: { glyph("icon_setting",fallback:"gearshape.fill").frame(width:44,height:44) }
                     .help("Settings").accessibilityLabel("Settings")
             }.buttonStyle(BlockButton(texture:launcher.stone))
             if !exploring {
@@ -965,6 +979,7 @@ struct Biomes: View {
 
 struct Preferences: View {
     @ObservedObject var launcher: Launcher
+    let close: () -> Void
     @AppStorage("animateScenery") private var animateScenery = true
     @AppStorage("rotateScenery") private var rotateScenery = true
     @AppStorage("musicEnabled") private var musicEnabled = true
@@ -972,50 +987,74 @@ struct Preferences: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     @FocusState private var volumeFocused: Bool
 
+    static func scale(in size: CGSize) -> CGFloat {
+        min(1.5,max(1,min(size.width/700,size.height/560)))
+    }
+
     var body: some View {
-        VStack(spacing:20) {
-            Text("Settings").font(Blocks.type(26)).accessibilityAddTraits(.isHeader)
-            VStack(spacing:12) {
-                Toggle(isOn:$animateScenery) { Text("Background animation: \(animateScenery ? "ON" : "OFF")").frame(maxWidth:.infinity,minHeight:44) }
-                Toggle(isOn:$rotateScenery) { Text("Travel between biomes: \(rotateScenery ? "ON" : "OFF")").frame(maxWidth:.infinity,minHeight:44) }.disabled(!animateScenery)
-            }.toggleStyle(.button).buttonStyle(BlockButton(texture:launcher.stone))
-                .controlSize(.large).font(Blocks.type(15))
-            VStack(spacing:10) {
-                Text("Master volume: \(musicEnabled ? Int(musicVolume*100) : 0)%").font(Blocks.type(15))
-                GeometryReader { geometry in
-                    let travel = max(1,geometry.size.width-24)
-                    ZStack(alignment:.leading) {
-                        Rectangle().fill(.black.opacity(0.75))
-                        Rectangle().fill(Blocks.grass.opacity(0.65)).frame(width:24+travel*(musicEnabled ? musicVolume : 0))
-                        Rectangle().fill(Color(white:0.65)).frame(width:24)
-                            .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
-                            .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.5)).frame(height:2) }
-                            .offset(x:travel*(musicEnabled ? musicVolume : 0))
-                    }.overlay { Rectangle().strokeBorder(volumeFocused ? Blocks.gold : .black,lineWidth:2) }
-                        .contentShape(Rectangle())
-                        .gesture(DragGesture(minimumDistance:0).onChanged { value in
-                            musicVolume = min(1,max(0,(value.location.x-12)/travel)); musicEnabled = musicVolume>0
-                        })
-                }.frame(height:36).focusable().focused($volumeFocused)
-                    .accessibilityElement().accessibilityLabel("Master volume")
-                    .accessibilityValue("\(musicEnabled ? Int(musicVolume*100) : 0) percent")
-                    .accessibilityAdjustableAction { direction in
-                        musicVolume = min(1,max(0,(musicEnabled ? musicVolume : 0)+(direction == .increment ? 0.05 : -0.05))); musicEnabled = musicVolume>0
-                    }
-                    .onKeyPress(.leftArrow) { musicVolume = max(0,(musicEnabled ? musicVolume : 0)-0.05); musicEnabled = musicVolume>0; return .handled }
-                    .onKeyPress(.rightArrow) { musicVolume = min(1,(musicEnabled ? musicVolume : 0)+0.05); musicEnabled = musicVolume>0; return .handled }
-                Text("Minecraft menu and game music from your installation")
-                    .font(.system(size:13)).foregroundStyle(.white.opacity(0.75))
-            }.padding(.vertical,8)
-            Text(reduced ? "macOS Reduced Motion is on" : "Scenery rests in Low Power Mode, while hidden and while Minecraft runs")
-                .font(.system(size:13)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
-            Text("Game graphics, sound and controls are in Minecraft’s Settings")
-                .font(.system(size:13)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
-        }.padding(32).frame(width:560).foregroundStyle(.white)
-            .background {
-                Blocks.stone
-                if let stone = launcher.stone { Image(nsImage:stone).resizable(resizingMode:.tile).interpolation(.none).opacity(0.12) }
-            }.environment(\.colorScheme,.dark)
+        GeometryReader { geometry in
+            let scale = Self.scale(in:geometry.size)
+            VStack(spacing:0) {
+                HStack {
+                    Text("Settings").font(Blocks.type(32*scale)).accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button(action:close) { Image(systemName:"xmark").font(.system(size:22*scale,weight:.bold)).frame(width:48*scale,height:48*scale) }
+                        .buttonStyle(BlockButton(texture:launcher.stone)).accessibilityLabel("Close settings")
+                        .keyboardShortcut(.cancelAction)
+                }.padding(24*scale)
+                ScrollView {
+                    VStack(spacing:24*scale) {
+                        VStack(spacing:14*scale) {
+                            Toggle(isOn:$animateScenery) {
+                                Text("Background animation: \(animateScenery ? "ON" : "OFF")")
+                                    .frame(maxWidth:.infinity,minHeight:60*scale)
+                            }
+                            Toggle(isOn:$rotateScenery) {
+                                Text("Travel between biomes: \(rotateScenery ? "ON" : "OFF")")
+                                    .frame(maxWidth:.infinity,minHeight:60*scale)
+                            }.disabled(!animateScenery)
+                        }.toggleStyle(.button).buttonStyle(BlockButton(texture:launcher.stone))
+                            .controlSize(.large).font(Blocks.type(20*scale))
+                        VStack(spacing:14*scale) {
+                            Text("Master volume: \(musicEnabled ? Int(musicVolume*100) : 0)%").font(Blocks.type(22*scale))
+                            GeometryReader { geometry in
+                                let thumb = 32*scale, travel = max(1,geometry.size.width-thumb)
+                                ZStack(alignment:.leading) {
+                                    Rectangle().fill(.black.opacity(0.75))
+                                    Rectangle().fill(Blocks.grass.opacity(0.65)).frame(width:thumb+travel*(musicEnabled ? musicVolume : 0))
+                                    Rectangle().fill(Color(white:0.65)).frame(width:thumb)
+                                        .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
+                                        .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.5)).frame(height:2) }
+                                        .offset(x:travel*(musicEnabled ? musicVolume : 0))
+                                }.overlay { Rectangle().strokeBorder(volumeFocused ? Blocks.gold : .black,lineWidth:2) }
+                                    .contentShape(Rectangle())
+                                    .gesture(DragGesture(minimumDistance:0).onChanged { value in
+                                        musicVolume = min(1,max(0,(value.location.x-thumb/2)/travel)); musicEnabled = musicVolume>0
+                                    })
+                            }.frame(height:48*scale).focusable().focused($volumeFocused)
+                                .accessibilityElement().accessibilityLabel("Master volume")
+                                .accessibilityValue("\(musicEnabled ? Int(musicVolume*100) : 0) percent")
+                                .accessibilityAdjustableAction { direction in
+                                    musicVolume = min(1,max(0,(musicEnabled ? musicVolume : 0)+(direction == .increment ? 0.05 : -0.05))); musicEnabled = musicVolume>0
+                                }
+                                .onKeyPress(.leftArrow) { musicVolume = max(0,(musicEnabled ? musicVolume : 0)-0.05); musicEnabled = musicVolume>0; return .handled }
+                                .onKeyPress(.rightArrow) { musicVolume = min(1,(musicEnabled ? musicVolume : 0)+0.05); musicEnabled = musicVolume>0; return .handled }
+                            Text("Minecraft menu and game music from your installation")
+                        }
+                        Text(reduced ? "macOS Reduced Motion is on" : "Scenery rests in Low Power Mode, while hidden and while Minecraft runs")
+                        Text("Game graphics, sound and controls are in Minecraft’s Settings")
+                    }.font(.system(size:16*scale)).foregroundStyle(.white.opacity(0.85))
+                        .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
+                        .padding(.horizontal,24*scale).padding(.bottom,24*scale)
+                }
+            }.foregroundStyle(.white)
+                .background {
+                    Blocks.stone
+                    if let stone = launcher.stone { Image(nsImage:stone).resizable(resizingMode:.tile).interpolation(.none).opacity(0.12) }
+                }
+                .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
+                .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
+        }.environment(\.colorScheme,.dark).onExitCommand(perform:close)
     }
 }
 
@@ -1059,6 +1098,10 @@ private struct LauncherMenus: Commands {
     var body: some Commands {
         TextEditingCommands()
         CommandGroup(replacing: .newItem) {}
+        CommandGroup(replacing:.appSettings) {
+            Button("Settings…") { openWindow(id:"launcher"); launcher.showSettings() }
+                .keyboardShortcut(",",modifiers:.command)
+        }
         CommandGroup(after: .appInfo) {
             Button(launcher.checkingUpdates ? "Checking for Updates…" : "Check for Updates…") {
                 launcher.checkUpdates()
@@ -1120,7 +1163,6 @@ struct BedrockLauncherApp: App {
         .defaultSize(width: 1040, height: 760)
         .windowStyle(.hiddenTitleBar)
         .commands { LauncherMenus(launcher: launcher) }
-        Settings { Preferences(launcher:launcher) }
     }
 }
 
