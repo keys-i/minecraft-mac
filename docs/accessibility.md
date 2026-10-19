@@ -15,7 +15,7 @@ sign-in window also depends on those applications
 | Pause or resume background motion | **Settings → Background animation** or **View → Animate Scenery** |
 | Choose a scene | The four item slots in the bottom inventory bar, keys <kbd>1</kbd>–<kbd>4</kbd>, or **View**, with the selection exposed to assistive technology |
 | Choose an area | The biome name at the top left opens the searchable picker; **View → Choose Biome or Landmark** also works |
-| Look around | The eye-and-arrows button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change biomes with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
+| Look around | The spyglass button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change areas with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
 | Mute or unmute launcher music | **Settings → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
 | Scenery preferences | **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd> |
@@ -51,7 +51,7 @@ The shortcut toast displays **⌘ + L to look around** for 60 seconds, then retu
 after 70 uninterrupted seconds with the launcher as the active window
 Switching to another app or Settings cancels that return wait. Entering spectator
 view shows 60-second movement instructions; leaving dismisses them. Setup, errors
-and journeys suppress hints. The instruction remains available through the eye button's
+and journeys suppress hints. The instruction remains available through the spyglass button's
 label/help even while the toast is hidden; no repeated VoiceOver announcement is requested
 Reduced Motion replaces the toast fade with an immediate change
 
@@ -92,7 +92,7 @@ yourself; automation does not dismiss or approve them
 - [ ] Check focus when setup starts, is cancelled, fails and finishes
 - [ ] Check long error messages with large text and display zoom
 - [ ] Check spectator WASD/Space/Shift/arrows, mouse capture/release, Control sprint, scroll speed, brackets and area crossings
-- [ ] Check eye button/⌘L/Escape, rapid realm changes and focus after the biome popover closes
+- [ ] Check spyglass button/⌘L/Escape, rapid realm changes and focus after the biome popover closes
 - [ ] Check music volume/mute, track completion, window switching, occlusion and gameplay handoff
 - [ ] Check the 60-second toast expiry and 70-second return, including Settings and app switching
 - [ ] Check increased contrast, light/dark appearance and reduced motion

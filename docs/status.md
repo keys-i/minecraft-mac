@@ -10,6 +10,37 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Exploration and placement corrections in 0.12
+
+The mineshaft and stronghold are persistent area-picker destinations with moving
+residents, open side shafts/libraries and a reachable portal room. Temple and
+monument shells retain walls while opening their interiors. End City vegetation
+stays clear of the tower, ship and camera approach; idle aiming keeps a level horizon
+
+Saved banner colours, patterns and mounting replace the universal captain banner
+Brewing stands show saved bottle slots; doors, trapdoors and ladders follow their
+saved states. Original behaviour hitboxes replace visual model extents when
+planning resident routes. The corner spyglass matches the shortcut hint
+
+All 92 Python tests, 70-species/42-area native checks, three journeys and 125
+source checks pass. Paired rendering stays inside the 50 ms scenery budget
+See [the method and limitations](test.md#explorable-structures-and-saved-fixture-states-in-012)
+
+The full candidate and isolated preview verify against source machine code
+All 1,051 runtime resource hashes and 21 symlinks are preserved. The local
+0.12.0/build 15 DMG requires macOS 27 and verifies at 128,286,963 bytes
+SHA-256:
+
+```text
+eae5882e1550ceb8a67e694bd99b3bb77c2cdf4ded034569a4f606e42f16394f
+```
+
+The 0.12 preview's live controls, VoiceOver and gameplay comparison remain
+unverified because the available computer controls did not expose those targets
+This remains authored launcher scenery, with no full Minecraft engine parity
+Installed apps, worlds and authenticated helper/runtime bytes were preserved
+No binary release, merge, Developer ID signing or notarisation was performed
+
 ## World and menu corrections in 0.11
 
 The separate 0.11 candidate fixes Enderman/Blaze alpha handling, copper golem

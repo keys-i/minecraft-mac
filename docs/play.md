@@ -49,16 +49,18 @@ area. Choose realms with the four item slots in the inventory bar or keys **1–
 Normal realm changes pass through a mine’s Nether portal, a stronghold’s End
 portal or an artistic Sift rift. **Skip journey** goes straight there
 Change background motion or automatic touring in Settings
+Choose **Abandoned mineshaft** or **Stronghold · Portal room** in the area picker
+to explore the tunnels, side shafts, libraries and portal room at your own pace
 
-The eye-and-arrows button at the bottom right or **⌘L** enters spectator view
+The spyglass button at the bottom right or **⌘L** enters spectator view
 Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by moving
 the mouse. **Control** sprints; scroll changes flight speed. The arrow keys also
 turn the camera. Mouse-look captures the cursor; **Escape** releases it and
 returns to the menu. Switching windows releases it too; click the scene to recapture
 Cross an area’s edge or press **[ / ]** to travel to the previous/next biome
-The biome name and hotbar still work. These are 40 authored areas with scene
+The biome name and hotbar still work. These are 42 authored areas with scene
 changes between them, rather than an infinitely generated Minecraft world
-Use the same eye button, **⌘L** or **Escape** to return to the camera route
+Use the same spyglass button, **⌘L** or **Escape** to return to the camera route
 
 The achievement-style shortcut hint stays for one minute, then returns after
 70 uninterrupted seconds of launcher-window focus. Settings and other apps
@@ -71,8 +73,8 @@ The lower left credits **@Keys-i**, linking to **keysi.dev**; the lower right sh
 the launcher version. The hotbar has no extra backing strip
 Splash motion follows your scenery and macOS motion settings
 
-Use the speaker button to mute/unmute original Minecraft menu and game music
-**Settings → Launcher music** changes its volume, initially 18%
+**Settings → Master volume** changes original Minecraft menu and game music,
+initially 18%. Set it to zero to mute
 Music pauses when another window/app takes focus, the launcher is hidden or
 Minecraft is running. No music download is added; tracks come from your own
 installed copy, including **Sweden** when available. No **Stockholm** track was

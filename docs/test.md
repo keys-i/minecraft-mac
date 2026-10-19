@@ -5,6 +5,52 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Explorable structures and saved fixture states in 0.12
+
+All 92 Python tests and native checks for 70 original mob profiles, 42 areas and
+three journeys pass locally. Regression checks cover original behaviour hitboxes,
+adult/calm groups, numeric movement ranges, zero speed and malformed attributes
+Banner colour/pattern pixels, captain skins, wall facings, brewing bottle slots,
+doors, hatches and ladders are checked against installed assets and template states
+
+Native segment queries verify the mine branch, stronghold library and wider
+portal room, plus temple/monument interiors and their retained solid walls
+Passage residents move during twenty simulated seconds; the idle camera retains
+a level horizon. End City approach clearance excludes nearby chorus branches
+Normal/narrow UI, fixture, mine, stronghold, banner and realm renders were inspected
+The stronghold's side lava uses animated floor surfaces rather than raised cubes
+
+REA/Hopper inspection of the old and final packaged camera action confirms the
+change from `lookAt:` to `lookAt:up:localFront:`. Impeccable's published refinement
+guidance and ECC's interface/verification guidance informed the review; the
+Impeccable context launcher was unavailable and was not installed
+
+The paired sample uses an M3 Pro / 36 GB, 1040 × 760, 4× MSAA, ten warm-up and
+sixty measured frames per view. Eight habitat route/elevated views and two
+passage interiors run sequentially on 0.11 then 0.12 after build/render work ends
+Chrome for Testing and the existing Minecraft process remain running
+
+| Metric | 0.11 baseline | 0.12 candidate |
+| --- | ---: | ---: |
+| Highest GPU p95 | 10.11 ms | 8.44 ms |
+| Highest render wall p95 | 12.79 ms | 11.47 ms |
+| Scene construction range | 31.89–562.98 ms | 45.76–552.60 ms |
+
+Both remain within the 50 ms scenery budget. These samples do not establish a
+game FPS improvement, Windows comparison or long-session memory result
+The final apps pass deep/strict ad-hoc signature and source machine-code checks
+All 1,051 baseline resource hashes and 21 symlinks remain unchanged
+The [0.12 artifact record](status.md#exploration-and-placement-corrections-in-012)
+contains the verified DMG size, digest and platform requirement
+
+Live inspection of the mounted 0.11 launcher showed the corner credit/version
+over scenery without a grey footer strip. Computer Use did not approve the
+isolated 0.12 preview, and its inventory did not expose the running Wine game
+macOS blocked reads from the supplied temporary HEIC paths. Live pointer capture,
+VoiceOver, audible transitions and hands-on gameplay comparison remain unverified
+Authored scenery still lacks full game AI, brewing, block interactions and
+continuous Minecraft generation. No existing world was opened or binary release published
+
 ## World geometry and menu fidelity in 0.11
 
 The 0.11 candidate corrects the native alpha handling that discarded Enderman

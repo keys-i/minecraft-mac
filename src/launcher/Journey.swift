@@ -288,7 +288,7 @@ extension Passage {
                         try sprite("web",.init(side*9,6,z-0.1),size:2)
                     }
                     try lamp(.init(side*7,3,0))
-                    try cube(.init(1,1,1),.init(side*4,-0.1,-21),"lava")
+                    try Landscape.liquid(scene,assets:assets,lava:true,at:.init(side*4,0.02,-21),size:.init(width:1,height:1))
                 }
                 for step in 0..<5 { try cube(.init(5,0.5,1),.init(0,Double(step)*0.5+0.25,-12-Double(step)),"stone_bricks") }
                 for side in [-1.0,1] {
