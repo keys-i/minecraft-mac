@@ -4,18 +4,513 @@ This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
 notarization and clean-Mac installation have not been verified. Apple Developer
 membership is not required to publish source or build a local preview
 
-Status snapshot: October 19, 2026. The earlier native launcher source was merged in
+Status snapshot: October 20, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
-## Animated interface preview
+## Settings menu and crystal connection in 0.14
 
-The latest interface uses four local world panoramas, slow camera motion, ambient
+Settings now opens inside the launcher with a top-right × and Escape dismissal,
+without a separate preferences title bar. The gear and ⌘, use the same menu
+Text, spacing and controls scale with window size; compact content scrolls while
+the heading and close button remain visible. Existing preferences are preserved
+
+The central island connects the nearest crystal within 32 blocks to the dragon
+with the original beam texture. The dragon's movement action updates the beam
+without a separate animation action or geometry rebuild; Reduced Motion keeps
+a static connection. This is scenery, without a combat/health simulation
+
+All 93 Python tests, native synthetic and installed-art 70-species/42-area checks,
+125 source checks and signature verification pass. Compact/normal/wide renders
+were inspected, and live Computer Use verified gear/⌘, entry and ×/Escape closing
+See [the test record](test.md#responsive-settings-and-dragon-healing-beams-in-014)
+
+The final local candidate is 0.14.0/build 19, requires macOS 27 and preserves all
+1,053 resource hashes and 21 symlinks. The DMG has 128,195,260 bytes and SHA-256
+
+```text
+d424a83eaf335b6c20c1dc4343d05db43b29ae61e42c5e8309a2d0795e5d8ac9
+```
+
+The final candidate’s Settings menu was opened locally. VoiceOver and display zoom remain
+unverified; no helper/runtime rebuild, binary release, merge or notarisation was performed
+
+## Flight and destination corrections in 0.13
+
+The destination picker now uses Minecraft block textures, readable list rows,
+search, no-results feedback and arrow focus. Background controls are disabled
+while it is open, including Play's Return shortcut. Camera placement checks
+solid volumes and nearby sightlines; canopies now block scenery movement
+Flying residents no longer inherit walking waits. End crystal shells use the
+installed game's bob/rotation formulas while their bases remain stationary
+Idle rendering targets 30 fps and spectator flight targets 60 fps
+
+All 93 Python tests, native synthetic checks and installed-art checks for 70
+species, 42 areas and three passages pass. Render samples fit the idle budget;
+wall-time tails exceed the spectator target and construction costs increased
+The measured preflight reduction does not establish an end-to-end startup fix
+See [testing and its limits](test.md#flight-destinations-and-repeat-launch-checks-in-013)
+
+The final 0.13.0/build 17 candidate passes deep/strict ad-hoc signature checks
+All helper/runtime bytes and 21 symlinks match the previous candidate. Of 1,051
+baseline resource entries, 1,050 are unchanged; only the startup script changes,
+with two source-provenance files added for its current paths
+REA/Hopper confirms the packaged free-position search calls the solid-volume
+and swept-clearance checks. The final local DMG requires macOS 27, has
+128,179,124 bytes and SHA-256
+
+```text
+af781f0ab44b7fe42280ac670c6aef57edd4121ff6f5d583d3f3957ea18060a9
+```
+
+An earlier 0.13 candidate was exercised live and launched the real game during
+the keyboard check. Its resource directory remains intact for that session
+The final keyboard fix is compiled and packaged, with its live retest outstanding
+The game remains unavailable to Computer Use, so gameplay recording/comparison,
+full engine behaviour and faster-than-Windows claims remain unverified
+Worlds and authenticated helper/runtime bytes are preserved
+No binary release, merge or notarisation was performed
+
+## Exploration and placement corrections in 0.12
+
+The mineshaft and stronghold are persistent area-picker destinations with moving
+residents, open side shafts/libraries and a reachable portal room. Temple and
+monument shells retain walls while opening their interiors. End City vegetation
+stays clear of the tower, ship and camera approach; idle aiming keeps a level horizon
+
+Saved banner colours, patterns and mounting replace the universal captain banner
+Brewing stands show saved bottle slots; doors, trapdoors and ladders follow their
+saved states. Original behaviour hitboxes replace visual model extents when
+planning resident routes. The corner spyglass matches the shortcut hint
+
+All 92 Python tests, 70-species/42-area native checks, three journeys and 125
+source checks pass. Paired rendering stays inside the 50 ms scenery budget
+See [the method and limitations](test.md#explorable-structures-and-saved-fixture-states-in-012)
+
+The full candidate and isolated preview verify against source machine code
+All 1,051 runtime resource hashes and 21 symlinks are preserved. The local
+0.12.0/build 15 DMG requires macOS 27 and verifies at 128,286,963 bytes
+SHA-256:
+
+```text
+eae5882e1550ceb8a67e694bd99b3bb77c2cdf4ded034569a4f606e42f16394f
+```
+
+The 0.12 preview's live controls, VoiceOver and gameplay comparison remain
+unverified because the available computer controls did not expose those targets
+This remains authored launcher scenery, with no full Minecraft engine parity
+Installed apps, worlds and authenticated helper/runtime bytes were preserved
+No binary release, merge, Developer ID signing or notarisation was performed
+
+## World and menu corrections in 0.11
+
+The separate 0.11 candidate fixes Enderman/Blaze alpha handling, copper golem
+eyes, crop/fixture geometry, village foundations and closed terrain boundaries
+Native collision queries guard resident, idle-camera and flight paths. Committed
+scene actions keep residents moving during idle hover; the stronghold descends
+over forty blocks and portal-colour handoffs join destination arrivals
+Settings now contains master volume and matches the title screen; Help is
+local, long biome names scroll and the subtitle has an extruded face
+
+All 92 Python tests, native fixtures, 70-species/40-area integration and 125
+source checks pass. The paired rendering sample remains within the existing
+50 ms scenery budget, with highest GPU p95 11.26 ms and movement-input p95
+4.86 ms. Collision preparation adds background construction work
+[The method, paired results and limits](test.md#world-geometry-and-menu-fidelity-in-011)
+record this as launcher validation, not a game-performance improvement
+
+The full app, isolated preview and 127,982,563-byte LZFSE DMG verify locally
+All 1,051 baseline resource hashes and 21 symlinks remain unchanged; minimum
+packaged macOS stays 27. The DMG SHA-256 is:
+
+```text
+2802e655ce318e1e079489da51f7128cbb7ba8b5b2ae26c64db4c5c0f961261f
+```
+
+Computer Use denied preview access, so live-window footer behaviour, pointer
+capture, VoiceOver and listening checks remain unverified. No alternative
+screen-capture or UI-control route bypassed that denial. Every-block rendering,
+complete Minecraft AI, clean-Mac installation and notarisation remain outside
+the verified result. No installed app, account or world was replaced, and no
+binary release was published
+
+## Material and interaction fidelity in 0.10.1
+
+Water now uses the installed biome palette, cached alpha-preserving RGB tinting
+and the original alpha once. Lava keeps its original colours without doubled
+emission. Variant-specific geometry takes precedence over the default body
+Current warm/cold animals use matching installed models/skins
+
+The splash overlaps the original title. Pixel actions and installed utility
+icons share the block controls’ styling. The lower-left **@Keys-i** credit links
+to **keysi.dev**, with the actual launcher version at lower right. The scenery
+Play/pause button and extra hotbar backing are removed; motion preferences stay
+in Settings/View. The advancement-style hint keeps its 60/70-second timing
+
+Idle scenery follows a continuous twelve-second hover. Overworld scenes have a
+twenty-minute daylight rig with original sun/moon art, batched stars, dusk colours
+and once-per-second lighting/fog updates. Nether and End retain realm lighting
+Mouse-look captures relative movement and releases the cursor on focus loss,
+Escape or teardown. WASD, Space/Shift, Control sprint and scroll speed remain
+Native synthetic and installed-art checks and all 92 Python tests pass locally
+
+Residents gain bounded terrain/water-aware strolls, diagonal gait timing,
+unsynchronised idling, sheep grazing and hopping. Eligible base-pack classic
+pigs, cows, chickens and wolves have a launcher-only 10% daylight / 15% night
+selection chance. These additions do not reproduce every game block/state,
+combat, breeding, village jobs or the complete Minecraft simulation
+[Testing and remaining manual checks](test.md#material-hover-and-input-fidelity-in-0101)
+keep that limitation explicit
+
+The separate full 0.10.1 candidate and isolated preview verify against the final
+source machine code. All 1,051 baseline resources and 21 runtime symlinks remain
+unchanged, including the account helper, worker and approved poster
+The corrected small-island camera passes both smooth and rounded terrain checks
+Eight sampled route/flight views have a highest GPU p95 of 10.60 ms and wall p95
+of 14.56 ms, inside the existing 50 ms scenery budget. This is not game FPS
+All 125 reviewed source files pass boundary/checksum checks
+
+The local LZFSE DMG verifies, retains minimum macOS 27, and is 125,937,610 bytes
+SHA-256:
+
+```text
+39dcc7920cbc9e80087f07b9cca92755f21bd45d3bf1c7c81374de56c4f1a382
+```
+
+It remains an ad-hoc signed preview. Full-window mouse capture/release, developer
+link activation, VoiceOver, long-session memory and a complete real-time day/night
+cycle remain manual checks. No installed app, game, world or account was replaced
+
+## Spectator title screen in 0.10
+
+The native launcher now uses the owner’s original Minecraft title artwork and
+splash pool, a Minecraft Ten Mac Edition subtitle and a connected item hotbar
+The permanent keyboard footer is replaced by a 60-second achievement-style hint
+that returns after 70 uninterrupted seconds of launcher-window focus
+The top-left control shows only the biome; Look around stays in the lower corner
+
+Spectator view adds WASD/Space/Shift flight, arrow/drag aiming, scroll speed and
+bracket/boundary travel between authored habitats. It keeps one current graph,
+cancels replaced loads and clears held input on focus loss. Area changes are
+scene swaps, not continuous game world generation
+Original installed menu/game music uses native AVAudioPlayer, with a visible
+mute control, Settings volume and focus/visibility/gameplay pause gates
+No game artwork, font or audio is added to source or distribution
+
+The 92 Python tests, native fixtures and installed-art integration pass
+Source-rendered layouts include flight, narrow, hidden-hint, error and missing-art
+states. Four elevated views stay within the existing 50 ms scenery budget
+[The method and results](test.md#spectator-flight-title-artwork-and-music-in-010)
+record actual GPU/wall timings and distinguish preparation from listening tests
+Full-window input, VoiceOver, audible transitions and long-session memory remain
+unverified because the disposable preview is not accessible to Computer Use
+
+The separate full 0.10.0 candidate passes outer/deep signature verification
+Its native machine code matches the source build. All 1,051 resource hashes and
+21 runtime symlinks from 0.9.1 remain unchanged, including the helper, worker,
+runtime and poster. No installed app, world or account data was replaced
+The LZFSE local DMG verifies; minimum macOS remains 27. It is
+129,094,745 bytes with SHA-256:
+
+```text
+dd25705a63670edb56026d93b1d04b1820ee9cee97c97517db14a7f7b3290c27
+```
+
+All 125 explicitly reviewed source files pass the boundary and checksum checks
+The isolated preview uses a simulated worker; it is not a live game test
+No binary release is published
+
+## Typography refinement in 0.9.1
+
+The main title retains Monocraft; actions and section titles use rounded system
+type, while supporting copy uses plain system type. Text over scenery has a soft,
+low-opacity one-point shadow. Physical button/panel shadows are attached to their
+background surfaces, preventing duplicate shadows behind the labels
+
+The native build and 92 Python tests pass. Source-generated first-run, ready,
+busy, error, long-detail and playing layouts were checked again at narrow,
+normal and wide sizes. Full-window keyboard and VoiceOver workflows remain
+unverified. The scenery renderer is unchanged from the measurements below
+
+The separate 0.9.1 app and DMG verify, preserving all 1,051 resource hashes and
+runtime symlinks from 0.9. Minimum macOS remains 27; the local DMG is
+128,084,241 bytes with SHA-256:
+
+```text
+0e513a1f26946520cc7a54bf4cf4453fe567c8ff2e67ad2223398b5e8457d3cd
+```
+
+## Gameplay-reference scenery and title screen in 0.9
+
+Version 0.9 follows actual Minecraft gameplay references for the village,
+fortress, stronghold portal chamber and End City. Village clearings follow
+individual building foundations and connecting paths; nearby foliage, fallen
+logs, roots, fungi, coral fans and hanging cave growth fill the camera foreground
+Original cutout leaves, cloud art, darkened End sky and patterned fish replace
+several simplified surfaces. Sift terrain and its rift remain labelled interpretations
+
+Play is now central on the title screen, above a compact item hotbar
+Installed stone art supplies button faces. The larger centred title and smaller
+control area leave more of the live world visible. Look around also uses ⌘L
+The mine/Nether and stronghold/End journeys remain; the fortress has a roofed
+junction and connected side rooms, and the stronghold has recessed barred openings
+
+The 92 Python tests, native fixtures and installed-art checks pass locally
+All 40 area renders, 24 passage views and paused comparisons pass, alongside
+source-generated narrow/normal/wide UI states. The 49-view probe's highest GPU
+p95 is 12.00 ms and wall p95 is 14.71 ms against a 50 ms budget
+[Method, baseline and limits](test.md#gameplay-reference-composition-in-09)
+distinguish these scenery measurements from game or Windows performance
+
+The separate 0.9.0 candidate retains all 1,051 resources from 0.8 byte-for-byte,
+including the runtime, worker, account helper, font and approved poster
+Only the launcher executable, app version metadata and outer signature change
+The installed app, accounts and saved worlds remain untouched
+The outer signature and LZFSE disk image verify; minimum macOS remains 27
+The DMG is 128,076,318 bytes with SHA-256:
+
+```text
+15f0b548533081d79ee1e185783955c9076232ec6d4840ff22581f6bf4fa91dd
+```
+
+The isolated preview uses a simulated worker; its scenery reads installed art
+The 138-second local tour records the authored scenery and portal journeys
+Full-window interaction, VoiceOver, long-session memory and gameplay performance
+remain unverified. Developer ID signing, notarisation and clean-Mac installation
+remain release gates; no binary release is published
+
+## Player-height worlds and Minecraft controls in 0.8
+
+Version 0.8 replaces the elevated diorama framing with low routes through wider,
+chunked terrain. River bends, frozen water, deeper sea floors and shaped cave
+ceilings put residents into their own habitats. A full Trial Chamber surrounds
+the camera. Mansion entrances face the approach and saved window panes connect
+to their neighbours. Original fluid and portal atlas frames supply surface motion
+
+The native interface uses pixel titles, stone buttons, a four-slot item hotbar,
+a searchable biome picker and an experience-style setup meter. Look around stops
+the camera route and lets the user drag the world; Done or Escape restores it
+Realm slots also use keys 1–4. Existing macOS menus and the setup/account protocol
+remain in place. Long details scroll inside the setup panel
+The mine and stronghold share the terrain builder for their forest approaches
+The Sift remains an artistic interpretation using existing Minecraft blocks and mobs
+
+Local validation passed on October 19, 2026: all 92 Python tests, native fixtures,
+installed-art checks, all 40 area renders, 24 passage views and 40 paused comparisons
+Source-generated SwiftUI layouts cover first-run, ready, progress, errors and
+playing at narrow, normal and wide sizes. These do not verify window interaction
+The 49-view Metal probe's highest GPU p95 is 9.57 ms and highest wall p95 is
+11.86 ms against the unchanged 50 ms frame budget. See [the method and limits](test.md#player-height-worlds-and-launcher-08-measurements)
+
+The separate full 0.8.0 candidate preserves every one of the 1,048 resources
+inventoried in 0.7, including runtime, worker, account helper and poster bytes
+It adds the unmodified Monocraft font, its full OFL licence and current vendor
+notices, producing a 1,051-file resource inventory. Launcher machine code matches
+the source build; the outer ad-hoc signature and LZFSE disk image verify
+No nested runtime/helper binary was rebuilt or re-signed
+The DMG is 128,049,140 bytes and retains the runtime's macOS 27 minimum
+
+```text
+e308367cd42e022148b118885cdbf529a0945b9cbefe19533dda578b7647bc60
+```
+
+The isolated UI preview uses a simulated worker and reads only installed game art
+The 138-second local video shows the scenery and passages, rather than gameplay
+Full-window interaction, keyboard, VoiceOver, live-game performance and long-session
+memory remain unverified. Computer Use denied the earlier preview session; no
+alternate desktop automation or desktop capture was used
+The installed app, worlds and account data remain untouched. No binary release
+is published; Developer ID signing, notarisation and clean-Mac installation
+remain release gates
+
+## Expanded habitats and journeys in 0.7
+
+Version 0.7 replaces the three-biome strips with 37 independent habitats and
+expands the resident catalogue from 46 to 62 original Minecraft mob types
+Added visits include the savanna outpost, swamp hut, woodland mansion, warm-ocean
+reef, dripstone caves and Trial Chamber. Villages gain farms and pens, the bastion
+and fortress become larger complexes, and the End City gains towers and bridges
+Canopies, clouds, vegetation, flowing surfaces, waterfalls and ambient particles
+supply movement alongside resident groups
+
+The 22-second mine descent passes original mobs, rails, ore, supports, side shafts,
+a cart and cobwebs before crossing an enclosed obsidian portal into a Nether vista
+The 20-second stronghold route descends stairs, passes libraries and Silverfish,
+then approaches a raised 12-frame End portal. The 16-second Sift approach remains
+explicitly artistic, using installed Minecraft blocks and existing mob species
+These scenes do not add dimensions or content to Minecraft
+
+Repeated structure pieces now share decoded meshes within a scene, and face
+culling classifies each palette entry once. In the sequential graph-build probe,
+the mansion changed from 236.13 to 42.87 ms and the bastion from 1,023.81 to
+101.03 ms, with unchanged geometry counts. Final graph construction ranged from
+5.47 to 101.03 ms on the existing background queue. The previous graph stays
+visible during loading; native crossfades respect the existing motion gates
+
+Local validation on October 19, 2026 passed: all 91 Python tests, native fixtures,
+installed-art integration for 62 types and 37 habitats, 24 passage renders and
+37 paused comparisons within one 8-bit channel step. The 46-view Metal probe's
+highest GPU p95 was 4.77 ms and highest wall p95 was 5.94 ms against 50 ms
+All graphs remained below the existing 1,200-node / 150,000-triangle budget
+See [the method and limits](test.md#expanded-habitat-07-measurements)
+These are offscreen scenery results, not live-game FPS or application input latency
+
+The separate full 0.7.0 candidate preserves all 1,048 resource hashes from 0.6,
+including runtime, worker, account helper, poster and licences. Only the native
+launcher and app metadata/signature are updated. Launcher machine code matches
+the source build and the ad-hoc signature and LZFSE disk image verify
+The DMG is 127,107,801 bytes and retains the runtime's macOS 27 minimum
+
+```text
+50e54089d50257e8290786669e9cc03c51ac24d6a7ec16c0b5834f116fb8545b
+```
+
+The 132-second local video tours all 37 habitats and shows all three journeys
+The separate UI preview uses a simulated worker and only reads installed game art
+Full-window interaction, keyboard, VoiceOver, live-game and long-session memory
+checks remain unverified. Computer Use denied the earlier preview session; no
+alternate desktop automation or capture route was used
+The installed app, worlds and account data remain untouched; no binary release
+has been published and Developer ID signing/notarization remain release gates
+
+## Original Minecraft art in 0.6
+
+Version 0.6 replaces the rejected procedural creatures with original models and
+textures read from the owner's installed Minecraft. Original templates supply
+villages, igloos, ruined portals, fossils, the Ancient City, bastions, shipwrecks
+and End City pieces. No Minecraft assets are added to source or the DMG
+
+The 31 area views and three portal journeys remain selectable. The catalogue
+contains 46 resident types plus the Happy Ghast and dragon. The mine camera stays
+below its support beams, Nether frames are 4 × 5 blocks, and the stronghold uses
+a 12-frame End portal. Shulkers stay still and the dragon stays at the central island
+Sift remains an artistic interpretation using existing Minecraft art
+
+Scene construction now runs on a serial asset queue, with queued cancellation,
+obsolete-result rejection and main-thread presentation. First-run and unsupported
+art fall back to the approved poster. Shared materials and metadata remain cached;
+archive buffers and the old scene graph are released after construction/replacement
+
+Local checks passed on October 19, 2026: 91 Python tests, the native CI fixtures,
+installed-art integration, 31 area renders, fifteen passage viewpoints and eleven
+identical paused-frame comparisons. The native fixtures cover malformed archives,
+gzip/NBT, numeric pack precedence, empty archive stubs, UV direction, plane faces,
+bind transforms, parent cycles, cancellation and main-thread completion
+The 121-file source boundary, source hashes and diff checks also pass
+
+The forty-view M3 Pro probe's highest GPU p95 is 11.45 ms and highest wall p95 is
+13.45 ms against the 50 ms frame budget. Cold graph construction reached 646.27 ms
+on the asset queue; enqueueing returned in 0.03 ms in the native check
+These are offscreen/API results, not application input latency or game benchmarks
+See [Testing](test.md#original-asset-06-measurements) for the method and per-realm results
+
+The separate full 0.6.0 candidate contains 1,048 inventoried resources. The 1,046 existing
+resources apart from the notice match exactly, including the runtime, worker,
+helper and licences. The notice is updated and the approved poster is added. Launcher machine code matches the
+source build, and its ad-hoc bundle signature and LZFSE disk image verify
+The image is 126,714,712 bytes and retains the runtime's macOS 27 minimum
+
+```text
+1ba47ac1fb5b8f10410ad44a0d752e1fd81381c65c1a385c08cb4002f10bd3d6
+```
+
+The 104-second local video is an offscreen scenery tour. The isolated UI preview
+uses a simulated worker and reads only public art from the installed game
+Full-window, keyboard, VoiceOver, long-session memory and live-game checks remain
+unverified. The installed app and public binary release have not been replaced
+
+## Earlier 0.5 procedural preview
+
+The 0.5 artwork was rejected for visual fidelity and is superseded by 0.6
+The measurements below describe that earlier candidate
+
+Version 0.5 adds 31 selectable habitat and landmark areas, with 42 species in
+the resident catalogue alongside the original Happy Ghast and dragon rigs
+Only three neighbouring areas are built at once. The roster includes snowy
+terrain, desert and jungle temples, mangroves, mushroom fields, Pale Garden at
+dusk, lush caves, Deep Dark, all five Nether biomes and the End City and ship
+
+Nether entry follows a 14-second descent from a grassy mine entrance along rails
+through an obsidian portal. End entry returns to an Overworld stronghold and
+descends through its horizontal portal. Sift has an artistic rift crossing
+The area menu and native View menu reach every stop; Skip journey cancels a
+crossing. Reduced Motion and Low Power Mode go directly to the destination
+Pause, inactivity, occlusion and gameplay stop both the renderer and tour clock
+
+The native checks cover all eleven pages, the full resident catalogue, aquatic
+pool placement, Creaking visibility at dusk, bounded selection, passage timing,
+rapid replacement and skip behaviour. The 91 Python tests pass locally
+All 31 area renders, fifteen passage viewpoints and eleven paused-frame comparisons
+pass. The forty-view GPU probe stays within the 50 ms budget for 20 fps, with a
+maximum 11.67 ms GPU p95; methods and limits are in [Testing](test.md#native-app-and-helper)
+The README poster, game runtime, worker, account helper and installed app are unchanged
+
+The separate 0.5.0 full candidate preserves 1,046 resource hashes from 0.4,
+including every runtime, worker, helper and licence file. Only the scenery
+notice changes among its 1,047 inventoried resources. Its launcher machine code
+matches the native source build; the ad-hoc signature and LZFSE DMG verify
+The runtime still requires macOS 27. No installed app or public release was replaced
+
+The isolated interface preview opened as a separate process. Its sign-in,
+download and play worker is simulated and does not use account or world data
+Full-window, keyboard and VoiceOver workflows remain unverified because
+Computer Use access to the earlier preview was denied
+
+The local DMG is 127,446,320 bytes. Its SHA-256 is
+
+```text
+7b726a9d791e5980f6fd9ff0ad7d942d6fcdc64ff3efcf7f72a3b9b60ac36b96
+```
+
+
+## Earlier 0.4 live realm preview
+
+Version 0.4 replaces static panoramas with four native 3D landscapes and twelve
+area views. Each realm contains 9–13 residents, shared terrain geometry, flowing
+surfaces or ambient particles, and camera journeys between its areas
+
+Biomes advance every 18 seconds and realms every 54 seconds. Clouds, plants,
+waterfalls, lava and mobs move within the scene. The same motion gate stops
+rendering and automatic changes when paused, inactive, occluded, in Low Power
+Mode, with Reduced Motion, or while Minecraft runs
+
+The source and isolated preview compile; 91 Python tests and the native graph,
+texture, motion, camera-boundary and rapid-change checks pass locally. The twelve
+area GPU probe and its limits are recorded in [Testing](test.md#native-app-and-helper)
+The README poster is unchanged; earlier artwork is no longer bundled or loaded
+
+The local 0.4.0 full app retains 1,046 matching resource hashes, including every
+runtime, worker, helper and licence file. The third-party note was extended and
+four unused JPEGs removed, leaving 1,047 inventoried resources. Launcher machine
+code matches the native build; its ad-hoc signature and LZFSE DMG verify
+The image is 127,585,943 bytes, with no game/account/world payload, and
+retains the runtime's macOS 27 minimum. No installed app was replaced and no
+public binary release was created
+
+The isolated 0.4 Preview opens separately. A 32-second offscreen scenery video
+shows all twelve views at 6.75× speed; it is not a recording of the application
+window or gameplay. Full-window and VoiceOver checks remain unverified
+
+Local 0.4-preview DMG SHA-256
+
+```text
+144189ccafc314a0fe582515c6f1a439f1f0584a148240cb8a0b4d859d7af42f
+```
+
+## Earlier 0.3 mob preview
+
+The 0.3 interface used four local world panoramas, slow camera motion, ambient
 particles, native 3D mobs, manual scene selection and automatic scene fades. A compact launch
 panel replaces the earlier poster card; setup progress assembles isometric
 blocks and shows sign-in, download, preparation and play as separate steps
+
+The mob revision follows official visual references: pixel faces, a blue harness
+and goggles, varied tentacle lengths, and a dragon with horns, articulated neck
+and tail, four legs and hinged membranes. The generic rider and invented Sift mob
+were removed. Authored textures are generated locally; no official game assets
+were added to the source or bundle. See the [measured render cost](test.md#native-app-and-helper)
 
 Overworld, Nether and End scenery are joined by an artistic Sift preview
 [Mojang's announcement](https://www.minecraft.net/en-us/article/mclive_sept2026_recap)
@@ -34,17 +529,17 @@ foreground CPU/GPU and long-session memory checks remain manual acceptance work
 Offscreen Metal rendering confirms that the authored actors move and pause;
 the complete window and menu interactions have not been visually verified
 
-The local 0.3.0 app candidate preserves all 1,047 earlier runtime/worker/helper
-resource hashes and adds four illustrations, giving a 1,051-file resource
-inventory. Its ad-hoc signature and LZFSE DMG verify. The image is 129,627,793
-bytes, contains no account/game/world payload, and retains the full runtime's
-macOS 27 minimum. The installed app was not replaced and no public binary release
-was created
+The revised local 0.3.0 candidate preserves all 1,051 resource hashes from the
+adventure build, including its runtime, worker and account helper. Only launcher
+machine code changed. Its ad-hoc signature and LZFSE DMG verify. The image is
+129,640,227 bytes, contains no account/game/world payload, and retains the
+full runtime's macOS 27 minimum. The installed app was not replaced and no public
+binary release was created
 
-Local adventure-preview DMG SHA-256:
+Local mobs-preview DMG SHA-256:
 
 ```text
-08f642d42f0c5c9131138fa7870172af0e7732a56a9aaf9441da084929f79c65
+8bcc931dbcff5c09451b00918339da9b8d5d0e61053dddbca6eb6a8b004ae5ca
 ```
 
 ## Earlier October 19 interface update

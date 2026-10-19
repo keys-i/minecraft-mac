@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
+import struct
 import unittest
 
 
@@ -21,6 +22,20 @@ class ExportTests(unittest.TestCase):
         self.source.mkdir()
         (self.source / "README.md").write_text("Reviewed source\n")
         self.destination = self.base / "export"
+
+    def test_reviewed_font_checks_table_bounds(self):
+        path = self.source / "assets/Monocraft.ttf"
+        path.parent.mkdir()
+        font = bytes((0, 1, 0, 0)) + struct.pack(">HHHH", 1, 0, 0, 0)
+        font += struct.pack(">4sIII", b"name", 0, 28, 4) + b"font"
+        path.write_bytes(font)
+        self.assertEqual(export.read_source(self.source.resolve(), "assets/Monocraft.ttf")[0], font)
+        path.write_bytes(font[:-1])
+        with self.assertRaisesRegex(ValueError, "table bounds"):
+            export.read_source(self.source.resolve(), "assets/Monocraft.ttf")
+        path.write_bytes(b"invalid font")
+        with self.assertRaisesRegex(ValueError, "Invalid TrueType"):
+            export.read_source(self.source.resolve(), "assets/Monocraft.ttf")
 
     def test_private_files_never_enter_export(self):
         for directory in export.PRIVATE_ROOTS:

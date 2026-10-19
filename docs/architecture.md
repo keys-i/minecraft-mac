@@ -44,24 +44,204 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native window places a scrollable launch panel over four bundled world
-panoramas. The images are loaded once per launcher instance. A separate scenery
-view owns the 20 fps ambient timeline, slow camera drift and 18 particles, so
-those frames do not invalidate the launch controls. Scenes cross-fade every
-24 seconds or when selected manually
+The native title screen places a central Play button and compact four-slot realm
+hotbar over one live SceneKit world. Busy/error states use a separate status panel
+The installed game supplies the original title artwork, Minecraft Ten subtitle
+font and splash pool. The Mac Edition subtitle uses an extruded face and sloped stone backing
+The yellow splash uses a native repeating scale animation, removed when motion
+is disabled, the launcher loses focus or a game/error/biome picker takes priority
+Monocraft supplies the fallback title and shortcut toast; rounded system type
+identifies actions, and plain system type supplies supporting copy
+Original installed item icons and hotbar/selection textures supply the connected
+inventory bar. Realm names and number shortcuts remain in help/accessibility labels
+Stone controls and installed utility glyphs share hover, press and focus states
+Action headings/buttons now use pixel type. The hotbar has no extra backing
+The splash overlaps the title; the bottom corners hold a native developer Link
+and the actual launcher bundle version. Scenery motion controls remain in Settings/View
+The top-left biome name opens an in-window destination list with original block
+textures, search, selected states and arrow-key navigation. Automatic biome travel
+waits while the picker is open; native menus also give direct access
+The corner spyglass control or ⌘L enters spectator flight in `FlightView`
+Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
+arrows turn, captured relative mouse movement aims, and scrolling changes speed
+between 2 and 32 blocks/s. Control doubles travel speed while held
+Capture owns one local event monitor and restores cursor association/visibility
+and the window’s previous mouse-event preference on release. It never installs
+a global monitor, event tap or Input Monitoring service
+A 60 Hz timer exists only while movement/turning keys are held; focus loss,
+responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
+Crossing an authored area boundary or pressing brackets loads the next/previous
+biome in the current realm. Only one graph is presented; obsolete builds cancel
+Arrival wraps to the opposite edge, preserves direction/relative height and
+uses a safe landing when an End island gives way to void. These are authored
+area swaps, not continuous Minecraft generation. Realm slots remain available
+Leaving flight restores the current area route; teardown removes the recogniser
+`ShortcutHint` owns the 60-second toast and subsequent 70-second focused wait
+The view uses key-window notifications; the in-window Settings menu suppresses
+shortcut hints, spectator capture and automatic scenery motion while open
+One cancellable sleeping task handles deadlines without polling; a hidden toast's
+wait restarts after focus is lost, while an already visible toast keeps its expiry
+Entering flight replaces it with 60-second movement instructions; leaving
+dismisses it. Setup, errors, passages and a running game suppress the toast
+A running game disables Look around
+`Music.swift` owns one native AVAudioPlayer and one cancellable load on the
+existing serial asset queue. It reads original installed menu/game Ogg tracks
+on demand, avoids an immediate repeat and limits each source to 32 MiB/20 minutes
+Settings opens inside the launcher from the gear button or the app menu's ⌘, action
+It has a persistent top-right close button and Escape dismissal, without a separate
+preferences window or title bar. Text, spacing and hit targets scale with its bounds
+from 20-point action labels / 16-point body copy to a maximum 1.5× scale
+Content scrolls at compact sizes while the heading and close button stay visible
+Settings owns the launcher’s master-volume control (default 18%); zero mutes it
+The header has no separate sound control Losing launcher focus, occlusion or game launch pauses playback
+Closing the view cancels the pending load and releases the player. Artwork,
+fonts and audio remain in the owner’s installation and are never redistributed
+`Assets.swift` reads original models, textures and structure templates from the
+owner's installed `game/data` directory. `NBT.swift` decodes bounded gzip/NBT
+structures; the archive reader supports the game's versioned `.brarchive` packs
+Newer packs override older packs in numeric version order, and empty archive
+stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`src/launcher/Adventure.swift` owns the original SceneKit actors: a Happy Ghast
-and rider, a Nether Ghast, a flapping dragon and an imagined Sift spirit/rift
-One bounded scene graph is active at a time, with a separate 20 fps renderer
-It pauses with the same motion gate and releases its graph when dismantled
-No video generator, AI model, network service or game textures are needed at
-runtime. The Sift illustration is an artistic preview of the realm announced
-for Java and Bedrock in 2027, not a claim that the installed game includes it
+`Biome.swift` defines 42 selectable habitats and landmark visits across four realms
+`Landscape.swift` builds one complete habitat per selection, replacing the former
+three-biome strips. `Terrain.swift` owns deterministic interpolated noise, ground
+height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
+Domain edges and flat undersides close the terrain shell; Nether ceilings are capped
+The same mesh builder supplies the forest above the mine and stronghold approaches
+Static voxel meshes use SceneKit collision category 2. One temporary native
+renderer prepares their transforms/geometry before offscreen segment queries
+Completed graph actions are committed before moving from the asset queue to
+the presentation renderer, so prepared scenes do not leave residents stationary
+Residents reject wall-crossing strolls, retry bounded alternatives and retrace
+their outward route. Idle camera paths are checked once at construction; flight
+uses short swept segments and axis sliding, with foliage and structure faces
+blocking travel. Original non-solid plants, rails and fluids do not block flight
+Underwater viewing uses blue fog; submerged Nether lava has a 1.5-block orange
+visibility limit rather than a clear view of the terrain underneath
+Camera routes stay at player height or low spectator height, including underwater
+Texture tint is baked once into cached RGB pixels while preserving original
+alpha. Fluids use original biome colours, one alpha application and native atlas
+frames at 20 fps for water / 10 fps for lava, without doubled lava emission
+`Daylight` owns a twenty-minute Overworld sky rig with original sun/moon art,
+batched stars and once-per-second lighting/fog updates. A shared asset epoch
+preserves time between areas; motion gates pause visible updates. Nether, End
+and underground scenes retain their environmental lighting
+Idle camera routes form a continuous twelve-second hover loop with eased reversals
+and an explicit world-up vector. Initial placement checks solid volumes and nearby
+sightlines; animated tree canopies share the collision category used for scenery
+Flight arrivals use the same free-position search when a destination contains a wall
+Original block materials supply strata, vegetation, roots, fungi, chorus plants,
+waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
+particles move independently of the camera
+Village clearings follow individual building plots and their connecting paths,
+instead of flattening and clearing an entire rectangle. Tree canopies share one
+geometry per wood type within each scene. Near-camera placement brings plants,
+fallen logs, roots, fungi, coral fans and ceiling-attached cave growth into view
+Original cloud art moves above the Overworld; the original greyscale End sky is
+darkened in a small native bitmap before it becomes the background cubemap
+
+`Mobs.swift` shares original geometry/skins within each scene and places 70 types
+in habitat-specific groups. Five newer types are skipped on older installations
+when their original art is absent; malformed assets still fail clearly
+Aquatic residents use water pockets, Striders use lava,
+and fortress residents use bridge height. River residents follow the actual
+channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
+use original skin variants. Tropical fish add the original pattern layer and colour
+variants. Variant-specific geometry now takes precedence over default geometry
+Residents use unsynchronised bounded strolls, original movement/stroll attributes
+where available, sampled terrain/water bounds, diagonal gait timing, sheep
+grazing and species-specific hops. Flying hero actors follow circular paths
+Original behaviour collision boxes bound resident clearance rather than visual
+limbs or Blaze rods. Adult/calm component groups provide movement attributes;
+the midpoint represents original movement ranges in this scenery simulation
+Flying residents turn while travelling instead of inheriting walking waits
+End crystal shells follow the original installed bob/rotation formulas; bases stay still
+Four eligible classic species use base-pack models at a daylight-dependent
+10–15% launcher-only chance, selected once during scene construction
+Classic prototypes stay within the current scene factory; no old-version
+download, separate simulation, combat, breeding or village job system is added
+The dragon stays at the central island. A single octagonal healing beam uses the
+installed End crystal beam texture, follows the closest crystal shell within 32
+blocks and disappears out of range. The dragon’s movement action owns its
+transform and UV updates, keeping the endpoint aligned without a separate action
+or geometry rebuilds. Reduced Motion retains a static connection
+This illustrates the crystal connection without adding a combat/health simulation
+Enderman and Blaze native shader alpha is treated as material data, preserving
+opaque bodies and emissive eyes; the copper golem also receives its eye layer
+Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
+from the installed assets. Ambient actions do not reproduce the game's AI or
+complete animation system
+
+`Structures.swift` imports original village, outpost, mansion, igloo, ruined portal,
+Trial Chamber, Ancient City, bastion, fossil, shipwreck and End City pieces
+The complete chamber surrounds an interior camera. Mansion panels
+and End City towers/bridges are composed locally from original templates
+Repeated pieces clone one decoded geometry per scene rather than reparsing NBT
+Pane connections are rebuilt from saved neighbours, including templates that
+defer their connection states until placement. Face culling classifies each palette
+entry once, avoiding repeated string matching
+for every block and its neighbours
+Code-generated temples, huts, fortresses and passages use installed block textures
+Some partial blocks and structure entities remain simplified; the launcher does
+not reproduce world generation, the game renderer or its Molang interpreter
+The importer reads banner mounting, facing, base dye and up to six saved pattern
+layers, with the original captain-banner skin reserved for captain banners
+Brewing stands render the saved bottle slots; doors, trapdoors and ladders use
+their saved orientation and open state. These are rendered states, not brewing
+or block-interaction simulations. Authored jungle/desert temples and the ocean
+monument use wall/roof shells with reachable interiors
+
+| Realm | Areas | Residents and landmarks |
+| --- | --- | --- |
+| Overworld | 25 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, caves, Trial Chamber, Ancient City, mineshaft and stronghold |
+| Nether | All five biomes | Piglins, brutes, Hoglins, Striders, Ghasts, Blazes, Wither Skeletons and magma cubes; fortress, bastion and fossils |
+| End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; caged crystals, chorus branches, gateway, city towers, bridges and ship |
+| Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
+
+`Journey.swift` owns bounded selection and the 18-second area clock
+The 22-second Nether entry descends a supported, ore-lined mine past side shafts,
+cobwebs, a minecart and bats, then crosses a 4 × 5 obsidian portal into a lava/
+fortress vista. The 28-second End entry descends over forty blocks into an Overworld stronghold, passes
+side libraries and a Silverfish spawner, then approaches a raised 12-frame portal
+Sift has a 16-second explicitly artistic rift approach
+The mineshaft and stronghold are also persistent picker destinations sharing
+their passage geometry. Terrain is carved around the mine branch and library
+rooms; rock above their ceilings closes the surrounding surface. Mine branches
+have end caps, broken rail junctions, timber supports and embedded ore veins
+Passage residents use the same collision-checked strolls as habitat residents
+Portal surfaces fill the departing camera before a colour-matched dimension
+transition. Destinations start beside a corresponding portal or End spawn
+platform, then join the existing hover path without a visible camera reset
+**Skip journey** cancels a passage; another selection replaces it immediately
+Reduced Motion and Low Power Mode select the destination directly
+The existing graph remains visible during loading. Short native fades join scenes
+only while motion is enabled; cancellation rejects obsolete graph results
+
+The renderer targets 30 fps while idle and 60 fps during spectator flight. Native checks bound each habitat to 1,200 nodes
+and 350,000 logical triangles; actual measurements are recorded in [Testing](test.md)
+A serial asset queue builds scenes away from the interface thread. Cancelling a
+selection drops queued work and ignores obsolete results; completed graphs move
+to the main thread before presentation. The loader retains shared materials and bounded JSON metadata, drops archive
+buffers after graph construction and keeps mob prototypes within the current page
+`Adventure.swift` pauses and releases its scene when dismantled
+
+Before game art exists, or when scenery is unsupported, the approved poster
+remains visible and scenery navigation is unavailable. Setup and Play still work
+The art loader refreshes after successful installation. A development or isolated
+preview may read public art from the normal installed game directory, while its
+worker remains isolated from accounts and worlds. No game art is redistributed
+in source or the DMG, and no scenery service or model download is required
+
+The Sift scenery follows the colourful terrain, rifts and illager presence in
+[Mojang's Dungeons II announcement](https://www.minecraft.net/en-us/article/minecraft-dungeons-ii-is-live)
+Its area names, flora and use of visiting existing mobs are artistic choices,
+not announced Bedrock biomes or a claim about native Sift species. Its Java/Bedrock
+arrival was announced for 2027; the launcher does not add it to the installed game
 
 Ambient motion and automatic scene changes stop with Reduced Motion, Low Power
 Mode, the pause control, an inactive app, an occluded window or a running game
 The scene-change task cancels when its view disappears or its motion gate changes
-The progress view builds 30 isometric blocks from the worker's bounded overall
+The experience bar fills 40 segments from the worker's bounded overall
 setup fraction; the four steps use the existing sign-in/download/preparation
 boundaries. Percentages describe weighted setup progress, not bytes or an ETA
 
@@ -72,6 +252,12 @@ with `tests/preview.py` as its only worker and an internal fixture root. It has 
 different app identity and does not access accounts, downloads or saved worlds
 See [Accessibility](accessibility.md) for controls and outstanding manual checks
 
+Settings uses the same pixel typography, stone buttons and square volume track
+as the title screen. The volume track supports pointer, arrow keys and
+accessibility adjustment. Help opens a local, dismissible guide with setup-log
+access; reporting a problem remains a separate external action
+Long biome names scroll only while the launcher is active; Reduced Motion
+shows the full name over several lines
 Settings stores scenery preferences in the app's own defaults. Edit, View,
 Window and Help use native menu commands; About, Services and Quit remain macOS
 app-menu behaviours. Check for Updates makes one bounded-time request to the

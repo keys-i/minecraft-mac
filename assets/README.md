@@ -13,7 +13,30 @@ removed — 356,088 bytes. Both images remain below the exporter's 2 MiB limit.
 Keep images individually listed in the source allowlist and give each meaningful
 alternative text
 
-## Animated launcher scenes
+## Native scenery
+
+Version 0.9 uses original Minecraft models, textures and structure templates
+read from the owner's installed game. It builds 40 area views, 65 resident types,
+two hero actors and three passages in native SceneKit. Those Minecraft assets
+are not bundled or committed. The approved poster supplies first-run fallback
+Versions 0.4/0.5 used procedural stand-ins that were rejected for fidelity
+
+The 0.9 composition pass used actual gameplay views as visual references:
+[a village path](https://cdn-ak.f.st-hatena.com/images/fotolife/s/shiwaken/20230408/20230408192830.png),
+[Mojang's plains village](https://www.minecraft.net/en-us/article/around-block--plains),
+[a Nether fortress](https://livedoor.blogimg.jp/umidori50r/imgs/5/0/5006f1d1.png),
+[a portal chamber](https://minecraft-seeds.com/wp-content/uploads/2021/03/4530634556500121041.png)
+and [Mojang's End City](https://www.minecraft.net/en-us/article/end-city)
+The reference images remain outside the repository and app; their pixels are not
+used in the scenery. Sift views remain labelled as an artistic interpretation
+
+The area list includes structure visits; it does not claim each stop is a
+separate official biome. Sift area names, scenery and routes are interpretations
+The README poster is unchanged, and `launcher.jpg` shows the earlier interface
+The 0.8 launcher registers the bundled [Monocraft font](../vendor/README.md#monocraft)
+for its own process; the font and full OFL notice are included in source exports
+
+## Earlier illustrated launcher scenes
 
 `overworld.jpg`, `nether.jpg`, `end.jpg` and `sift.jpg` are original project illustrations generated
 with the built-in ImageGen tool on October 19, 2026, then encoded as JPEG at
@@ -23,8 +46,19 @@ or game UI. The native launcher supplies camera drift, particles and scene fades
 in code; these images are not video or gameplay captures. Original voxel actors
 in `src/launcher/Adventure.swift` provide the moving creatures and portal
 
-The README's original `poster.webp` is unchanged. The four scene assets are
-individually allowlisted for source export and copied into the native app
+The mob revision uses the official [Happy Ghast](https://www.minecraft.net/en-us/article/happy-ghast),
+[Ghast](https://www.minecraft.net/en-us/article/ghast) and
+[Ender Dragon](https://www.minecraft.net/en-us/article/ender-dragon) articles and
+[Mojang's Bedrock samples](https://github.com/Mojang/bedrock-samples) as visual
+references for proportions, expressions, harness and wing anatomy
+The launcher uses authored geometry and generated 16 × 16 pixel maps, not bundled
+Mojang models or textures. The invented Sift creature and crude rider were removed
+
+The README's original `poster.webp` is unchanged. These four images remain as
+source artwork references, individually allowlisted for export. Version 0.4
+replaces the launcher panoramas with a live native landscape and does not copy
+these images into the app; its terrain, plants and resident groups are authored
+in `src/launcher/Landscape.swift`
 
 ### Overworld prompt
 

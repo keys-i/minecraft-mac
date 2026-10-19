@@ -20,19 +20,27 @@ spec.loader.exec_module(packager)
 
 
 class PackagingTests(unittest.TestCase):
-    def test_launcher_bundles_artwork_and_keeps_existing_installation_identity(self):
+    def test_launcher_bundles_only_poster_fallback_and_keeps_installation_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            resources = root / 'build/Minecraft for MacOS.app/Contents/Resources'
+            resources.mkdir(parents=True)
             (root / 'assets').mkdir()
-            for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
-                (root / 'assets' / name).write_bytes(name.encode())
+            (root / 'assets/poster.webp').write_bytes(b'approved poster')
+            (root / 'assets/Monocraft.ttf').write_bytes(b'pixel font')
+            (root / 'vendor/licenses').mkdir(parents=True)
+            (root / 'vendor/licenses/Monocraft-OFL.txt').write_text('font licence')
+            (resources / 'overworld.jpg').write_bytes(b'retired panorama')
             with patch.object(packager, 'ROOT', root), \
                     patch.object(packager.subprocess, 'run'), \
                     contextlib.redirect_stdout(io.StringIO()):
                 app = packager.build_launcher()
             self.assertEqual(app.name, 'Minecraft for MacOS.app')
+            self.assertEqual((resources / 'poster.webp').read_bytes(), b'approved poster')
+            self.assertEqual((resources / 'Monocraft.ttf').read_bytes(), b'pixel font')
+            self.assertEqual((resources / 'vendor/licenses/Monocraft-OFL.txt').read_text(), 'font licence')
             for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
-                self.assertEqual((app / 'Contents/Resources' / name).read_bytes(), name.encode())
+                self.assertFalse((app / 'Contents/Resources' / name).exists())
             with (app / 'Contents/Info.plist').open('rb') as file:
                 info = plistlib.load(file)
             self.assertEqual(info['CFBundleDisplayName'], 'Minecraft for MacOS')

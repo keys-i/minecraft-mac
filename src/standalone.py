@@ -265,7 +265,8 @@ def prerequisites(game):
         if relative == 'x86_64-unix/winemetal.so' and (WINE / 'dxmt-unix-bridge.json').exists():
             verify_unix_bridge()
             continue
-        if sha256(installed) != sha256(DXMT / relative):
+        source = DXMT / relative
+        if not installed.samefile(source) and sha256(installed) != sha256(source):
             raise RuntimeError('Reinstall DXMT with tools/build/graphics.sh --wine-runtime ' + str(WINE))
     if sha256(ROOT / 'runtime/xgameruntime.dll.threading') != THREADING_HASH:
         raise RuntimeError('Microsoft threading DLL does not match the pinned official version.')
@@ -297,7 +298,9 @@ def verify_unix_bridge():
         if set(files) != {'winemetal.so', 'winemetal-upstream.so'}:
             raise ValueError('unexpected bridge file list')
         upstream = metadata.get('packaged_upstream_sha256', files['winemetal-upstream.so'])
-        if upstream != sha256(DXMT / 'x86_64-unix/winemetal.so'):
+        source = DXMT / 'x86_64-unix/winemetal.so'
+        source_hash = sha256(source)
+        if upstream != source_hash:
             raise ValueError('upstream graphics library changed')
         sources = Path(os.environ['BEDROCK_BUNDLE']) / 'scripts' if os.environ.get('BEDROCK_BUNDLE') else ROOT
         if metadata['patch_sha256'] != sha256(sources / 'vendor/patches/standalone-dxmt-memory-lifetime.patch'):
@@ -305,7 +308,9 @@ def verify_unix_bridge():
         if metadata['trace_source_sha256'] != sha256(sources / 'tools/probes/standalone-dxmt-display-trace.c'):
             raise ValueError('bridge source changed')
         for name, expected in files.items():
-            if sha256(WINE / 'lib/wine/x86_64-unix' / name) != expected:
+            installed = WINE / 'lib/wine/x86_64-unix' / name
+            digest = source_hash if installed.samefile(source) else sha256(installed)
+            if digest != expected:
                 raise ValueError('installed bridge library changed')
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise RuntimeError('The rebuilt DXMT bridge failed verification. Rebuild and stage it again, or reinstall standard DXMT.') from error

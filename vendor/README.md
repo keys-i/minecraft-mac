@@ -91,12 +91,32 @@ license audit of a future binary bundle.
 
 ## Artwork and screenshots
 
-The README poster and the Overworld/Nether/End/Sift launcher scenes are original
-AI-generated project artwork. Camera motion, particles and scene changes are
-drawn by the native launcher; its voxel creatures and portal are original
-procedural models in the project source. The scenery is not gameplay footage
-The Sift scene is an artistic interpretation, not a claim about the installed
-game's features. The launcher image
-is an unaltered screenshot of the locally running native launcher, captured on
-October 19, 2026. The [artwork prompt and screenshot sources](../assets/README.md)
-are recorded separately
+The README poster and earlier Overworld/Nether/End/Sift panoramas are original
+AI-generated project artwork. The approved poster is bundled for first-run and
+unsupported-scenery fallback; the earlier panoramas remain source references
+
+Version 0.6 reads Minecraft's original model geometry, textures and NBT structure
+templates from the owner's installed game data. These assets remain the property
+of Mojang/Microsoft and are not included in this source package or the app bundle
+The `.brarchive` reader follows the publicly documented
+[archive format](https://github.com/bedrock-crustaceans/brarchive/blob/main/FORMAT.md)
+No code was copied from that implementation
+
+The launcher composes its own terrain and ambient animation around those assets
+Some partial blocks and generated structures are simplified. The scenery is not
+gameplay footage, and Sift areas remain artistic interpretations
+Earlier 0.4/0.5 procedural models were rejected for visual fidelity and are no
+longer used. Historical artwork references remain in [asset notes](../assets/README.md)
+
+The launcher image is an unaltered screenshot of the earlier locally running
+native launcher, captured on October 19, 2026. It does not show the 0.6 scenery
+
+
+## Monocraft
+
+The launcher bundles [Monocraft](https://github.com/IdreesInc/Monocraft) under
+the [SIL Open Font License](licenses/Monocraft-OFL.txt)
+Source revision: e498bf70aeb25b4bdcff1e44d878fb2cb4f7c2a9
+The unmodified font has SHA-256
+262e31822e0a75be567b02320bfa092143d871e8a273e529d1c5ab0c04cd215f
+It is registered for this process only and does not install a system font

@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
+import struct
 import sys
 import tempfile
 
@@ -67,7 +68,18 @@ ALLOWED_FILES = (
     'tools/legacy/run-windows.sh',
     'tools/build.py',
     'src/launcher/BedrockLauncher.swift',
+    'src/launcher/Music.swift',
     'src/launcher/Adventure.swift',
+    'src/launcher/Assets.swift',
+    'src/launcher/NBT.swift',
+    'src/launcher/Landscape.swift',
+    'src/launcher/Terrain.swift',
+    'assets/Monocraft.ttf',
+    'vendor/licenses/Monocraft-OFL.txt',
+    'src/launcher/Biome.swift',
+    'src/launcher/Mobs.swift',
+    'src/launcher/Structures.swift',
+    'src/launcher/Journey.swift',
     'src/launcher/setup.py',
     'tools/build/wine.sh',
     'tools/build/graphics.sh',
@@ -153,9 +165,10 @@ def checked_relative(name):
 
 
 def read_source(root, name):
-    """Reject symlinks in every component, not just symlinks at the leaf."""
+    """Reject symlinks in every component, not just symlinks at the leaf"""
     relative = checked_relative(name)
     image = relative.suffix in (".jpg", ".webp")
+    font = name == "assets/Monocraft.ttf"
     current = root
     for part in relative.parts:
         current = current / part
@@ -180,10 +193,20 @@ def read_source(root, name):
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("Refusing non-regular source file: " + name)
-        if image and info.st_size > 2 * 1024 * 1024:
-            raise ValueError("README image exceeds 2 MiB: " + name)
+        if (image or font) and info.st_size > 2 * 1024 * 1024:
+            raise ValueError("Source media exceeds 2 MiB: " + name)
         content = stream.read()
-    if image:
+    if font:
+        if len(content) < 12 or content[:4] != bytes((0, 1, 0, 0)):
+            raise ValueError("Invalid TrueType font: " + name)
+        count = int.from_bytes(content[4:6], "big")
+        if not 1 <= count <= 128 or 12+count*16 > len(content):
+            raise ValueError("Invalid TrueType table directory: " + name)
+        for table in range(count):
+            offset, length = struct.unpack_from(">II", content, 12+table*16+8)
+            if offset < 12+count*16 or offset+length > len(content):
+                raise ValueError("Invalid TrueType table bounds: " + name)
+    elif image:
         jpeg = (relative.suffix == ".jpg" and content.startswith(b"\xff\xd8\xff")
                 and content.endswith(b"\xff\xd9"))
         webp = (relative.suffix == ".webp" and content[:4] == b"RIFF"

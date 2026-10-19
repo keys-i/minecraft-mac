@@ -1,6 +1,8 @@
 import AppKit
 import SceneKit
+import SpriteKit
 import SwiftUI
+import simd
 
 enum World: String, CaseIterable {
     case overworld, nether, end, sift
@@ -24,164 +26,312 @@ enum World: String, CaseIterable {
     }
 }
 
-@MainActor
 enum VoxelAdventure {
-    static func scene(_ world: World) -> SCNScene {
-        let scene = SCNScene()
-        scene.background.contents = NSColor.clear
-        let camera = SCNNode()
-        camera.name = "camera"
-        camera.camera = SCNCamera()
-        camera.camera?.usesOrthographicProjection = true
-        camera.camera?.orthographicScale = 10
-        camera.position = SCNVector3(0, 0, 22)
-        scene.rootNode.addChildNode(camera)
-        let sun = SCNNode()
-        sun.light = SCNLight()
-        sun.light?.type = .directional
-        sun.light?.intensity = 1000
-        sun.eulerAngles = SCNVector3(-0.4, -0.5, 0)
-        scene.rootNode.addChildNode(sun)
-        let fill = SCNNode()
-        fill.light = SCNLight()
-        fill.light?.type = .ambient
-        fill.light?.intensity = 450
-        scene.rootNode.addChildNode(fill)
+    static func sway(_ node: SCNNode, x: CGFloat = 0, y: CGFloat = 0,
+                             z: CGFloat = 0, period: Double, phase: Double = 0) {
+        let base = node.eulerAngles
+        node.eulerAngles = SCNVector3(base.x + x * sin(phase), base.y + y * sin(phase), base.z + z * sin(phase))
+        node.runAction(.repeatForever(.customAction(duration: period) { node, elapsed in
+            let wave = sin(Double(elapsed) / period * .pi * 2 + phase)
+            node.eulerAngles = SCNVector3(base.x + x * wave, base.y + y * wave, base.z + z * wave)
+        }))
+    }
+}
 
-        func block(_ parent: SCNNode, _ size: SCNVector3, _ position: SCNVector3,
-                   _ colour: NSColor) -> SCNNode {
-            let geometry = SCNBox(width: CGFloat(size.x), height: CGFloat(size.y),
-                                  length: CGFloat(size.z), chamferRadius: 0)
-            geometry.firstMaterial?.diffuse.contents = colour
-            geometry.firstMaterial?.lightingModel = .physicallyBased
-            geometry.firstMaterial?.roughness.contents = 0.9
-            let node = SCNNode(geometry: geometry)
-            node.position = position
-            parent.addChildNode(node)
-            return node
+final class FlightView: SCNView {
+    let controller = SCNCameraController()
+    var travel: ((Int) -> Void)?
+    var finish: (() -> Void)?
+    private(set) var keys: Set<UInt16> = []
+    private(set) var speed: Float = 8
+    private var descending = false
+    private var sprinting = false
+    private var mouse: Any?
+    private weak var inputWindow: NSWindow?
+    private var acceptedMouse = false
+    private(set) var captured = false
+    private var timer: Timer?
+    private var last = 0.0
+    private var loading = false
+    private var area: Biome = .meadow
+    private var entry: (point: SCNVector3, height: Double, angles: SCNVector3)?
+    var exploring = false {
+        didSet {
+            guard exploring != oldValue else { return }
+            stop()
+            if exploring { capture() }
+            else {
+                release()
+                entry = nil
+                if window?.firstResponder === self { window?.makeFirstResponder(nil) }
+            }
         }
+    }
 
-        func drift(_ node: SCNNode, y: CGFloat, duration: TimeInterval) {
-            node.position = SCNVector3(3.2, y, 0)
-            let outward = SCNAction.move(to: SCNVector3(6.0, y + 0.35, -1), duration: duration)
-            let home = SCNAction.move(to: SCNVector3(3.2, y, 0), duration: duration)
-            outward.timingMode = .easeInEaseOut
-            home.timingMode = .easeInEaseOut
-            node.runAction(.repeatForever(.sequence([outward, home])))
-            scene.rootNode.addChildNode(node)
-        }
+    override var acceptsFirstResponder: Bool { exploring }
 
-        if world == .overworld || world == .nether {
-            let ghast = SCNNode()
-            ghast.name = world == .overworld ? "happy-ghast-and-rider" : "ghast"
-            ghast.eulerAngles = SCNVector3(0.08, -0.35, 0)
-            let skin = world == .overworld ? NSColor(white: 0.92, alpha: 1) : NSColor(white: 0.76, alpha: 1)
-            _ = block(ghast, SCNVector3(1.5, 1.5, 1.3), SCNVector3(0, 0, 0), skin)
-            for x in [-0.3, 0.3] {
-                _ = block(ghast, SCNVector3(0.19, 0.12, 0.04), SCNVector3(x, 0.15, 0.67), .darkGray)
-            }
-            _ = block(ghast, SCNVector3(0.3, world == .overworld ? 0.07 : 0.25, 0.04),
-                      SCNVector3(0, -0.2, 0.67), .darkGray)
-            for index in 0..<9 {
-                let leg = block(ghast, SCNVector3(0.16, 0.7, 0.16),
-                                SCNVector3(Double(index % 3 - 1) * 0.5, -1.0,
-                                           Double(index / 3 - 1) * 0.45), skin)
-                leg.pivot = SCNMatrix4MakeTranslation(0, 0.3, 0)
-                let sway = SCNAction.rotateBy(x: 0.25, y: 0, z: index.isMultiple(of: 2) ? 0.12 : -0.12, duration: 1.1)
-                leg.runAction(.repeatForever(.sequence([sway, sway.reversed()])))
-            }
-            if world == .overworld {
-                _ = block(ghast, SCNVector3(0.33, 0.4, 0.25), SCNVector3(0, 1.05, 0), .systemTeal)
-                _ = block(ghast, SCNVector3(0.3, 0.3, 0.3), SCNVector3(0, 1.4, 0),
-                          NSColor(red: 0.67, green: 0.43, blue: 0.28, alpha: 1))
-                for x in [-0.23, 0.23] {
-                    _ = block(ghast, SCNVector3(0.13, 0.38, 0.13), SCNVector3(x, 1, 0), .systemTeal)
-                    _ = block(ghast, SCNVector3(0.15, 0.15, 0.38), SCNVector3(x / 2, 0.82, 0.2), .systemIndigo)
-                }
-            }
-            ghast.scale = SCNVector3(1.05, 1.05, 1.05)
-            drift(ghast, y: 1.9, duration: 10)
-        } else if world == .end {
-            let dragon = SCNNode()
-            dragon.name = "dragon"
-            dragon.eulerAngles = SCNVector3(0.1, -0.35, 0)
-            let skin = NSColor(red: 0.09, green: 0.065, blue: 0.13, alpha: 1)
-            _ = block(dragon, SCNVector3(2, 0.45, 0.65), SCNVector3(0, 0, 0), skin)
-            _ = block(dragon, SCNVector3(0.75, 0.5, 0.65), SCNVector3(1.15, 0.05, 0), skin)
-            _ = block(dragon, SCNVector3(0.16, 0.09, 0.03), SCNVector3(1.2, 0.15, 0.34), .systemPink)
-            for side in [-1.0, 1.0] {
-                let wing = SCNNode()
-                wing.position = SCNVector3(-0.2, 0.1, side * 0.3)
-                dragon.addChildNode(wing)
-                _ = block(wing, SCNVector3(1.8, 0.06, 1.6), SCNVector3(-0.4, 0, side * 0.75), skin)
-                let flap = SCNAction.rotateBy(x: side * 0.45, y: 0, z: 0, duration: 0.8)
-                wing.runAction(.repeatForever(.sequence([flap, flap.reversed()])))
-            }
-            _ = block(dragon, SCNVector3(1.1, 0.22, 0.25), SCNVector3(-1.4, 0, 0), skin)
-            drift(dragon, y: 2.0, duration: 12)
-        } else {
-            let portal = SCNNode()
-            portal.name = "sift-rift"
-            portal.position = SCNVector3(5.7, 1.1, -2)
-            let stone = NSColor(red: 0.18, green: 0.1, blue: 0.25, alpha: 1)
-            for x in [-0.8, 0.8] {
-                _ = block(portal, SCNVector3(0.24, 2.4, 0.35), SCNVector3(x, 0, 0), stone)
-            }
-            for y in [-1.2, 1.2] {
-                _ = block(portal, SCNVector3(1.84, 0.24, 0.35), SCNVector3(0, y, 0), stone)
-            }
-            let glow = block(portal, SCNVector3(1.4, 2.1, 0.025), SCNVector3(0, 0, 0), .cyan)
-            glow.geometry?.firstMaterial?.emission.contents = NSColor.cyan
-            glow.opacity = 0.3
-            glow.runAction(.repeatForever(.sequence([.fadeOpacity(to: 0.65, duration: 1.8),
-                                                     .fadeOpacity(to: 0.3, duration: 1.8)])))
-            scene.rootNode.addChildNode(portal)
-            let spirit = SCNNode()
-            spirit.name = "imagined-sift-spirit"
-            _ = block(spirit, SCNVector3(0.5, 0.6, 0.4), SCNVector3(0, 0, 0), .cyan)
-            for x in [-0.12, 0.12] {
-                _ = block(spirit, SCNVector3(0.08, 0.09, 0.025), SCNVector3(x, 0.08, 0.21), .white)
-            }
-            drift(spirit, y: 1.5, duration: 8)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self,name:NSWindow.didResignKeyNotification,object:nil)
+        stop(); release()
+        if let window {
+            NotificationCenter.default.addObserver(self,selector:#selector(lostFocus),name:NSWindow.didResignKeyNotification,object:window)
         }
-        return scene
+    }
+
+    override func resignFirstResponder() -> Bool { stop(); release(); return super.resignFirstResponder() }
+    @objc private func lostFocus() { stop(); release() }
+
+    override func mouseDown(with event: NSEvent) {
+        if exploring { capture(); return }
+        super.mouseDown(with:event)
+    }
+
+    private func capture() {
+        guard exploring, !captured, let window, window.isKeyWindow else { return }
+        window.makeFirstResponder(self)
+        guard CGAssociateMouseAndMouseCursorPosition(0) == .success else { return }
+        inputWindow = window; acceptedMouse = window.acceptsMouseMovedEvents; window.acceptsMouseMovedEvents = true
+        captured = true; NSCursor.hide()
+        mouse = NSEvent.addLocalMonitorForEvents(matching:[.mouseMoved,.leftMouseDragged,.rightMouseDragged]) { [weak self] event in
+            guard let self, self.captured else { return event }
+            self.aim(x:Float(event.deltaX),y:Float(-event.deltaY))
+            return nil
+        }
+    }
+
+    private func release() {
+        if let mouse { NSEvent.removeMonitor(mouse); self.mouse = nil }
+        inputWindow?.acceptsMouseMovedEvents = acceptedMouse; inputWindow = nil
+        if captured { CGAssociateMouseAndMouseCursorPosition(1); NSCursor.unhide(); captured = false }
+    }
+
+    func aim(x: Float, y: Float) {
+        guard exploring, !loading else { return }
+        controller.rotateBy(x:-x*0.15,y:y*0.15)
+        needsDisplay = true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard exploring, !event.modifierFlags.contains(.command), !event.modifierFlags.contains(.option) else {
+            super.keyDown(with:event); return
+        }
+        if event.keyCode == 53 { stop(); finish?(); return }
+        if event.keyCode == 33 || event.keyCode == 30 {
+            if !event.isARepeat { visit(event.keyCode == 33 ? -1 : 1) }
+            return
+        }
+        guard [0,1,2,13,49,123,124,125,126].contains(event.keyCode) else { super.keyDown(with:event); return }
+        keys.insert(event.keyCode)
+        start()
+    }
+
+    override func keyUp(with event: NSEvent) {
+        if keys.remove(event.keyCode) != nil { if keys.isEmpty && !descending { suspend() }; return }
+        super.keyUp(with:event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard exploring else { super.flagsChanged(with:event); return }
+        descending = event.modifierFlags.contains(.shift)
+        sprinting = event.modifierFlags.contains(.control)
+        if descending { start() } else if keys.isEmpty { suspend() }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard exploring else { super.scrollWheel(with:event); return }
+        speed = min(32,max(2,speed*pow(1.08,Float(max(-10,min(10,event.scrollingDeltaY))))))
+    }
+
+    func prepare() { loading = true; suspend() }
+
+    func install(_ camera: SCNNode?, area: Biome) {
+        self.area = area
+        if let entry, let camera, let scene {
+            let proposed = Self.arrival(area,point:entry.point,height:entry.height)
+            camera.position = Collision.nearby(scene.rootNode,at:proposed) ?? camera.position
+            camera.eulerAngles = entry.angles
+        }
+        entry = nil; loading = false
+        controller.pointOfView = camera
+        controller.interactionMode = .fly; controller.inertiaEnabled = false
+        controller.minimumVerticalAngle = -85; controller.maximumVerticalAngle = 85
+        start()
+    }
+
+    func stop() { suspend(); keys.removeAll(); descending = false; sprinting = false }
+    private func suspend() { timer?.invalidate(); timer = nil }
+
+    private func start() {
+        guard exploring, !loading, timer == nil, window?.isKeyWindow == true,
+              !keys.isEmpty || descending else { return }
+        last = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(timeInterval:1.0/60,target:self,selector:#selector(tick),userInfo:nil,repeats:true)
+        self.timer = timer
+        RunLoop.main.add(timer,forMode:.common)
+    }
+
+    @objc private func tick() {
+        guard exploring, window?.isKeyWindow == true, window?.occlusionState.contains(.visible) == true,
+              NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); release(); return }
+        let now = ProcessInfo.processInfo.systemUptime
+        advance(seconds:now-last); last = now
+    }
+
+    func advance(seconds: Double) {
+        guard !loading, let camera = pointOfView else { return }
+        let dt = Float(min(0.1,max(0,seconds)))
+        func key(_ code: UInt16) -> Float { keys.contains(code) ? 1 : 0 }
+        let local = SIMD4<Float>(key(2)-key(0),0,key(1)-key(13),0)
+        let rotated = camera.simdWorldTransform*local
+        var direction = SIMD3<Float>(rotated.x,rotated.y,rotated.z)
+        direction.y += key(49)-(descending ? 1 : 0)
+        if simd_length_squared(direction)>0, let scene {
+            let next = camera.simdWorldPosition+simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt
+            camera.worldPosition = Collision.move(scene.rootNode,from:camera.worldPosition,to:SCNVector3(next))
+        }
+        camera.position.y = min(90,max(-28,camera.position.y))
+        if let scene { Landscape.medium(scene,area:area,eye:camera.position) }
+        let yaw = key(124)-key(123), pitch = key(126)-key(125)
+        if yaw != 0 || pitch != 0 { controller.rotateBy(x:-yaw*70*dt,y:pitch*70*dt) }
+        needsDisplay = true
+        if let step = Self.crossing(camera.position) { visit(step) }
+    }
+
+    func visit(_ step: Int) {
+        guard !loading, let camera = pointOfView, travel != nil else { return }
+        let p = camera.position, ground = Terrain(biome:area).height(p.x,p.z)
+        entry = (p,ground > -90 ? p.y-ground : p.y-4,camera.eulerAngles)
+        prepare()
+        travel?(step)
+    }
+
+    static func crossing(_ p: SCNVector3) -> Int? {
+        if p.x>80 || p.z < -112 { return 1 }
+        if p.x < -80 || p.z>48 { return -1 }
+        return nil
+    }
+
+    static func arrival(_ area: Biome, point: SCNVector3, height: Double) -> SCNVector3 {
+        var x = point.x>80 ? -76 : point.x < -80 ? 76 : point.x
+        var z = point.z < -112 ? 44 : point.z>48 ? -108 : point.z
+        let terrain = Terrain(biome:area)
+        if terrain.height(x,z) < -90 { let p = Landscape.pose(area,at:0).eye; x = p.x; z = p.z }
+        let ground = terrain.height(x,z)
+        var y = min(88,ground+max(1.62,height))
+        if area.underground || World.nether.biomes.contains(area) { y = min(y,max(ground+9,terrain.ceiling(x,z))-1.62) }
+        return .init(x,y,z)
+    }
+
+    func dispose() {
+        stop(); release(); travel = nil; finish = nil; controller.pointOfView = nil; entry = nil
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
 struct Adventure: NSViewRepresentable {
     let world: World
+    let biome: Int
     let moving: Bool
+    let passage: Passage?
+    let assets: Assets
+    let exploring: Bool
+    let travel: (Int) -> Void
+    let finish: () -> Void
+    let failed: () -> Void
 
-    final class Coordinator {
+    final class Coordinator: NSObject {
+        weak var view: FlightView?
+        var exploring = false
         var world: World?
+        var biome: Int?
+        var passage: Passage?
+        var showing: (World,Int)?
+        var moving = false
+        var request = 0
+        var operation: Operation?
+
+        @objc func pan(_ gesture: NSPanGestureRecognizer) {
+            guard exploring, let view, !view.captured else { return }
+            if gesture.state == .began { view.window?.makeFirstResponder(view) }
+            let movement = gesture.translation(in:view)
+            view.controller.rotateBy(x:-Float(movement.x)*0.22,y:Float(movement.y)*0.22)
+            gesture.setTranslation(.zero,in:view)
+            view.needsDisplay = true
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeNSView(context: Context) -> SCNView {
-        let view = SCNView(frame: .zero)
+    func makeNSView(context: Context) -> FlightView {
+        let view = FlightView(frame: .zero)
         view.backgroundColor = .clear
-        view.preferredFramesPerSecond = 20
+        view.preferredFramesPerSecond = 30
         view.antialiasingMode = .multisampling4X
         view.allowsCameraControl = false
+        view.addGestureRecognizer(NSPanGestureRecognizer(target:context.coordinator,action:#selector(Coordinator.pan(_:))))
+        context.coordinator.view = view
         return view
     }
 
-    func updateNSView(_ view: SCNView, context: Context) {
-        if context.coordinator.world != world {
-            view.scene = VoxelAdventure.scene(world)
-            view.pointOfView = view.scene?.rootNode.childNode(withName: "camera", recursively: false)
-            context.coordinator.world = world
+    func updateNSView(_ view: FlightView, context: Context) {
+        let coordinator = context.coordinator
+        view.preferredFramesPerSecond = exploring ? 60 : 30
+        view.travel = travel; view.finish = finish
+        coordinator.moving = moving
+        if coordinator.exploring != exploring {
+            coordinator.exploring = exploring
+            view.exploring = exploring
+            if let scene = view.scene, passage == nil {
+                if exploring { view.pointOfView?.removeAllActions() }
+                else { Landscape.focus(scene,world:coordinator.showing?.0 ?? world,biome:coordinator.showing?.1 ?? biome,animated:moving) }
+            }
         }
-        view.scene?.isPaused = !moving
-        view.isPlaying = moving
-        view.rendersContinuously = moving
+        if coordinator.world != world || coordinator.passage != passage
+            || (passage == nil && coordinator.biome != biome) {
+            coordinator.operation?.cancel()
+            coordinator.request += 1
+            let request = coordinator.request
+            let arrival = passage == nil ? coordinator.passage : nil
+            coordinator.world = world
+            coordinator.biome = biome
+            coordinator.passage = passage
+            view.prepare()
+            coordinator.operation = assets.load(world, biome: biome, passage: passage, arrival:arrival) { [weak view, weak coordinator] result in
+                guard let view, let coordinator, coordinator.request == request else { return }
+                switch result {
+                case .success(let scene):
+                    let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
+                    if coordinator.exploring { camera?.removeAllActions() }
+                    if coordinator.moving, !coordinator.exploring, view.scene != nil {
+                        let transition = arrival == nil ? SKTransition.fade(withDuration:0.3)
+                            : SKTransition.fade(with:Landscape.colour(arrival == .stronghold ? 0x080810 : 0x7024B8),duration:0.9)
+                        view.present(scene,with:transition,incomingPointOfView:camera,completionHandler:nil)
+                    } else { view.scene = scene; view.pointOfView = camera }
+                    coordinator.showing = (world,biome)
+                    view.install(camera,area:world.biomes[world.index(biome)])
+                    Self.motion(view, enabled: coordinator.moving)
+                case .failure: failed()
+                }
+            }
+        }
+        Self.motion(view, enabled: moving)
     }
 
-    static func dismantleNSView(_ view: SCNView, coordinator: Coordinator) {
-        view.isPlaying = false
-        view.rendersContinuously = false
-        view.scene?.isPaused = true
+    private static func motion(_ view: SCNView, enabled: Bool) {
+        view.scene?.isPaused = !enabled
+        view.isPlaying = enabled
+        view.rendersContinuously = enabled
+        view.needsDisplay = true
+    }
+
+    static func dismantleNSView(_ view: FlightView, coordinator: Coordinator) {
+        coordinator.operation?.cancel()
+        coordinator.request += 1
+        motion(view, enabled: false)
+        view.dispose()
         view.scene = nil
+        view.gestureRecognizers.removeAll()
+        coordinator.view = nil
     }
 }

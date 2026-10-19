@@ -42,6 +42,67 @@ service running until Minecraft exits. Reopen the app to return to its window.
 Choose **Continue** to retry. An interrupted game-file download restarts; it is
 not a resumable transfer. Avoid starting multiple copies of the app.
 
+## Background scenery
+
+After Minecraft is installed, click the biome name at the top left to find an
+area. Choose realms with the four item slots in the inventory bar or keys **1–4**
+Normal realm changes pass through a mine’s Nether portal, a stronghold’s End
+portal or an artistic Sift rift. **Skip journey** goes straight there
+Change background motion or automatic touring in Settings
+Choose **Abandoned mineshaft** or **Stronghold · Portal room** in the area picker
+to explore the tunnels, side shafts, libraries and portal room at your own pace
+
+The spyglass button at the bottom right or **⌘L** enters spectator view
+Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by moving
+the mouse. **Control** sprints; scroll changes flight speed. The arrow keys also
+turn the camera. Mouse-look captures the cursor; **Escape** releases it and
+returns to the menu. Switching windows releases it too; click the scene to recapture
+Cross an area’s edge or press **[ / ]** to travel to the previous/next biome
+The biome name and hotbar still work. These are 42 authored areas with scene
+changes between them, rather than an infinitely generated Minecraft world
+Use the same spyglass button, **⌘L** or **Escape** to return to the camera route
+
+The achievement-style shortcut hint stays for one minute, then returns after
+70 uninterrupted seconds of launcher-window focus. Settings and other apps
+restart that wait. Flight replaces it briefly with movement instructions
+Hints stay out of the way during setup, errors and portal journeys
+
+The title uses the installed game’s artwork and yellow splash list, with a
+Mac Edition subtitle. Splash text overlaps the title, as on the game’s menu
+The lower left credits **@Keys-i**, linking to **keysi.dev**; the lower right shows
+the launcher version. The hotbar has no extra backing strip
+Splash motion follows your scenery and macOS motion settings
+
+**Settings → Master volume** changes original Minecraft menu and game music,
+initially 18%. Set it to zero to mute
+Music pauses when another window/app takes focus, the launcher is hidden or
+Minecraft is running. No music download is added; tracks come from your own
+installed copy, including **Sweden** when available. No **Stockholm** track was
+found in the tested installation
+
+The Overworld follows a twenty-minute day/night cycle with original sun/moon
+art, stars, dusk colours, changing shadows and darker water at night
+Nether and End lighting stays specific to those realms
+Idle cameras follow a continuous twelve-second hovering route instead of
+slowing to a stop at each endpoint
+
+Water uses the installed biome’s colour and the original atlas alpha once
+Lava stays self-lit with its original orange detail. Both advance original frames
+Mob skins use their matching geometry, including current warm/cold variants
+Ambient residents wander, graze, swim or hop with unsynchronised pauses and
+correct diagonal leg timing. This is scenery behaviour rather than complete
+Minecraft combat, breeding, job or navigation AI
+
+Eligible pigs, cows, chickens and wolves can use the installation’s older base
+model/skin. The launcher-only nostalgia chance is 10% in daylight, rising to 15%
+at night; deterministic biome/resident seeds choose individuals when a scene
+is built. These are retained legacy assets, not a promise of a named old release
+Modern Minecraft does not have this random historical-mob spawning rule
+
+The background reads art from your installed game. Before installation, the
+poster stays visible. An unsupported art format also falls back to the poster
+and does not prevent setup or Play. Sift scenery does not add a realm to the game
+
 ## Understand the Mac prompts
 
 Permission to open a downloaded app and permission to read saved credentials
