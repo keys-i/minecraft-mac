@@ -50,8 +50,11 @@ view owns the 20 fps ambient timeline, slow camera drift and 18 particles, so
 those frames do not invalidate the launch controls. Scenes cross-fade every
 24 seconds or when selected manually
 
-`src/launcher/Adventure.swift` owns the original SceneKit actors: a Happy Ghast
-and rider, a Nether Ghast, a flapping dragon and an imagined Sift spirit/rift
+`src/launcher/Adventure.swift` owns the authored SceneKit actors: a harnessed Happy
+Ghast, a Nether Ghast, an articulated Ender Dragon and an artistic Sift rift
+The mobs follow official visual references, with shared 16 × 16 pixel maps,
+nearest-neighbour filtering, varied tentacle lengths and hinged wing membranes
+Each scene has at most 78 nodes and six shared materials; pixel details add no nodes
 One bounded scene graph is active at a time, with a separate 20 fps renderer
 It pauses with the same motion gate and releases its graph when dismantled
 No video generator, AI model, network service or game textures are needed at

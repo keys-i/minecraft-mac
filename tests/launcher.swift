@@ -40,11 +40,33 @@ struct LauncherChecks {
             precondition(scene.rootNode.childNode(withName: "camera", recursively: false)?.camera != nil)
             var nodes = 0
             var actions = 0
+            var materials = Set<ObjectIdentifier>()
             scene.rootNode.enumerateChildNodes { node, _ in
                 nodes += 1
                 if node.hasActions { actions += 1 }
+                for material in node.geometry?.materials ?? [] {
+                    materials.insert(ObjectIdentifier(material))
+                    let image = material.diffuse.contents as! CGImage
+                    precondition(image.width == 16 && image.height == 16)
+                    precondition(material.diffuse.magnificationFilter == .nearest)
+                    precondition(!image.shouldInterpolate)
+                }
             }
-            precondition(nodes < 100 && actions > 0)
+            precondition(nodes < 100 && actions > 0 && materials.count <= 6)
+            if world == .overworld || world == .nether {
+                let actor = scene.rootNode.childNode(withName: world == .overworld ? "happy-ghast" : "ghast", recursively: false)!
+                let body = actor.childNode(withName: "body", recursively: false)!.geometry as! SCNBox
+                precondition(body.width == body.height && body.height == body.length)
+                let lengths = (0..<9).map { index in
+                    let joint = actor.childNode(withName: "tentacle-\(index)", recursively: false)!
+                    let tentacle = joint.childNodes[0]
+                    let box = tentacle.geometry as! SCNBox
+                    precondition(abs(Double(tentacle.position.y) + box.height / 2) < 0.0001)
+                    return box.height
+                }
+                precondition(Set(lengths).count > 1)
+            }
+            print("\(world.title): \(nodes) nodes, \(materials.count) shared 16×16 materials")
         }
         print("Native progress, six motion stop conditions, release filtering and four bounded adventure scenes passed")
         print("Four scene graphs constructed in \(Int(Date().timeIntervalSince(start) * 1000)) ms")

@@ -17,6 +17,12 @@ particles, native 3D mobs, manual scene selection and automatic scene fades. A c
 panel replaces the earlier poster card; setup progress assembles isometric
 blocks and shows sign-in, download, preparation and play as separate steps
 
+The mob revision follows official visual references: pixel faces, a blue harness
+and goggles, varied tentacle lengths, and a dragon with horns, articulated neck
+and tail, four legs and hinged membranes. The generic rider and invented Sift mob
+were removed. Authored textures are generated locally; no official game assets
+were added to the source or bundle. See the [measured render cost](test.md#native-app-and-helper)
+
 Overworld, Nether and End scenery are joined by an artistic Sift preview
 [Mojang's announcement](https://www.minecraft.net/en-us/article/mclive_sept2026_recap)
 places its Java/Bedrock arrival in 2027. This launcher does not add it to the game
@@ -34,17 +40,17 @@ foreground CPU/GPU and long-session memory checks remain manual acceptance work
 Offscreen Metal rendering confirms that the authored actors move and pause;
 the complete window and menu interactions have not been visually verified
 
-The local 0.3.0 app candidate preserves all 1,047 earlier runtime/worker/helper
-resource hashes and adds four illustrations, giving a 1,051-file resource
-inventory. Its ad-hoc signature and LZFSE DMG verify. The image is 129,627,793
-bytes, contains no account/game/world payload, and retains the full runtime's
-macOS 27 minimum. The installed app was not replaced and no public binary release
-was created
+The revised local 0.3.0 candidate preserves all 1,051 resource hashes from the
+adventure build, including its runtime, worker and account helper. Only launcher
+machine code changed. Its ad-hoc signature and LZFSE DMG verify. The image is
+129,640,227 bytes, contains no account/game/world payload, and retains the
+full runtime's macOS 27 minimum. The installed app was not replaced and no public
+binary release was created
 
-Local adventure-preview DMG SHA-256:
+Local mobs-preview DMG SHA-256:
 
 ```text
-08f642d42f0c5c9131138fa7870172af0e7732a56a9aaf9441da084929f79c65
+8bcc931dbcff5c09451b00918339da9b8d5d0e61053dddbca6eb6a8b004ae5ca
 ```
 
 ## Earlier October 19 interface update

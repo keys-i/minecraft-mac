@@ -57,7 +57,9 @@ build/launcher-checks
 
 The native checks cover progress bounds, stage transitions, all six motion
 stop conditions, release URL/installer filtering and bounded scene graphs for
-all four worlds without opening a window. The Python preview test verifies an
+all four worlds without opening a window. Texture checks enforce shared 16 × 16
+maps, sharp filtering, cubic Ghast bodies and attached, varied tentacles
+The Python preview test verifies an
 isolated bundle identity, internal fixture root, status output and cancellation
 
 Use `python3 minecraft.py build preview` to inspect first-run, progress,
@@ -78,11 +80,27 @@ its actions and continuous rendering when motion is gated off. The four JPEG
 assets total 2,204,849 bytes and their uncompressed RGBA dimensions imply about
 24 MiB before framework/render buffers
 
-On the M3 Pro/36 GB development Mac, the native check constructed all four scene
-graphs in 33 ms total on the final local run, with fewer than 100 nodes per graph. A separate offscreen
-Metal render produced different frames at 0 and 4 seconds and identical frames
-while paused at 6 and 10 seconds. This checks the authored actors, not the full
-application window or its menu/focus behaviour
+The revised graphs contain 31/23/78/9 nodes for Overworld/Nether/End/Sift and at
+most six shared pixel maps. The unoptimised native check constructed all four in
+207 ms including framework initialisation on the M3 Pro/36 GB development Mac
+Offscreen Metal renders were inspected for faces, anatomy and wing silhouettes
+Frames at 0 and 4 seconds differ; frames paused at 6 and 10 seconds are identical
+
+An optimised, same-process before/after probe rendered 1040 × 760 with 4× MSAA
+into reused Metal textures, warmed ten frames, then sampled 60 frames per scene
+GPU timestamps exclude image readback; wall times include submission and waiting
+
+| Scene | Previous GPU median / p95 | Revised GPU median / p95 | Revised wall median / p95 |
+| --- | --- | --- | --- |
+| Overworld | 1.25 / 10.63 ms | 1.29 / 17.15 ms | 11.57 / 41.00 ms |
+| Nether | 2.47 / 15.89 ms | 1.51 / 8.54 ms | 15.76 / 61.91 ms |
+| End | 1.25 / 17.84 ms | 1.15 / 9.59 ms | 11.78 / 34.26 ms |
+| Sift | 1.19 / 25.33 ms | 1.49 / 9.54 ms | 12.77 / 48.19 ms |
+
+Revised GPU p95 times fit the 50 ms budget for 20 fps. Host scheduling spikes also
+affected the earlier models, so this does not establish a speedup or smooth
+full-window presentation. These checks cover authored actors, not application
+menus, focus or the complete SwiftUI/SceneKit composition
 
 Actual foreground CPU/GPU use, background wakeups and long-session memory still
 need measurement on the running app. No launcher or game speedup is claimed

@@ -23,6 +23,14 @@ or game UI. The native launcher supplies camera drift, particles and scene fades
 in code; these images are not video or gameplay captures. Original voxel actors
 in `src/launcher/Adventure.swift` provide the moving creatures and portal
 
+The mob revision uses the official [Happy Ghast](https://www.minecraft.net/en-us/article/happy-ghast),
+[Ghast](https://www.minecraft.net/en-us/article/ghast) and
+[Ender Dragon](https://www.minecraft.net/en-us/article/ender-dragon) articles and
+[Mojang's Bedrock samples](https://github.com/Mojang/bedrock-samples) as visual
+references for proportions, expressions, harness and wing anatomy
+The launcher uses authored geometry and generated 16 × 16 pixel maps, not bundled
+Mojang models or textures. The invented Sift creature and crude rider were removed
+
 The README's original `poster.webp` is unchanged. The four scene assets are
 individually allowlisted for source export and copied into the native app
 
