@@ -10,6 +10,42 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Flight and destination corrections in 0.13
+
+The destination picker now uses Minecraft block textures, readable list rows,
+search, no-results feedback and arrow focus. Background controls are disabled
+while it is open, including Play's Return shortcut. Camera placement checks
+solid volumes and nearby sightlines; canopies now block scenery movement
+Flying residents no longer inherit walking waits. End crystal shells use the
+installed game's bob/rotation formulas while their bases remain stationary
+Idle rendering targets 30 fps and spectator flight targets 60 fps
+
+All 93 Python tests, native synthetic checks and installed-art checks for 70
+species, 42 areas and three passages pass. Render samples fit the idle budget;
+wall-time tails exceed the spectator target and construction costs increased
+The measured preflight reduction does not establish an end-to-end startup fix
+See [testing and its limits](test.md#flight-destinations-and-repeat-launch-checks-in-013)
+
+The final 0.13.0/build 17 candidate passes deep/strict ad-hoc signature checks
+All helper/runtime bytes and 21 symlinks match the previous candidate. Of 1,051
+baseline resource entries, 1,050 are unchanged; only the startup script changes,
+with two source-provenance files added for its current paths
+REA/Hopper confirms the packaged free-position search calls the solid-volume
+and swept-clearance checks. The final local DMG requires macOS 27, has
+128,179,124 bytes and SHA-256
+
+```text
+af781f0ab44b7fe42280ac670c6aef57edd4121ff6f5d583d3f3957ea18060a9
+```
+
+An earlier 0.13 candidate was exercised live and launched the real game during
+the keyboard check. Its resource directory remains intact for that session
+The final keyboard fix is compiled and packaged, with its live retest outstanding
+The game remains unavailable to Computer Use, so gameplay recording/comparison,
+full engine behaviour and faster-than-Windows claims remain unverified
+Worlds and authenticated helper/runtime bytes are preserved
+No binary release, merge or notarisation was performed
+
 ## Exploration and placement corrections in 0.12
 
 The mineshaft and stronghold are persistent area-picker destinations with moving
