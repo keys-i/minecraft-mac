@@ -162,11 +162,13 @@ def build_launcher():
     cache = ROOT / 'build/swift-module-cache'
     executable.parent.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ROOT / 'assets/poster.webp', resources / 'poster.webp')
+    for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
+        shutil.copy2(ROOT / 'assets' / name, resources / name)
+    (resources / 'poster.webp').unlink(missing_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-O', '-target',
                     'arm64-apple-macos15.0', '-module-cache-path', str(cache),
-                    str(ROOT / 'src/launcher/BedrockLauncher.swift'), '-o', str(executable)], check=True)
+                    str(ROOT / 'src/launcher/BedrockLauncher.swift'), str(ROOT / 'src/launcher/Adventure.swift'), '-o', str(executable)], check=True)
     icon = ROOT / 'build/make-icon'
     iconset = ROOT / 'build/AppIcon.iconset'
     subprocess.run(['xcrun', 'swiftc', '-O', '-module-cache-path', str(cache),
@@ -176,11 +178,39 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='2', CFBundleShortVersionString='0.2.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='3', CFBundleShortVersionString='0.3.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)
     return app
+
+
+def preview(args):
+    """Build the real interface with an isolated, simulated setup worker"""
+    app = args.output.absolute()
+    if app.exists() or app.is_symlink():
+        raise SystemExit('The preview already exists; choose a new --output path.')
+    launcher = build_launcher()
+    if (launcher / 'Contents/Resources/worker').exists():
+        raise RuntimeError('The development launcher unexpectedly contains a real worker')
+    shutil.copytree(launcher, app)
+    fixture = app / 'Contents/Resources/preview'
+    (fixture / 'src/launcher').mkdir(parents=True)
+    (fixture / 'logs/standalone').mkdir(parents=True)
+    shutil.copy2(ROOT / 'tests/preview.py', fixture / 'src/launcher/setup.py')
+    info = app / 'Contents/Info.plist'
+    with info.open('rb') as file:
+        values = plistlib.load(file)
+    identity = hashlib.sha256(os.fsencode(app)).hexdigest()[:12]
+    values.update(CFBundleIdentifier='local.minecraft.preview.' + identity,
+                  CFBundleName=NAME + ' Preview', CFBundleDisplayName=NAME + ' Preview',
+                  BedrockProjectPath=str(fixture))
+    with info.open('wb') as file:
+        plistlib.dump(values, file)
+    subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+    print(app)
+    print('Interface preview only; sign-in, download and gameplay are simulated.')
 
 
 def disk_image(args):
@@ -208,6 +238,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('launcher', help='Build the native development launcher')
+    demo = commands.add_parser('preview', help='Build an isolated interface preview with simulated setup')
+    demo.add_argument('--output', type=Path, default=ROOT / 'build/preview' / f'{NAME} Preview.app')
     app = commands.add_parser('app', help='Assemble the app with the prebuilt runtime')
     app.add_argument('--output', type=Path, default=APP)
     dmg = commands.add_parser('dmg', help='Create a verified drag-to-Applications DMG')
@@ -216,6 +248,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'launcher':
         build_launcher()
+    elif args.command == 'preview':
+        preview(args)
     elif args.command == 'app':
         assemble(args)
     else:

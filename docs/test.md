@@ -28,7 +28,7 @@ shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 90 tests. Coverage includes source isolation,
+The Python suite currently has 91 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -50,18 +50,42 @@ Compile the interface on a Mac with Command Line Tools:
 
 ```sh
 python3 minecraft.py build launcher
+xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
+  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift tests/launcher.swift -o build/launcher-checks
+build/launcher-checks
 ```
 
-Use local fixture status streams to inspect first-run, progress, cancellation,
-retry, error, and running-game states without touching a real account. Keep
-fixtures in ignored build output. A fixture proves UI behavior only. The worker
+The native checks cover progress bounds, stage transitions, all six motion
+stop conditions, release URL/installer filtering and bounded scene graphs for
+all four worlds without opening a window. The Python preview test verifies an
+isolated bundle identity, internal fixture root, status output and cancellation
+
+Use `python3 minecraft.py build preview` to inspect first-run, progress,
+cancellation, retry and running-game states without touching a real account
+Its fixtures stay in ignored build output. A fixture proves UI behavior only. The worker
 protocol and ownership model are in [Architecture](architecture.md).
 
 For the redesigned window, also check narrow and wide sizes, long errors,
-Return/Escape, visible keyboard focus, light/dark appearance and Reduced Motion
+Return/Escape, visible keyboard focus, scene selection, pause/resume,
+Reduced Motion, Reduce Transparency and Low Power Mode
 with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
 The October 19 interface build compiled locally, but Computer Use denied access
 to its disposable preview, so these visible checks remain unverified
+
+The continuous scenery schedule is capped at 20 fps with 18 particles; controls
+are outside that timeline. The SceneKit overlay also requests 20 fps and stops
+its actions and continuous rendering when motion is gated off. The four JPEG
+assets total 2,204,849 bytes and their uncompressed RGBA dimensions imply about
+24 MiB before framework/render buffers
+
+On the M3 Pro/36 GB development Mac, the native check constructed all four scene
+graphs in 33 ms total on the final local run, with fewer than 100 nodes per graph. A separate offscreen
+Metal render produced different frames at 0 and 4 seconds and identical frames
+while paused at 6 and 10 seconds. This checks the authored actors, not the full
+application window or its menu/focus behaviour
+
+Actual foreground CPU/GPU use, background wakeups and long-session memory still
+need measurement on the running app. No launcher or game speedup is claimed
 
 Prepare the current standalone helper example and run its tests after quitting
 Minecraft and letting its helper stop. The builder rejects any active
@@ -165,7 +189,7 @@ results in [Release status](status.md), including failures and untested cases.
 
 [`.github/workflows/checks.yml`](../.github/workflows/checks.yml) runs Python
 3.12/3.14 source tests, allowlist and inventory checks on Linux, plus the Python suite, native
-Swift build, and pinned Rust helper tests on macOS 15. Native process metrics
+Swift build/policy checks, and pinned Rust helper tests on macOS 15. Native process metrics
 and exclusive-rename tests run on macOS and are skipped on Linux. Actions and the Rust
 toolchain are pinned. CI does not package Wine, run Minecraft, access Keychain,
 or certify that the full app supports macOS 15. Confirm checks belong to the

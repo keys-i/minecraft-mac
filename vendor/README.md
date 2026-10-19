@@ -91,7 +91,12 @@ license audit of a future binary bundle.
 
 ## Artwork and screenshots
 
-The README poster is original AI-generated project artwork. The launcher image
+The README poster and the Overworld/Nether/End/Sift launcher scenes are original
+AI-generated project artwork. Camera motion, particles and scene changes are
+drawn by the native launcher; its voxel creatures and portal are original
+procedural models in the project source. The scenery is not gameplay footage
+The Sift scene is an artistic interpretation, not a claim about the installed
+game's features. The launcher image
 is an unaltered screenshot of the locally running native launcher, captured on
 October 19, 2026. The [artwork prompt and screenshot sources](../assets/README.md)
 are recorded separately

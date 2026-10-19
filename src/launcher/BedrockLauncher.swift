@@ -6,17 +6,46 @@ struct Status: Decodable {
     let title: String
     let detail: String
     let progress: Double?
+
+    var fraction: Double? {
+        guard let progress, progress.isFinite else { return nil }
+        return min(max(progress, 0), 1)
+    }
+
+    var stage: Int? {
+        if state == "playing" { return 3 }
+        guard state == "busy", let fraction else { return nil }
+        return fraction < 0.35 ? 0 : fraction < 0.9 ? 1 : 2
+    }
+}
+
+struct AppRelease: Decodable {
+    struct Asset: Decodable { let name: String }
+    let tag_name: String
+    let html_url: URL
+    let assets: [Asset]
+
+    var hasInstaller: Bool {
+        html_url.scheme == "https" && html_url.host == "github.com"
+            && html_url.path.hasPrefix("/keys-i/minecraft-mac/releases/tag/")
+            && assets.contains { $0.name.lowercased().hasSuffix(".dmg") }
+    }
 }
 
 @MainActor
 final class Launcher: ObservableObject {
     @Published var status = Status(state: "checking", title: "Minecraft on your Mac", detail: "Checking installation…", progress: nil)
     @Published var running = false
+    @Published var checkingUpdates = false
+    @Published var selection = 0
     private var process: Process?
     private var buffer = Data()
     let root: URL
-    let artwork = Bundle.main.url(forResource: "poster", withExtension: "webp")
-        .flatMap { NSImage(contentsOf: $0) }
+    let worlds = World.allCases.compactMap { world -> (world: World, image: NSImage)? in
+        guard let url = Bundle.main.url(forResource: world.rawValue, withExtension: "jpg"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        return (world, image)
+    }
 
     init() {
         let path = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
@@ -117,6 +146,41 @@ final class Launcher: ObservableObject {
         NSWorkspace.shared.open(URL(string: "https://github.com/keys-i/minecraft-mac/blob/main/docs/play.md")!)
     }
 
+    func checkUpdates() {
+        guard !checkingUpdates else { return }
+        checkingUpdates = true
+        Task {
+            defer { checkingUpdates = false }
+            let alert = NSAlert()
+            do {
+                var request = URLRequest(url: URL(string: "https://api.github.com/repos/keys-i/minecraft-mac/releases?per_page=10")!)
+                request.timeoutInterval = 15
+                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let response = response as? HTTPURLResponse, response.statusCode == 200,
+                      data.count <= 2 * 1024 * 1024 else { throw URLError(.badServerResponse) }
+                let releases = try JSONDecoder().decode([AppRelease].self, from: data)
+                if let release = releases.first(where: \.hasInstaller) {
+                    alert.messageText = "Latest app release: \(release.tag_name)"
+                    alert.informativeText = "This app is version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"). Review the release notes before replacing it. Your worlds stay outside the app."
+                } else {
+                    alert.messageText = "No app installer has been published yet"
+                    alert.informativeText = "The repository currently offers source previews. You can review the latest source releases and build instructions."
+                }
+                alert.addButton(withTitle: "View Releases")
+                alert.addButton(withTitle: "Close")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/keys-i/minecraft-mac/releases")!)
+                }
+            } catch {
+                alert.messageText = "Couldn’t check for updates"
+                alert.informativeText = "Check your connection and try again, or open the project’s Releases page in your browser. Your installation hasn’t changed."
+                alert.addButton(withTitle: "Close")
+                alert.runModal()
+            }
+        }
+    }
+
     func showLog() {
         NSWorkspace.shared.open(root.appendingPathComponent("logs/standalone"))
     }
@@ -151,72 +215,184 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-private enum Blocks {
-    static let grass = Color(red: 0.49, green: 0.87, blue: 0.29)
-    static let edge = Color(red: 0.20, green: 0.43, blue: 0.10)
-    static let ink = Color(red: 0.07, green: 0.13, blue: 0.04)
+enum SceneryMotion {
+    static let interval = 1.0 / 20
+
+    static func enabled(reduced: Bool, paused: Bool, lowPower: Bool,
+                        active: Bool, visible: Bool, playing: Bool) -> Bool {
+        !reduced && !paused && !lowPower && active && visible && !playing
+    }
 }
 
-private struct BlockButton: ButtonStyle {
+private enum Blocks {
+    static let grass = Color(red: 0.64, green: 0.94, blue: 0.40)
+    static let ink = Color(red: 0.06, green: 0.13, blue: 0.04)
+}
+
+private struct LaunchButton: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(.headline, design: .monospaced).weight(.bold))
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .font(.system(size: 16, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 54)
             .foregroundStyle(Blocks.ink)
-            .background(Blocks.grass)
-            .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.5)).frame(height: 2) }
-            .overlay { Rectangle().strokeBorder(Blocks.ink, lineWidth: 2) }
-            .background(alignment: .bottom) {
-                Rectangle().fill(Blocks.edge).offset(y: configuration.isPressed ? 1 : 5)
+            .background(Blocks.grass, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25))
             }
             .overlay {
-                Rectangle().strokeBorder(Color.primary, lineWidth: 2)
-                    .padding(-5).opacity(focused ? 1 : 0)
+                RoundedRectangle(cornerRadius: 12).strokeBorder(.white, lineWidth: 2)
+                    .padding(-4).opacity(focused ? 1 : 0)
             }
-            .offset(y: configuration.isPressed ? 4 : 0)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: configuration.isPressed)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
-private struct BlockProgress: ProgressViewStyle {
-    @Environment(\.colorScheme) private var scheme
+private struct Scenery: View {
+    let worlds: [(world: World, image: NSImage)]
+    let selection: Int
+    let moving: Bool
 
+    var body: some View {
+        GeometryReader { geometry in
+            TimelineView(.animation(minimumInterval: SceneryMotion.interval, paused: !moving)) { frame in
+                let time = moving ? frame.date.timeIntervalSinceReferenceDate : 0
+                ZStack {
+                    Color(red: 0.04, green: 0.08, blue: 0.07)
+                    ForEach(worlds.indices, id: \.self) { index in
+                        Image(nsImage: worlds[index].image).resizable().scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .scaleEffect(moving ? 1.065 : 1)
+                            .offset(x: moving ? sin(time / 19) * 12 : 0,
+                                    y: moving ? cos(time / 23) * 8 : 0)
+                            .opacity(index == selection ? 1 : 0)
+                    }
+                    if moving {
+                        Canvas { context, size in
+                            guard size.width > 0, size.height > 0 else { return }
+                            for index in 0..<18 {
+                                let seed = Double(index)
+                                let x = (seed * 73.7 + sin(time / 8 + seed) * 20)
+                                    .truncatingRemainder(dividingBy: size.width)
+                                let y = size.height - (time * (5 + seed / 4) + seed * 47)
+                                    .truncatingRemainder(dividingBy: size.height)
+                                let side = index.isMultiple(of: 3) ? 3.0 : 2.0
+                                let colour = worlds.indices.contains(selection) ? worlds[selection].world.colour : Blocks.grass
+                                context.fill(Path(CGRect(x: x, y: y, width: side, height: side)),
+                                             with: .color(colour.opacity(0.25 + 0.3 * abs(sin(time / 3 + seed)))))
+                            }
+                        }
+                    }
+                    LinearGradient(colors: [.black.opacity(0.08), .clear, .black.opacity(0.82)],
+                                   startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.black.opacity(0.42), .clear],
+                                   startPoint: .leading, endPoint: .trailing)
+                }
+                .clipped()
+            }
+        }
+        .overlay {
+            if worlds.indices.contains(selection) {
+                Adventure(world: worlds[selection].world, moving: moving)
+            }
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct WorldProgress: ProgressViewStyle {
     func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Setup progress")
-                Spacer()
+        HStack(spacing: 20) {
+            Canvas { context, size in
+                let fraction = configuration.fractionCompleted ?? 0
+                let unit = min(size.width / 25, 9)
+                for index in 0..<30 {
+                    let column = index % 10
+                    let row = index / 10
+                    let x = Double(column) * unit * 2.2 + Double(row) * unit
+                    let y = size.height - Double(row) * unit * 1.5 - unit * 2
+                    let filled = Double(index + 1) / 30 <= fraction
+                    var top = Path()
+                    top.move(to: CGPoint(x: x, y: y))
+                    top.addLines([CGPoint(x: x + unit, y: y - unit / 2),
+                                  CGPoint(x: x + 2 * unit, y: y),
+                                  CGPoint(x: x + unit, y: y + unit / 2)])
+                    top.closeSubpath()
+                    context.fill(top, with: .color(filled ? Blocks.grass : .white.opacity(0.12)))
+                    var face = Path()
+                    face.move(to: CGPoint(x: x, y: y))
+                    face.addLines([CGPoint(x: x + unit, y: y + unit / 2),
+                                   CGPoint(x: x + 2 * unit, y: y),
+                                   CGPoint(x: x + 2 * unit, y: y + unit),
+                                   CGPoint(x: x + unit, y: y + unit * 1.5),
+                                   CGPoint(x: x, y: y + unit)])
+                    face.closeSubpath()
+                    context.fill(face, with: .color(filled ? Blocks.grass.opacity(0.5) : .white.opacity(0.06)))
+                }
+            }
+            .frame(width: 220, height: 58)
+            .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 0) {
                 if let fraction = configuration.fractionCompleted {
                     Text(fraction, format: .percent.precision(.fractionLength(0)))
+                        .font(.system(size: 36, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
+                Text("Overall setup").font(.caption).foregroundStyle(.white.opacity(0.72))
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(.primary.opacity(0.12))
-                    if let fraction = configuration.fractionCompleted {
-                        Rectangle().fill(scheme == .dark ? Blocks.grass : Blocks.edge)
-                            .frame(width: geometry.size.width * min(max(fraction, 0), 1))
-                    }
+        }
+    }
+}
+
+private struct Journey: View {
+    let stage: Int?
+    private let names = ["Sign in", "Download", "Prepare", "Play"]
+    private let icons = ["person.crop.circle", "arrow.down", "cube", "play.fill"]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(names.indices, id: \.self) { index in
+                let complete = stage.map { index < $0 } ?? false
+                let current = stage == index
+                HStack(spacing: 8) {
+                    Image(systemName: complete ? "checkmark.circle.fill" : icons[index])
+                        .foregroundStyle(complete || current ? Blocks.grass : .white.opacity(0.5))
+                    Text(names[index]).font(.system(size: 12, weight: current ? .semibold : .regular))
+                        .foregroundStyle(.white.opacity(current || complete ? 1 : 0.65))
                 }
-                .overlay { Rectangle().strokeBorder(.primary.opacity(0.4), lineWidth: 1) }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(names[index]), \(complete ? "complete" : current ? "current step" : "upcoming")")
+                if index != names.count - 1 {
+                    Rectangle().fill(.white.opacity(0.16)).frame(height: 1).padding(.horizontal, 14)
+                        .accessibilityHidden(true)
+                }
             }
-            .frame(height: 14)
         }
     }
 }
 
 struct LauncherView: View {
     @ObservedObject var launcher: Launcher
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("animateScenery") private var animateScenery = true
+    @AppStorage("rotateScenery") private var rotateScenery = true
+    @State private var visible = true
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     private var fresh: Bool { launcher.status.state == "new" }
+    private var moving: Bool {
+        SceneryMotion.enabled(reduced: reduceMotion, paused: !animateScenery, lowPower: lowPower,
+                              active: scenePhase == .active, visible: visible,
+                              playing: launcher.status.state == "playing")
+    }
     private var primaryTitle: String {
         switch launcher.status.state {
         case "error": return "Try Again"
@@ -226,101 +402,242 @@ struct LauncherView: View {
         }
     }
 
+    private var detail: String {
+        if fresh { return "Sign in with the Microsoft account that owns Minecraft for Windows" }
+        if !launcher.status.detail.isEmpty { return launcher.status.detail }
+        return launcher.status.state == "ready" ? "Your game and worlds stay on this Mac" : ""
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if let artwork = launcher.artwork {
-                    Image(nsImage: artwork).resizable().scaledToFit()
-                        .accessibilityHidden(true)
-                }
-                Canvas { context, size in
-                    for column in stride(from: 0.0, to: size.width, by: 16) {
-                        let height = Int(column / 16).isMultiple(of: 3) ? 8.0 : 5.0
-                        context.fill(Path(CGRect(x: column, y: 0, width: 16, height: height)),
-                                     with: .color(Blocks.grass))
-                    }
-                }
-                .frame(height: 8)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(alignment: .firstTextBaseline, spacing: 9) {
-                                if launcher.status.state == "error" {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.orange).accessibilityHidden(true)
-                                }
-                                Text(fresh ? "Install Minecraft Bedrock" : launcher.status.title)
-                                    .font(.title2.weight(.bold))
-                                    .accessibilityAddTraits(.isHeader)
-                            }
-                            if fresh || !launcher.status.detail.isEmpty {
-                                Text(fresh
-                                     ? "Sign in with the Microsoft account that owns Minecraft for Windows."
-                                     : launcher.status.detail)
-                                    .font(.body).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+        GeometryReader { geometry in
+            ZStack {
+                Scenery(worlds: launcher.worlds, selection: launcher.selection, moving: moving)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: launcher.selection)
+                    .ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        header
+                        Spacer(minLength: 30)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Minecraft").font(.system(size: 64, weight: .bold, design: .rounded))
+                                .tracking(-2)
+                            Text("for MacOS").font(.system(size: 30, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.92))
+                            Text("Windows Bedrock Edition").font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.8)).padding(.top, 12)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        VStack(spacing: 12) {
-                            if !launcher.running {
-                                Button(primaryTitle) { launcher.start() }
-                                    .buttonStyle(BlockButton())
-                                    .keyboardShortcut(.defaultAction)
-                            } else if launcher.canCancel {
-                                Button("Cancel Setup") { launcher.cancel() }
-                                    .buttonStyle(.bordered).controlSize(.large)
-                                    .keyboardShortcut(.cancelAction)
-                            } else if launcher.status.state == "playing" {
-                                Label("Game running", systemImage: "checkmark.circle.fill")
-                                    .font(.headline).foregroundStyle(.primary)
-                            } else if reduceMotion {
-                                Text("Please wait").foregroundStyle(.secondary)
-                            } else {
-                                ProgressView().controlSize(.small)
-                                    .accessibilityLabel("Waiting for the current step")
-                            }
-                            if fresh {
-                                Text("The game downloads after sign-in")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                        }
-                        .frame(width: 208)
+                        .shadow(color: .black.opacity(0.3), radius: 12, y: 3)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+                        Spacer(minLength: 20)
+                        installation
+                        footer
                     }
-
-                    if launcher.running, let progress = launcher.status.progress,
-                       launcher.status.state != "playing" {
-                        ProgressView(value: progress)
-                            .progressViewStyle(BlockProgress())
-                            .accessibilityLabel("Setup progress")
-                    }
-                    if launcher.status.state == "error" {
-                        Button("Open Setup Log") { launcher.showLog() }.buttonStyle(.link)
-                    }
-
-                    Divider()
-                    HStack {
-                        Text("Minecraft for MacOS")
-                            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Help") { launcher.showHelp() }
-                            .buttonStyle(.link).font(.caption)
-                    }
+                    .padding(.horizontal, 36).padding(.top, 34).padding(.bottom, 22)
+                    .frame(minHeight: geometry.size.height, alignment: .topLeading)
                 }
-                .padding(28)
             }
         }
-        .background(scheme == .dark
-                    ? Color(red: 0.075, green: 0.09, blue: 0.08)
-                    : Color(red: 0.94, green: 0.95, blue: 0.92))
-        .frame(minWidth: 640, minHeight: 540)
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .frame(minWidth: 760, minHeight: 620)
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            visible = NSApp.windows.contains { window in
+                window.title == "Minecraft for MacOS" && window.occlusionState.contains(.visible)
+            }
+        }
+        .task(id: moving && rotateScenery ? launcher.selection : -1) {
+            guard moving, rotateScenery, launcher.worlds.count > 1 else { return }
+            do { try await Task.sleep(for: .seconds(24)) } catch { return }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 1.2)) {
+                launcher.selection = (launcher.selection + 1) % launcher.worlds.count
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "cube.fill").font(.system(size: 22)).foregroundStyle(Blocks.grass)
+                .accessibilityHidden(true)
+            Text("Minecraft for MacOS").font(.system(size: 13, weight: .semibold))
+            Spacer()
+            HStack(spacing: 8) {
+                Button { launcher.showHelp() } label: {
+                    Label("Help", systemImage: "questionmark.circle").font(.system(size: 13, weight: .medium))
+                }
+                .buttonStyle(.plain).padding(.horizontal, 8).frame(minHeight: 36)
+                Button { animateScenery.toggle() } label: {
+                    Image(systemName: animateScenery ? "pause.circle" : "play.circle").font(.system(size: 21))
+                        .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(animateScenery ? "Pause scenery" : "Resume scenery")
+                .help(reduceMotion ? "Scenery is still because Reduced Motion is enabled"
+                      : lowPower ? "Scenery is still in Low Power Mode" : "Pause or resume animated scenery")
+                .disabled(reduceMotion || lowPower)
+            }
+            .padding(4).padding(.leading, 6)
+            .background(.black.opacity(0.7), in: Capsule())
+        }
+    }
+
+    private var installation: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .center, spacing: 28) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 9) {
+                        if launcher.status.state == "error" {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                .accessibilityHidden(true)
+                        }
+                        Text(fresh ? "Install Minecraft Bedrock" : launcher.status.title)
+                            .font(.system(size: 23, weight: .semibold))
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    if !detail.isEmpty {
+                        Text(detail).font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if !launcher.running {
+                        Button { launcher.start() } label: {
+                            Label(primaryTitle, systemImage: "play.fill")
+                        }
+                        .buttonStyle(LaunchButton()).keyboardShortcut(.defaultAction)
+                    } else if launcher.canCancel {
+                        Button("Cancel Setup") { launcher.cancel() }
+                            .buttonStyle(.bordered).controlSize(.large).keyboardShortcut(.cancelAction)
+                    } else {
+                        Label(launcher.status.state == "playing" ? "Game running" : "Please wait",
+                              systemImage: launcher.status.state == "playing" ? "checkmark.circle.fill" : "hourglass")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                .frame(width: 190)
+            }
+            if launcher.running, let fraction = launcher.status.fraction,
+               launcher.status.state == "busy" {
+                ProgressView(value: fraction).progressViewStyle(WorldProgress())
+                    .accessibilityLabel("Overall setup")
+            }
+            if fresh || launcher.status.state == "busy" || launcher.status.state == "cancelled" {
+                Divider().overlay(.white.opacity(0.1))
+                Journey(stage: launcher.status.stage)
+            }
+            if launcher.status.state == "error" {
+                Button("Open Setup Log") { launcher.showLog() }.buttonStyle(.link)
+            }
+        }
+        .padding(26)
+        .background {
+            if reduceTransparency {
+                RoundedRectangle(cornerRadius: 16).fill(Color(red: 0.045, green: 0.065, blue: 0.055))
+            } else {
+                RoundedRectangle(cornerRadius: 16).fill(.regularMaterial)
+            }
+        }
+        .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.18)) }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            Text("Unofficial launcher").font(.caption).foregroundStyle(.white.opacity(0.68))
+            Spacer()
+            ForEach(launcher.worlds.indices, id: \.self) { index in
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6)) { launcher.selection = index }
+                } label: {
+                    HStack(spacing: 7) {
+                        Circle().fill(launcher.worlds[index].world.colour).frame(width: 6, height: 6)
+                        Text(launcher.worlds[index].world.title).font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal, 12).frame(height: 32)
+                    .background(.white.opacity(launcher.selection == index ? 0.18 : 0.04), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
+                .accessibilityLabel("\(launcher.worlds[index].world.title) scenery")
+                .help(launcher.worlds[index].world == .sift ? "Artistic Sift preview — announced for Java and Bedrock in 2027" : "Choose \(launcher.worlds[index].world.title) scenery")
+            }
+        }
     }
 }
 
+private struct Preferences: View {
+    @AppStorage("animateScenery") private var animateScenery = true
+    @AppStorage("rotateScenery") private var rotateScenery = true
+    @Environment(\.accessibilityReduceMotion) private var reduced
+
+    var body: some View {
+        Form {
+            Section("Scenery") {
+                Toggle("Animate the background adventure", isOn: $animateScenery)
+                Toggle("Automatically change scenes", isOn: $rotateScenery)
+                    .disabled(!animateScenery)
+                Text(reduced ? "Reduced Motion is enabled in macOS, so scenery stays still."
+                     : "Animation pauses in Low Power Mode, in the background and while Minecraft runs.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Minecraft") {
+                Text("Change game graphics, sound, controls and accessibility inside Minecraft.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped).padding(16).frame(width: 460)
+    }
+}
+
+private struct LauncherMenus: Commands {
+    @ObservedObject var launcher: Launcher
+    @AppStorage("animateScenery") private var animateScenery = true
+    @AppStorage("rotateScenery") private var rotateScenery = true
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        TextEditingCommands()
+        CommandGroup(replacing: .newItem) {}
+        CommandGroup(after: .appInfo) {
+            Button(launcher.checkingUpdates ? "Checking for Updates…" : "Check for Updates…") {
+                launcher.checkUpdates()
+            }
+            .disabled(launcher.checkingUpdates)
+            Divider()
+            Button("Sign Out of Microsoft…") { launcher.signOut() }
+                .disabled(launcher.running || launcher.status.state == "new")
+        }
+        CommandGroup(after: .toolbar) {
+            Toggle("Animate Scenery", isOn: $animateScenery)
+            Toggle("Automatically Change Scenes", isOn: $rotateScenery)
+            Button("Next Scene") {
+                guard !launcher.worlds.isEmpty else { return }
+                launcher.selection = (launcher.selection + 1) % launcher.worlds.count
+            }
+            .keyboardShortcut("]", modifiers: .command)
+        }
+        CommandGroup(before: .windowList) {
+            Button("Show Launcher") { openWindow(id: "launcher") }
+                .keyboardShortcut("0", modifiers: .command)
+        }
+        CommandGroup(replacing: .help) {
+            Button("Minecraft for MacOS Help") {
+                launcher.showHelp()
+            }
+            Button("Open Setup Logs") { launcher.showLog() }
+            Button("Report a Problem…") {
+                NSWorkspace.shared.open(URL(string: "https://github.com/keys-i/minecraft-mac/issues/new?template=bug_report.yml")!)
+            }
+        }
+    }
+}
+
+#if !LAUNCHER_TEST
 @main
 struct BedrockLauncherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -330,19 +647,11 @@ struct BedrockLauncherApp: App {
             LauncherView(launcher: launcher)
                 .onAppear { delegate.launcher = launcher; NSApp.activate(ignoringOtherApps: true) }
         }
-        .defaultSize(width: 820, height: 680)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-            CommandGroup(after: .appInfo) {
-                Button("Sign Out of Microsoft…") { launcher.signOut() }
-                    .disabled(launcher.running || launcher.status.state == "new")
-            }
-            CommandGroup(replacing: .help) {
-                Button("Minecraft for MacOS Help") {
-                    launcher.showHelp()
-                }
-                Button("Open Setup Logs") { launcher.showLog() }
-            }
-        }
+        .defaultSize(width: 1040, height: 760)
+        .windowStyle(.hiddenTitleBar)
+        .commands { LauncherMenus(launcher: launcher) }
+        Settings { Preferences() }
     }
 }
+
+#endif

@@ -36,6 +36,10 @@ jobs:
           python-version: '3.14'
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - run: python3 minecraft.py build launcher
+      - name: Check native progress and motion policies
+        run: |
+          xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift tests/launcher.swift -o build/launcher-checks
+          build/launcher-checks
   account-helper:
     runs-on: macos-15
     timeout-minutes: 30

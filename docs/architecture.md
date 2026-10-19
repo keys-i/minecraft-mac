@@ -44,12 +44,40 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native window uses the bundled poster above a scrollable setup panel with
-block-style buttons and progress. The artwork is loaded once per launcher
-instance. Resizing, keyboard shortcuts and the existing worker protocol remain
-native SwiftUI behaviours; status changes request macOS accessibility
-announcements. See [Accessibility](accessibility.md) for implemented controls
-and outstanding manual checks
+The native window places a scrollable launch panel over four bundled world
+panoramas. The images are loaded once per launcher instance. A separate scenery
+view owns the 20 fps ambient timeline, slow camera drift and 18 particles, so
+those frames do not invalidate the launch controls. Scenes cross-fade every
+24 seconds or when selected manually
+
+`src/launcher/Adventure.swift` owns the original SceneKit actors: a Happy Ghast
+and rider, a Nether Ghast, a flapping dragon and an imagined Sift spirit/rift
+One bounded scene graph is active at a time, with a separate 20 fps renderer
+It pauses with the same motion gate and releases its graph when dismantled
+No video generator, AI model, network service or game textures are needed at
+runtime. The Sift illustration is an artistic preview of the realm announced
+for Java and Bedrock in 2027, not a claim that the installed game includes it
+
+Ambient motion and automatic scene changes stop with Reduced Motion, Low Power
+Mode, the pause control, an inactive app, an occluded window or a running game
+The scene-change task cancels when its view disappears or its motion gate changes
+The progress view builds 30 isometric blocks from the worker's bounded overall
+setup fraction; the four steps use the existing sign-in/download/preparation
+boundaries. Percentages describe weighted setup progress, not bytes or an ETA
+
+Resizing, keyboard shortcuts and the worker protocol remain native SwiftUI
+behaviours; status changes request macOS accessibility announcements
+`minecraft.py build preview` copies the real interface into a separate bundle
+with `tests/preview.py` as its only worker and an internal fixture root. It has a
+different app identity and does not access accounts, downloads or saved worlds
+See [Accessibility](accessibility.md) for controls and outstanding manual checks
+
+Settings stores scenery preferences in the app's own defaults. Edit, View,
+Window and Help use native menu commands; About, Services and Quit remain macOS
+app-menu behaviours. Check for Updates makes one bounded-time request to the
+project's public GitHub releases API and distinguishes DMG releases from source
+archives. It opens the fixed project Releases page for manual review; it never
+downloads or replaces an app or game
 
 The [stability notes](status.md#stability-fixes-and-earlier-gameplay-evidence) describe token renewal, device/title
 authentication, recorded dead-socket recovery, and the optional graphics bridge.

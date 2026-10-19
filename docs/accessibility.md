@@ -12,16 +12,26 @@ sign-in window also depends on those applications
 | Cancel setup | **Cancel Setup**, or <kbd>Escape</kbd> while setup can be cancelled |
 | Change accounts | **Minecraft for MacOS → Sign Out of Microsoft…**, with the game closed |
 | Get help or open logs | The **Help** menu |
+| Pause or resume background motion | The labelled scenery button beside Help |
+| Choose a scene | **Overworld**, **Nether**, **The End** or **The Sift**, with the selection exposed to assistive technology |
+| Scenery preferences | **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd> |
+| Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
+| Reopen the launcher | **Window → Show Launcher**, or <kbd>⌘</kbd> + <kbd>0</kbd> |
+| Review published app updates | **Minecraft for MacOS → Check for Updates…** |
 
 The interface uses standard SwiftUI text, buttons and progress controls with
-custom block-style drawing. The main button has an explicit keyboard focus
-outline. The progress bar has a label and percentage, and the decorative poster
-and grass edge are hidden from assistive technology. Status and errors are
+custom world-style drawing. The main button has an explicit keyboard focus
+outline. The block-built progress indicator has a label and percentage, and the
+decorative scenery, 3D actors and particles are hidden from assistive technology. Each
+setup step exposes whether it is current, complete or upcoming. Status and errors are
 written as text rather than communicated through colour alone
 
 Worker stage and title changes request a macOS accessibility announcement;
 percentage-only updates do not repeat it. Reduced Motion disables the button
-animation and replaces the waiting spinner with text. The window can be resized,
+animation, camera motion, 3D actor actions, particles, scene fades and automatic scene changes
+Low Power Mode also stops ambient motion and automatic scene changes. Waiting
+states use text rather than a spinner. Reduce Transparency gives the launch
+panel an opaque background. The window can be resized,
 and its content scrolls so longer status and error messages remain reachable
 
 The README uses labelled links, image descriptions, headings and expandable
@@ -46,6 +56,9 @@ yourself; automation does not dismiss or approve them
 - [ ] Check focus when setup starts, is cancelled, fails and finishes
 - [ ] Check long error messages with large text and display zoom
 - [ ] Check increased contrast, light/dark appearance and reduced motion
+- [ ] Check pause/resume, scene selection, Reduce Transparency and Low Power Mode
+- [ ] Check Settings, Edit, View, Window, Help, About, Services, updates and protected Quit
+- [ ] Check that scenery stops in the background, behind other windows and during gameplay
 - [ ] Verify that game input capture can return control to macOS as expected
 
 These are acceptance checks, not recorded passes. Use a disposable test world

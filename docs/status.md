@@ -10,7 +10,44 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
-## October 19 interface update
+## Animated interface preview
+
+The latest interface uses four local world panoramas, slow camera motion, ambient
+particles, native 3D mobs, manual scene selection and automatic scene fades. A compact launch
+panel replaces the earlier poster card; setup progress assembles isometric
+blocks and shows sign-in, download, preparation and play as separate steps
+
+Overworld, Nether and End scenery are joined by an artistic Sift preview
+[Mojang's announcement](https://www.minecraft.net/en-us/article/mclive_sept2026_recap)
+places its Java/Bedrock arrival in 2027. This launcher does not add it to the game
+or provide every historical game version. The illustrated adventure draws from
+classic realms and newer mobs without claiming complete update compatibility
+
+The Mac menus include Settings, Edit, View, Window, Help and a manual update
+check; About, Services and protected Quit use native app-menu behaviour
+
+The native build and progress/motion policy checks pass locally. The 91-test
+Python suite includes the isolated preview bundle and cancellation path
+`minecraft.py build preview` produces the real interface with a simulated worker
+and no access to accounts, downloads or worlds. Keyboard, VoiceOver, motion,
+foreground CPU/GPU and long-session memory checks remain manual acceptance work
+Offscreen Metal rendering confirms that the authored actors move and pause;
+the complete window and menu interactions have not been visually verified
+
+The local 0.3.0 app candidate preserves all 1,047 earlier runtime/worker/helper
+resource hashes and adds four illustrations, giving a 1,051-file resource
+inventory. Its ad-hoc signature and LZFSE DMG verify. The image is 129,627,793
+bytes, contains no account/game/world payload, and retains the full runtime's
+macOS 27 minimum. The installed app was not replaced and no public binary release
+was created
+
+Local adventure-preview DMG SHA-256:
+
+```text
+08f642d42f0c5c9131138fa7870172af0e7732a56a9aaf9441da084929f79c65
+```
+
+## Earlier October 19 interface update
 
 Current source uses **Minecraft for MacOS** branding and a poster-led native
 installer with block-style controls, visible progress and a resizable window

@@ -108,6 +108,20 @@ that points at this checkout and uses `/usr/bin/python3`. It is useful for Swift
 and worker changes after preparing the local runtime, but is not a portable app.
 `python3 src/launcher/setup.py --status` inspects its installation without sign-in.
 
+To try the actual interface without an account or runtime, build its isolated
+preview:
+
+```sh
+python3 minecraft.py build preview
+open 'build/preview/Minecraft for MacOS Preview.app'
+```
+
+Install & Play runs a simulated sign-in, download, preparation and game session
+with the same SwiftUI controls. Cancel stops the simulation; retry runs it again
+The preview has its own bundle identity and fixture root inside the app. It
+cannot launch the game or access the player's account or worlds. Choose a fresh
+`--output` path to keep an earlier preview open while comparing designs
+
 The packager refuses to overwrite an existing output. Use a new output name:
 
 ```sh

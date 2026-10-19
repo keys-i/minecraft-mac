@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 import plistlib
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -22,18 +24,55 @@ class PackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'assets').mkdir()
-            (root / 'assets/poster.webp').write_bytes(b'fixture artwork')
+            for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
+                (root / 'assets' / name).write_bytes(name.encode())
             with patch.object(packager, 'ROOT', root), \
                     patch.object(packager.subprocess, 'run'), \
                     contextlib.redirect_stdout(io.StringIO()):
                 app = packager.build_launcher()
             self.assertEqual(app.name, 'Minecraft for MacOS.app')
-            self.assertEqual((app / 'Contents/Resources/poster.webp').read_bytes(), b'fixture artwork')
+            for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
+                self.assertEqual((app / 'Contents/Resources' / name).read_bytes(), name.encode())
             with (app / 'Contents/Info.plist').open('rb') as file:
                 info = plistlib.load(file)
             self.assertEqual(info['CFBundleDisplayName'], 'Minecraft for MacOS')
             self.assertEqual(info['CFBundleIdentifier'], 'local.bedrock.mac.launcher')
             self.assertEqual(info['BedrockProjectPath'], str(root))
+
+    def test_preview_has_its_own_identity_and_simulated_worker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            launcher = root / 'launcher.app'
+            (launcher / 'Contents/Resources').mkdir(parents=True)
+            with (launcher / 'Contents/Info.plist').open('wb') as file:
+                plistlib.dump({'CFBundleIdentifier': 'local.bedrock.mac.launcher'}, file)
+            output = root / 'Preview.app'
+            with patch.object(packager, 'build_launcher', return_value=launcher), \
+                    patch.object(packager.subprocess, 'run'), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                packager.main(['preview', '--output', str(output)])
+            with (output / 'Contents/Info.plist').open('rb') as file:
+                info = plistlib.load(file)
+            self.assertTrue(info['CFBundleIdentifier'].startswith('local.minecraft.preview.'))
+            fixture = Path(info['BedrockProjectPath'])
+            self.assertTrue(fixture.is_relative_to(output))
+            worker = fixture / 'src/launcher/setup.py'
+            self.assertEqual(worker.read_bytes(), (packager.ROOT / 'tests/preview.py').read_bytes())
+            result = subprocess.check_output([sys.executable, str(worker), '--status'], text=True)
+            self.assertEqual(json.loads(result)['state'], 'new')
+            self.assertFalse((output / 'Contents/Resources/worker').exists())
+            process = subprocess.Popen([sys.executable, str(worker)], stdout=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(json.loads(process.stdout.readline())['state'], 'busy')
+                process.terminate()
+                output, _ = process.communicate(timeout=3)
+                self.assertEqual(json.loads(output.splitlines()[-1])['state'], 'cancelled')
+                self.assertEqual(process.returncode, 0)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                process.stdout.close()
 
     def test_dmg_stages_only_the_app_and_removes_temporary_files(self):
         with tempfile.TemporaryDirectory() as temporary:

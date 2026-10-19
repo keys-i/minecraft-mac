@@ -116,6 +116,11 @@ Moving a prefix to a different Mac/user can leave absolute Wine drive mappings
 pointing at the old location; cross-Mac migration is not a supported automatic
 workflow.
 
+**Minecraft for MacOS → Check for Updates…** checks the project's published
+releases and offers the Releases page for manual review. It distinguishes app
+DMGs from source archives and does not replace your installation. Use **Settings…**
+for scenery preferences; game graphics and controls stay in Minecraft's settings
+
 There is no automatic app or game updater. For an app update, back up the prefix,
 close the game and launcher, and replace only the application in Applications.
 The next launch reconnects to the existing data. Keep the previous app until
