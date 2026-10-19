@@ -3,7 +3,71 @@
 Run checks from the repository root. Prefer tests that reproduce a failure at
 its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
-Test counts below describe the October 19, 2026 source snapshot
+Test counts below describe the October 20, 2026 source snapshot
+
+## World geometry and menu fidelity in 0.11
+
+The 0.11 candidate corrects the native alpha handling that discarded Enderman
+eye pixels and made Blazes translucent. Original rod animation constants,
+standing head attachment and the copper golem’s separate eye layer are applied
+Imported wheat/carrot rows, wall torches, bell supports, lantern UVs, farmland,
+fluid levels and village foundations now use their appropriate geometry
+Terrain domain edges, undersides and Nether ceilings are closed
+
+Prepared native mesh queries reject resident paths through walls and generate
+collision-checked camera/sky-resident routes. Flight uses short swept segments
+and slides along obstacles. The asset queue commits new actions before handing
+the graph to the presentation renderer; the regression requires at least four
+village residents to move during twenty simulated seconds of idle hover
+The stronghold descends over forty blocks. Portal surfaces cover departure,
+then a matching colour transition joins a portal/platform arrival to the hover
+Submerged lava uses dense orange fog instead of clear terrain visibility
+
+Settings shares the title screen’s stone controls and includes master volume
+Help stays in-app. Long biome names scroll while active and remain static with
+Reduced Motion. The extruded Mac Edition face, overlapping installed splash,
+advancement-style hint and full-bleed root retain the corner credit/version
+Offscreen normal/narrow native layouts, models, fixtures, villages and portal
+endpoints were inspected. Full-window footer removal, pointer capture,
+VoiceOver, audible changes and complete real-time cycles remain manual checks
+Computer Use denied preview access; no other desktop-control route was used
+
+All 92 Python tests, native fixtures, the installed-art checks for 70 species,
+40 areas and three passages, and all 125 reviewed source checks pass locally
+Newer residents include camel husks, parched, nautiluses, zombie nautiluses and
+happy ghasts; missing newer art is skipped on older owner installations
+The renderer still does not implement every block state or the game’s full AI
+
+The paired offscreen sample uses an M3 Pro / 36 GB, 1040 × 760, 4× MSAA,
+ten warm-up and sixty measured command buffers for eight route/elevated views
+Both builds flush pending graph actions before measurement. Chrome for Testing
+remains open, and the two runs execute sequentially after other render work
+Synthetic flight measures one hundred bounded 50 ms movement advances per view
+
+| Metric | 0.10.1 baseline | 0.11 candidate |
+| --- | ---: | ---: |
+| Highest GPU p95 | 11.65 ms | 11.26 ms |
+| Highest render wall p95 | 13.84 ms | 13.73 ms |
+| Highest movement-input p95 | <0.01 ms, without collision | 4.86 ms, with collision |
+| Scene construction range | 41–178 ms | 158–561 ms |
+
+Rendering stays inside the existing 50 ms budget. Geometry preparation and
+collision routing add background construction work; these samples do not
+establish a speedup or measure game FPS, Windows performance or long-session RAM
+
+The separate 0.11 full app and isolated preview pass deep/strict signature
+checks. All 1,051 baseline resources and 21 runtime symlinks remain unchanged,
+including helper, worker, runtime, bundled font and approved poster. Native
+machine code matches the source build; minimum packaged macOS remains 27
+The local LZFSE DMG verifies and is 127,982,563 bytes, with SHA-256:
+
+```text
+2802e655ce318e1e079489da51f7128cbb7ba8b5b2ae26c64db4c5c0f961261f
+```
+
+No installed app, game, account or saved world was replaced. No binary release
+was published; Developer ID signing, notarisation and clean-Mac installation
+remain separate release checks
 
 ## Choose the relevant checks
 

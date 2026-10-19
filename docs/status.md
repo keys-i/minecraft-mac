@@ -4,11 +4,43 @@ This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
 notarization and clean-Mac installation have not been verified. Apple Developer
 membership is not required to publish source or build a local preview
 
-Status snapshot: October 19, 2026. The earlier native launcher source was merged in
+Status snapshot: October 20, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
+
+## World and menu corrections in 0.11
+
+The separate 0.11 candidate fixes Enderman/Blaze alpha handling, copper golem
+eyes, crop/fixture geometry, village foundations and closed terrain boundaries
+Native collision queries guard resident, idle-camera and flight paths. Committed
+scene actions keep residents moving during idle hover; the stronghold descends
+over forty blocks and portal-colour handoffs join destination arrivals
+Settings now contains master volume and matches the title screen; Help is
+local, long biome names scroll and the subtitle has an extruded face
+
+All 92 Python tests, native fixtures, 70-species/40-area integration and 125
+source checks pass. The paired rendering sample remains within the existing
+50 ms scenery budget, with highest GPU p95 11.26 ms and movement-input p95
+4.86 ms. Collision preparation adds background construction work
+[The method, paired results and limits](test.md#world-geometry-and-menu-fidelity-in-011)
+record this as launcher validation, not a game-performance improvement
+
+The full app, isolated preview and 127,982,563-byte LZFSE DMG verify locally
+All 1,051 baseline resource hashes and 21 symlinks remain unchanged; minimum
+packaged macOS stays 27. The DMG SHA-256 is:
+
+```text
+2802e655ce318e1e079489da51f7128cbb7ba8b5b2ae26c64db4c5c0f961261f
+```
+
+Computer Use denied preview access, so live-window footer behaviour, pointer
+capture, VoiceOver and listening checks remain unverified. No alternative
+screen-capture or UI-control route bypassed that denial. Every-block rendering,
+complete Minecraft AI, clean-Mac installation and notarisation remain outside
+the verified result. No installed app, account or world was replaced, and no
+binary release was published
 
 ## Material and interaction fidelity in 0.10.1
 
