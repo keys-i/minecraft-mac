@@ -89,6 +89,51 @@ to its disposable preview, so these visible checks remain unverified
 
 The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
 
+### Expanded habitat 0.7 measurements
+
+On October 19, 2026, the installed-art check constructed 62 mob types, the dragon,
+37 independent habitats and all three passages. All habitats stayed below the
+existing 1,200-node / 150,000-triangle limits. The 18 repeated mansion rooms share
+one geometry. The source-only fixtures and all 91 Python tests passed
+
+All 37 area renders and 24 passage viewpoints were inspected offscreen
+Paused comparisons at scene times 4 and 8 seconds allow at most one 8-bit channel
+step for render rounding; the observed difference was one channel of one pixel
+in the Pale Garden. They test the paused graph, not the application's full window
+
+The M3 Pro / 36 GB Metal probe used the same 1040 × 760 render target and 4× MSAA
+as the earlier probe, with ten warm-up frames and sixty measured command buffers
+per view. Scene time advanced in 1/20-second steps; command completion was awaited
+for both GPU timestamps and wall time. It covered every habitat plus three
+viewpoints per passage, 46 views total
+
+| Realm or passage | Views | GPU median range | Highest GPU p95 | Highest wall p95 |
+| --- | --- | --- | --- | --- |
+| Overworld | 20 | 0.61–1.79 ms | 4.77 ms | 5.94 ms |
+| Nether | 5 | 1.17–1.43 ms | 4.15 ms | 5.38 ms |
+| End | 6 | 0.53–1.04 ms | 2.53 ms | 3.62 ms |
+| Sift interpretation | 6 | 0.64–0.84 ms | 1.16 ms | 2.00 ms |
+| Mine crossing | 3 | 0.43–0.47 ms | 1.00 ms | 1.67 ms |
+| Stronghold crossing | 3 | 0.32–0.49 ms | 0.84 ms | 1.42 ms |
+| Rift crossing | 3 | 0.34–0.45 ms | 0.95 ms | 1.31 ms |
+
+The 50 ms frame budget remains unchanged. Graphs contain 43–357 nodes and
+3,126–118,664 logical triangles, including passage views
+Sequential graph construction measured 5.47–101.03 ms with a fresh Assets instance,
+shared material/metadata caches between stops and archive buffers released after
+each build. Construction stays on the existing serial background queue
+
+Before mesh reuse and palette classification, the same 0.7 probe measured
+236.13 ms for the mansion and 1,023.81 ms for the bastion. These became 42.87 ms
+and 101.03 ms respectively, with unchanged geometry counts. The earlier 0.6
+composition's maximum build was 646.27 ms and its highest GPU/wall p95 was
+11.45/13.45 ms. Background load and compositions differ between runs; these are
+local scenery probes, not controlled app latency or Windows/gameplay benchmarks
+No resident-memory reduction or long-session result is claimed
+
+The local tour is 132 seconds: all 37 habitats at 9× scenery speed, with the
+22-second mine, 20-second stronghold and 16-second rift shown in real time
+
 ### Original-asset 0.6 measurements
 
 On October 19, 2026, all 31 area views and fifteen passage viewpoints rendered

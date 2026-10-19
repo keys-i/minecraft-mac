@@ -69,6 +69,9 @@ complete animation system
 Trial Chamber, Ancient City, bastion, fossil, shipwreck and End City pieces
 The chamber exposes its near walls and roof for an interior view. Mansion panels
 and End City towers/bridges are composed locally from original templates
+Repeated pieces clone one decoded geometry per scene rather than reparsing NBT
+Face culling classifies each palette entry once, avoiding repeated string matching
+for every block and its neighbours
 Code-generated temples, huts, fortresses and passages use installed block textures
 Some partial blocks and structure entities remain simplified; the launcher does
 not reproduce world generation, the game renderer or its Molang interpreter
@@ -91,7 +94,7 @@ Reduced Motion and Low Power Mode select the destination directly
 The existing graph remains visible during loading. Native crossfades join scenes
 only while motion is enabled; cancellation rejects obsolete graph results
 
-The renderer is capped at 20 fps. Native checks bound each page to 1,200 nodes
+The renderer is capped at 20 fps. Native checks bound each habitat to 1,200 nodes
 and 150,000 triangles; actual measurements are recorded in [Testing](test.md)
 A serial asset queue builds scenes away from the interface thread. Cancelling a
 selection drops queued work and ignores obsolete results; completed graphs move

@@ -10,6 +10,56 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Expanded habitats and journeys in 0.7
+
+Version 0.7 replaces the three-biome strips with 37 independent habitats and
+expands the resident catalogue from 46 to 62 original Minecraft mob types
+Added visits include the savanna outpost, swamp hut, woodland mansion, warm-ocean
+reef, dripstone caves and Trial Chamber. Villages gain farms and pens, the bastion
+and fortress become larger complexes, and the End City gains towers and bridges
+Canopies, clouds, vegetation, flowing surfaces, waterfalls and ambient particles
+supply movement alongside resident groups
+
+The 22-second mine descent passes original mobs, rails, ore, supports, side shafts,
+a cart and cobwebs before crossing an enclosed obsidian portal into a Nether vista
+The 20-second stronghold route descends stairs, passes libraries and Silverfish,
+then approaches a raised 12-frame End portal. The 16-second Sift approach remains
+explicitly artistic, using installed Minecraft blocks and existing mob species
+These scenes do not add dimensions or content to Minecraft
+
+Repeated structure pieces now share decoded meshes within a scene, and face
+culling classifies each palette entry once. In the sequential graph-build probe,
+the mansion changed from 236.13 to 42.87 ms and the bastion from 1,023.81 to
+101.03 ms, with unchanged geometry counts. Final graph construction ranged from
+5.47 to 101.03 ms on the existing background queue. The previous graph stays
+visible during loading; native crossfades respect the existing motion gates
+
+Local validation on October 19, 2026 passed: all 91 Python tests, native fixtures,
+installed-art integration for 62 types and 37 habitats, 24 passage renders and
+37 paused comparisons within one 8-bit channel step. The 46-view Metal probe's
+highest GPU p95 was 4.77 ms and highest wall p95 was 5.94 ms against 50 ms
+All graphs remained below the existing 1,200-node / 150,000-triangle budget
+See [the method and limits](test.md#expanded-habitat-07-measurements)
+These are offscreen scenery results, not live-game FPS or application input latency
+
+The separate full 0.7.0 candidate preserves all 1,048 resource hashes from 0.6,
+including runtime, worker, account helper, poster and licences. Only the native
+launcher and app metadata/signature are updated. Launcher machine code matches
+the source build and the ad-hoc signature and LZFSE disk image verify
+The DMG is 127,107,801 bytes and retains the runtime's macOS 27 minimum
+
+```text
+50e54089d50257e8290786669e9cc03c51ac24d6a7ec16c0b5834f116fb8545b
+```
+
+The 132-second local video tours all 37 habitats and shows all three journeys
+The separate UI preview uses a simulated worker and only reads installed game art
+Full-window interaction, keyboard, VoiceOver, live-game and long-session memory
+checks remain unverified. Computer Use denied the earlier preview session; no
+alternate desktop automation or capture route was used
+The installed app, worlds and account data remain untouched; no binary release
+has been published and Developer ID signing/notarization remain release gates
+
 ## Original Minecraft art in 0.6
 
 Version 0.6 replaces the rejected procedural creatures with original models and

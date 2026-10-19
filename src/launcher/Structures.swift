@@ -4,14 +4,15 @@ import SceneKit
 enum Structures {
     static func build(_ biome: Biome, x: Double, y: Double, assets: Assets) throws -> SCNNode {
         let root = SCNNode(); root.name = "landmark-\(biome)"; root.position = .init(x,y,-18)
-        var mesh = Voxels()
+        var mesh = Voxels(), templates: [String:SCNNode] = [:]
         func cube(_ size: SCNVector3, _ p: SCNVector3, _ block: String) throws {
             let tiles = try assets.tiles(block)
             mesh.cube(size,at:p,material:tiles[0],faceMaterials:tiles)
         }
         func place(_ name: String, _ p: SCNVector3 = .init(0,0,0), turn: Double = 0) throws {
             let wrapper = SCNNode(); wrapper.position = p; wrapper.eulerAngles.y = turn
-            wrapper.addChildNode(try template(name,assets:assets)); root.addChildNode(wrapper)
+            if templates[name] == nil { templates[name] = try template(name,assets:assets) }
+            wrapper.addChildNode(templates[name]!.clone()); root.addChildNode(wrapper)
         }
         switch biome {
         case .meadow:
@@ -259,26 +260,27 @@ extension Structures {
         func partial(_ name: String) -> Bool {
             ["stairs","slab","door","pane","fence","wall","torch","bed","plate","flower","glass","leaves","water","carpet","trapdoor","rail","rod","candle","lantern","bars","banner"].contains { name.contains($0) }
         }
+        let visible = names.map { !hidden($0) }, opaque = names.map { !partial($0) }
         func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
         var blocks: [Int: Int] = [:]
         for block in list {
             guard let position = block["pos"] as? [Int], position.count == 3,
                   (0..<3).allSatisfy({ (0..<size[$0]).contains(position[$0]) }),
                   let state = block["state"] as? Int, palette.indices.contains(state) else { throw AssetError.model }
-            if !hidden(names[state]), !(cutaway && position[1] > 1 && (position[1] >= size[1]-2 || position[2] >= size[2]-5 || position[0] >= size[0]-4)) { blocks[key(position)] = state }
+            if visible[state], !(cutaway && position[1] > 1 && (position[1] >= size[1]-2 || position[2] >= size[2]-5 || position[0] >= size[0]-4)) { blocks[key(position)] = state }
         }
         var mesh = Voxels(), surfaces: [Int: [SCNMaterial]] = [:]
         let fullUV = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
         for block in list {
             let p = block["pos"] as! [Int], state = block["state"] as! Int, name = names[state]
-            guard !hidden(name), blocks[key(p)] != nil else { continue }
+            guard visible[state], blocks[key(p)] != nil else { continue }
             let properties = palette[state]["Properties"] as? [String: String] ?? [:]
             var faces = 63
-            if !partial(name) {
+            if opaque[state] {
                 for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
                     let neighbour = [p[0]+d[0],p[1]+d[1],p[2]+d[2]]
                     if (0..<3).allSatisfy({ (0..<size[$0]).contains(neighbour[$0]) }),
-                       let index = blocks[key(neighbour)], !partial(names[index]) { faces &= ~(1 << face) }
+                       let index = blocks[key(neighbour)], opaque[index] { faces &= ~(1 << face) }
                 }
             }
             guard faces != 0 else { continue }

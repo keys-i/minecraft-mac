@@ -213,6 +213,13 @@ struct LauncherChecks {
                 print("\(world) \(world.biomes[index]): \(nodes) nodes, \(triangles) triangles")
                 fflush(stdout)
                 precondition(nodes < 1200 && triangles < 150_000)
+                if world.biomes[index] == .mansion {
+                    var rooms: [SCNGeometry] = []
+                    scene.rootNode.enumerateChildNodes { node,_ in
+                        if node.name == "template-mansion/1x1_a1", let geometry = node.geometry { rooms.append(geometry) }
+                    }
+                    precondition(rooms.count == 18 && rooms.allSatisfy { $0 === rooms[0] })
+                }
                 precondition(scene.rootNode.childNode(withName:"habitat-detail",recursively:false) != nil)
                 for animated in [false,true] {
                     Landscape.focus(scene,world:world,biome:index,animated:animated)
