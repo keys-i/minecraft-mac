@@ -10,6 +10,33 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Settings menu and crystal connection in 0.14
+
+Settings now opens inside the launcher with a top-right × and Escape dismissal,
+without a separate preferences title bar. The gear and ⌘, use the same menu
+Text, spacing and controls scale with window size; compact content scrolls while
+the heading and close button remain visible. Existing preferences are preserved
+
+The central island connects the nearest crystal within 32 blocks to the dragon
+with the original beam texture. The dragon's movement action updates the beam
+without a separate animation action or geometry rebuild; Reduced Motion keeps
+a static connection. This is scenery, without a combat/health simulation
+
+All 93 Python tests, native synthetic and installed-art 70-species/42-area checks,
+125 source checks and signature verification pass. Compact/normal/wide renders
+were inspected, and live Computer Use verified gear/⌘, entry and ×/Escape closing
+See [the test record](test.md#responsive-settings-and-dragon-healing-beams-in-014)
+
+The final local candidate is 0.14.0/build 19, requires macOS 27 and preserves all
+1,053 resource hashes and 21 symlinks. The DMG has 128,195,260 bytes and SHA-256
+
+```text
+d424a83eaf335b6c20c1dc4343d05db43b29ae61e42c5e8309a2d0795e5d8ac9
+```
+
+The final candidate’s Settings menu was opened locally. VoiceOver and display zoom remain
+unverified; no helper/runtime rebuild, binary release, merge or notarisation was performed
+
 ## Flight and destination corrections in 0.13
 
 The destination picker now uses Minecraft block textures, readable list rows,
