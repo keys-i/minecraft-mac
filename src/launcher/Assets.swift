@@ -79,6 +79,22 @@ final class Assets {
         return operation
     }
 
+    func icons(completion: @escaping @MainActor ([World:NSImage]) -> Void) {
+        let operation = BlockOperation()
+        operation.addExecutionBlock {
+            let paths: [World:String] = [.overworld:"diamond_pickaxe",.nether:"flint_and_steel",.end:"ender_eye",.sift:"amethyst_shard"]
+            var images: [World:NSImage] = [:]
+            for (world,path) in paths {
+                if let material = try? self.texture("textures/items/"+path) {
+                    let bitmap = material.diffuse.contents as! CGImage
+                    images[world] = NSImage(cgImage:bitmap,size:NSSize(width:32,height:32))
+                }
+            }
+            DispatchQueue.main.async { completion(images) }
+        }
+        queue.addOperation(operation)
+    }
+
     func releaseArchives() { archives.removeAll() }
 
     private func archive(_ url: URL) throws -> Archive {
@@ -124,8 +140,8 @@ final class Assets {
         return names
     }
 
-    func texture(_ path: String, tint: UInt32? = nil) throws -> SCNMaterial {
-        let key = path+"-"+(tint.map(String.init) ?? "none")
+    func texture(_ path: String, tint: UInt32? = nil, animated: Bool = false) throws -> SCNMaterial {
+        let key = path+"-"+(tint.map(String.init) ?? "none")+(animated ? "-animated" : "")
         if let material = materials[key] { return material }
         let data: Data
         do { data = try file(path+".png") }
@@ -133,7 +149,7 @@ final class Assets {
         guard data.count <= 8*1024*1024, let image = NSImage(data:data),
               let decoded = image.cgImage(forProposedRect:nil,context:nil,hints:nil),
               decoded.width <= 2048, decoded.height <= 4096 else { throw AssetError.image }
-        let bitmap = path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
+        let bitmap = !animated && path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
             ? decoded.cropping(to:CGRect(x:0,y:0,width:decoded.width,height:decoded.width))! : decoded
         let material = SCNMaterial()
         material.name = path
@@ -157,7 +173,7 @@ final class Assets {
         let document = try json("entity/"+name+".entity.json")
         guard let entity = document["minecraft:client_entity"] as? [String: Any],
               let description = entity["description"] as? [String: Any],
-              let geometries = description["geometry"] as? [String: String], let identifier = geometries["default"],
+              let geometries = description["geometry"] as? [String: String], let identifier = geometries["default"] ?? geometries[key],
               let textures = description["textures"] as? [String: String], let image = textures[key] else { throw AssetError.model }
         let definition = try geometry(identifier, entity: name)
         let skin = try texture(image)
@@ -180,6 +196,7 @@ final class Assets {
             material.emission.contents = skin.diffuse.contents
             material.emission.intensity = 0.4
         }
+        if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
         let model = try node(definition,material:material)
         if name == "breeze", let wind = textures["breeze_wind"] {
             for key in ["breeze_wind_top", "breeze_wind_mid", "breeze_wind_bottom"] {
@@ -254,8 +271,12 @@ final class Assets {
 
     private func geometry(_ identifier: String, entity: String, depth: Int = 0) throws -> [String: Any] {
         guard depth < 8 else { throw AssetError.model }
-        let stem = identifier.split(separator:".").dropFirst().first.map(String.init) ?? entity
-        let candidates = try names("models/entity").filter { $0.hasPrefix(stem) || $0.hasPrefix(entity) }
+        let stem = (identifier.split(separator:".").dropFirst().first.map(String.init) ?? entity).replacingOccurrences(of:"_",with:"")
+        let prefix = entity.replacingOccurrences(of:"_",with:"")
+        let candidates = try names("models/entity").filter {
+            let name = $0.replacingOccurrences(of:"_",with:"")
+            return name.hasPrefix(stem) || name.hasPrefix(prefix)
+        }
             .map { "models/entity/"+$0 } + ["models/mobs.json"]
         for candidate in candidates {
             let object = try json(candidate)

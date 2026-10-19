@@ -44,33 +44,46 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native window places a scrollable launch panel over one live SceneKit world
+The native window places a compact launch panel and four-slot realm hotbar over
+one live SceneKit world. Monocraft supplies the pixel titles; original installed
+item icons identify the realms. Stone controls share hover, press and focus states
+The searchable biome picker and native menus give direct access to every area
+Look around pauses the camera route and lets a pan gesture turn the view
+Leaving that mode restores the route; dismantling removes the recogniser
 `Assets.swift` reads original models, textures and structure templates from the
 owner's installed `game/data` directory. `NBT.swift` decodes bounded gzip/NBT
 structures; the archive reader supports the game's versioned `.brarchive` packs
 Newer packs override older packs in numeric version order, and empty archive
 stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`Biome.swift` defines 37 selectable habitats and landmark visits across four realms
+`Biome.swift` defines 40 selectable habitats and landmark visits across four realms
 `Landscape.swift` builds one complete habitat per selection, replacing the former
-three-biome strips. Terrain uses a sampled height field with buried faces omitted
+three-biome strips. `Terrain.swift` owns deterministic interpolated noise, ground
+height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
+The same mesh builder supplies the forest above the mine and stronghold approaches
+Camera routes stay at player height or low spectator height, including underwater
 Original block materials supply strata, vegetation, roots, fungi, chorus plants,
 waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
 particles move independently of the camera
 
-`Mobs.swift` shares original geometry/skins within each scene and places 62 types
+`Mobs.swift` shares original geometry/skins within each scene and places 65 types
 in habitat-specific groups. Aquatic residents use water pockets, Striders use lava,
-and fortress residents use bridge height. The dragon stays at the central island
+and fortress residents use bridge height. River residents follow the actual
+channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
+use original skin variants. Residents alternate idle and local walking phases
+The dragon stays at the central island
 Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
 from the installed assets. Ambient actions do not reproduce the game's AI or
 complete animation system
 
 `Structures.swift` imports original village, outpost, mansion, igloo, ruined portal,
 Trial Chamber, Ancient City, bastion, fossil, shipwreck and End City pieces
-The chamber exposes its near walls and roof for an interior view. Mansion panels
+The complete chamber surrounds an interior camera. Mansion panels
 and End City towers/bridges are composed locally from original templates
 Repeated pieces clone one decoded geometry per scene rather than reparsing NBT
-Face culling classifies each palette entry once, avoiding repeated string matching
+Pane connections are rebuilt from saved neighbours, including templates that
+defer their connection states until placement. Face culling classifies each palette
+entry once, avoiding repeated string matching
 for every block and its neighbours
 Code-generated temples, huts, fortresses and passages use installed block textures
 Some partial blocks and structure entities remain simplified; the launcher does
@@ -78,7 +91,7 @@ not reproduce world generation, the game renderer or its Molang interpreter
 
 | Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | 20 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef ruins, lush/dripstone caves, Trial Chamber and Ancient City |
+| Overworld | 23 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, lush/dripstone caves, Trial Chamber and Ancient City |
 | Nether | All five biomes | Piglins, brutes, Hoglins, Striders, Ghasts, Blazes, Wither Skeletons and magma cubes; fortress, bastion and fossils |
 | End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; caged crystals, chorus branches, gateway, city towers, bridges and ship |
 | Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
@@ -95,7 +108,7 @@ The existing graph remains visible during loading. Native crossfades join scenes
 only while motion is enabled; cancellation rejects obsolete graph results
 
 The renderer is capped at 20 fps. Native checks bound each habitat to 1,200 nodes
-and 150,000 triangles; actual measurements are recorded in [Testing](test.md)
+and 350,000 logical triangles; actual measurements are recorded in [Testing](test.md)
 A serial asset queue builds scenes away from the interface thread. Cancelling a
 selection drops queued work and ignores obsolete results; completed graphs move
 to the main thread before presentation. The loader retains shared materials and bounded JSON metadata, drops archive
@@ -118,7 +131,7 @@ arrival was announced for 2027; the launcher does not add it to the installed ga
 Ambient motion and automatic scene changes stop with Reduced Motion, Low Power
 Mode, the pause control, an inactive app, an occluded window or a running game
 The scene-change task cancels when its view disappears or its motion gate changes
-The progress view builds 30 isometric blocks from the worker's bounded overall
+The experience bar fills 40 segments from the worker's bounded overall
 setup fraction; the four steps use the existing sign-in/download/preparation
 boundaries. Percentages describe weighted setup progress, not bytes or an ETA
 

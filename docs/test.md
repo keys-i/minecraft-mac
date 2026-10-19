@@ -28,7 +28,7 @@ shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 91 tests. Coverage includes source isolation,
+The Python suite currently has 92 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated
@@ -51,7 +51,7 @@ Compile the interface on a Mac with Command Line Tools:
 ```sh
 python3 minecraft.py build launcher
 xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
+  src/launcher/BedrockLauncher.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
@@ -70,10 +70,11 @@ To check the art from your own installation as well:
 BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
 ```
 
-This read-only integration constructs all 62 resident types, the dragon, 37
+This read-only integration constructs all 65 resident types, the dragon, 40
 independent habitats and three passages. It checks distinct Blaze rods, Breeze
 wind layers, mirrored dragon bounds, mob placement away from void, node/triangle
-budgets, camera-action replacement and portal endpoints. It does not launch Minecraft
+budgets, sampled camera ground/headroom, swimming placement, original fluid atlas
+frames, reconstructed window panes, camera-action replacement and portal endpoints. It does not launch Minecraft
 
 Use `python3 minecraft.py build preview` to inspect first-run, progress,
 cancellation, retry and running-game states without touching a real account

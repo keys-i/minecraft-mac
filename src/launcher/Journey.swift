@@ -20,10 +20,10 @@ enum Passage: String, Sendable {
             eyes = [.init(0,15,42),.init(0,12.62,30),.init(0,7.62,10),.init(0,3.62,-6),.init(0,1.62,-23),.init(0,1.62,-33.8),.init(0,2.2,-36),.init(0,5,-44)]
             aims = [.init(0,12,31),.init(0,6,5),.init(0,2,-10),.init(0,2,-27),.init(0,2.4,-34),.init(0,2.3,-35),.init(0,8,-64),.init(0,11,-75)]
         case .stronghold:
-            eyes = [.init(5,16,36),.init(0,10.62,25),.init(0,3.62,6),.init(0,1.62,-4),.init(0,2.6,-11),.init(0,5,-17),.init(0,4.8,-21),.init(0,3.36,-21.5)]
+            eyes = [.init(0,14.62,40),.init(0,10.62,25),.init(0,3.62,6),.init(0,1.62,-4),.init(0,2.6,-11),.init(0,5,-17),.init(0,4.8,-21),.init(0,3.36,-21.5)]
             aims = [.init(0,9,21),.init(0,4,5),.init(-2,3,-5),.init(0,3,-17),.init(0,3.2,-21),.init(0,3.2,-21),.init(0,2,-21.5),.init(0,-2,-21.6)]
         case .rift:
-            eyes = [.init(3,12,30),.init(0,9,19),.init(0,6,5),.init(0,5,-8),.init(0,4.8,-13.86),.init(0,4.8,-16)]
+            eyes = [.init(0,3.62,30),.init(0,3.62,19),.init(0,3.62,5),.init(0,3.62,-8),.init(0,3.62,-13.86),.init(0,3.62,-16)]
             aims = [.init(0,6,-12),.init(0,5,-14),.init(0,4.8,-14),.init(0,4.8,-15),.init(0,4.8,-16),.init(0,5,-22)]
         }
         let segments = eyes.count-1
@@ -33,11 +33,11 @@ enum Passage: String, Sendable {
             .init(a.x+(b.x-a.x)*eased,a.y+(b.y-a.y)*eased,a.z+(b.z-a.z)*eased)
         }
         var eye = blend(eyes[index],eyes[index+1])
-        if self == .mine, eye.z > -32, eye.z < 31 {
+        if self == .mine, eye.z > -32, eye.z < 43 {
             // Follow the rail slope below the original-height support beams
-            eye.y = max(0,(eye.z+12)/4)+1.62
-        } else if self == .stronghold, eye.z > 2, eye.z < 27 {
-            eye.y = max(0,(eye.z-2)/2.5)+1.62
+            eye.y = min(13,max(0,(eye.z+12)/4))+1.62
+        } else if self == .stronghold, eye.z > 2, eye.z < 43 {
+            eye.y = min(13,max(0,(eye.z-2)/2.5))+1.62
         }
         return (eye,blend(aims[index],aims[index+1]))
     }
@@ -114,11 +114,13 @@ extension Passage {
             try sprite(soul ? "soul_torch" : "torch_on",at)
         }
         if self == .rift {
-            for index in 0..<70 {
-                let x = Double(index%7-3)*5, z = Double(index/7)*6-28
-                let height = Double(index%4)+abs(x)*0.25
-                try cube(.init(5,3+height,6),.init(x,height/2,z),index%3 == 0 ? "moss_block" : "pink_terracotta")
-                if index%5 == 0 {
+            let terrain = Terrain(biome:.valley)
+            scene.rootNode.addChildNode(try terrain.node(assets:assets) { x,z in
+                abs(x)<3 ? 2 : terrain.height(Double(x),Double(z))
+            })
+            for index in 0..<28 {
+                let x = Terrain.random(index,7,seed:4)*64-32, z = Terrain.random(index,9,seed:5)*90-45
+                if abs(x)>5 {
                     let shard = SCNNode(); var crystals = Voxels(); let tile = try assets.tiles("amethyst_block")
                     crystals.cube(.init(2,5,2),at:.init(0,0,0),material:tile[0],faceMaterials:tile)
                     shard.addChildNode(crystals.node("rift-shard")); shard.position = .init(x,10+Double(index%5),z)
@@ -126,20 +128,35 @@ extension Passage {
                     scene.rootNode.addChildNode(shard)
                 }
             }
-            for z in -24...34 { try cube(.init(4,1,1),.init(0,1.5,Double(z)),"moss_block") }
             try Structures.portal(scene.rootNode,at:.init(0,2,-14),assets:assets,sift:true)
             let ruin = try Structures.template("ruined_portal/portal_3",assets:assets); ruin.position = .init(-13,2,-20); scene.rootNode.addChildNode(ruin)
             for index in 0..<6 {
                 let mob = try factory.make(index%2 == 0 ? .allay : .illager)
-                mob.position = .init(Double(index%2 == 0 ? -5 : 6),Double(index%2 == 0 ? 7 : 3),Double(index)*6-21)
+                let x = Double(index%2 == 0 ? -5 : 6), z = Double(index)*6-21
+                mob.position = .init(x,index%2 == 0 ? 7 : terrain.height(x,z)-mob.boundingBox.min.y,z)
                 if index%2 == 0 { mob.runAction(.repeatForever(.sequence([.moveBy(x:0.4,y:0.4,z:0,duration:3),.moveBy(x:-0.4,y:-0.4,z:0,duration:3)]))) }
                 scene.rootNode.addChildNode(mob)
             }
         } else {
             let mine = self == .mine
-            for side in [-1.0,1] {
-                try cube(.init(24,14,20),.init(side*15,6,26),"stone")
-                try cube(.init(24,1,20),.init(side*15,13.5,26),"grass_block")
+            let terrain = Terrain(biome:.forest)
+            let approach = try terrain.node(assets:assets,x:-64..<64,z:-16..<96) { x,z in
+                if abs(x)<4 && z<42 { return -100 }
+                return max(13,terrain.height(Double(x),Double(z))+9)
+            }
+            scene.rootNode.addChildNode(approach)
+            for z in 35...42 {
+                let floor = min(13,max(0,ceil(mine ? (Double(z)+12)/4 : (Double(z)-2)/2.5)))
+                try cube(.init(7,1,1),.init(0,floor-0.5,Double(z)),"stone")
+            }
+            for index in 0..<65 {
+                let x = (Terrain.random(index,4,seed:9)*116-58).rounded()
+                let z = (Terrain.random(index,12,seed:6)*94).rounded()
+                guard abs(x)>8 else { continue }
+                let y = max(13,terrain.height(x,z)+9), tall = Double(4+index%3)
+                try cube(.init(1,tall,1),.init(x,y+tall/2,z),"oak_log")
+                try cube(.init(5,2,5),.init(x,y+tall-1,z),"oak_leaves")
+                try cube(.init(3,1,3),.init(x,y+tall+0.5,z),"oak_leaves")
             }
             for z in stride(from:34.0,through:mine ? -34 : -30,by:-1) {
                 let index = Int(34-z)
@@ -181,15 +198,11 @@ extension Passage {
                 for x in -14...14 {
                     try cube(.init(1,1,5),.init(Double(x),0,-12),"oak_planks")
                     try cube(.init(1,1,7),.init(Double(x),5,-12),"stone")
-                    for side in [-1.0,1] { try cube(.init(1,5,1),.init(Double(x),2,side*3-12),"stone") }
+                    if abs(x)>3 { for side in [-1.0,1] { try cube(.init(1,5,1),.init(Double(x),2,side*3-12),"stone") } }
                     if x%4 == 0 { for side in [-1.0,1] { try cube(.init(0.4,3,0.4),.init(Double(x),2,side*2-12),"oak_fence") } }
                 }
                 for (x,z) in [(-2.0,-13.0),(2,-19)] { try cube(.init(1,1,1),.init(x,0.5,z),"barrel") }
-                let cart = try factory.actor("minecart"); cart.position = .init(0,1,-9); scene.rootNode.addChildNode(cart)
-                try cube(.init(84,16,68),.init(0,26,-14),"stone")
-                try cube(.init(84,1,68),.init(0,34.5,-14),"grass_block")
-                try cube(.init(70,18,12),.init(0,3,41),"stone")
-                try cube(.init(70,1,12),.init(0,12.5,41),"grass_block")
+                let cart = try factory.actor("minecart"); cart.position = .init(5,1,-12); scene.rootNode.addChildNode(cart)
                 for side in [-1.0,1] { try cube(.init(4,8,1),.init(side*4,4,-34),"deepslate") }
                 try cube(.init(4,3,1),.init(0,6.5,-34),"deepslate")
                 try Structures.portal(scene.rootNode,at:.init(0,0,-34),assets:assets)
@@ -215,6 +228,8 @@ extension Passage {
                     scene.rootNode.addChildNode(bat)
                 }
             } else {
+                try cube(.init(17,9,2),.init(0,4,-31),"stone_bricks")
+                try Landscape.liquid(scene,assets:assets,lava:true,at:.init(0,0.15,-21),size:.init(width:3,height:3))
                 for side in [-1.0,1] {
                     try cube(.init(8,1,13),.init(side*8,-0.5,0),"oak_planks")
                     try cube(.init(1,7,13),.init(side*12,3,0),"stone_bricks")

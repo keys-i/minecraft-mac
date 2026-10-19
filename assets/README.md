@@ -15,8 +15,8 @@ alternative text
 
 ## Native scenery
 
-Version 0.6 uses original Minecraft models, textures and structure templates
-read from the owner's installed game. It builds 31 area views, 46 resident types,
+Version 0.8 uses original Minecraft models, textures and structure templates
+read from the owner's installed game. It builds 40 area views, 65 resident types,
 two hero actors and three passages in native SceneKit. Those Minecraft assets
 are not bundled or committed. The approved poster supplies first-run fallback
 Versions 0.4/0.5 used procedural stand-ins that were rejected for fidelity
@@ -24,6 +24,8 @@ Versions 0.4/0.5 used procedural stand-ins that were rejected for fidelity
 The area list includes structure visits; it does not claim each stop is a
 separate official biome. Sift area names, scenery and routes are interpretations
 The README poster is unchanged, and `launcher.jpg` shows the earlier interface
+The 0.8 launcher registers the bundled [Monocraft font](../vendor/README.md#monocraft)
+for its own process; the font and full OFL notice are included in source exports
 
 ## Earlier illustrated launcher scenes
 

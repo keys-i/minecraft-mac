@@ -69,53 +69,13 @@ enum Landscape {
     }
 
     static func height(_ biome: Biome, x: Double, z: Double, centre: Double = 0) -> Double {
-        let x = x-centre, wave = sin(x*0.13)*1.5+cos(z*0.17)*1.2
-        switch biome {
-        case .central, .highlands, .midlands, .islands, .barrens, .city:
-            let radius = biome == .central ? 36.0 : biome == .city ? 43 : biome == .islands ? 14 : biome == .highlands ? 33 : 26
-            let distance = hypot(x/1.2,z+13)
-            if distance > radius {
-                for (cx,cz,r) in [(-39.0,-35.0,12.0),(36,-57,16),(-26,21,8),(43,7,9)] {
-                    if hypot(x-cx,z-cz) < r { return floor(2+cos(x*0.3)) }
-                }
-                return -100
-            }
-            if biome == .central || biome == .city { return 4 }
-            return floor(max(1,4+wave*(biome == .highlands ? 2 : biome == .barrens || biome == .midlands ? 0.3 : 1)))
-        case .reef: return floor(-5+sin(x*0.2)*cos(z*0.2))
-        case .coast: return z < 5+sin(x*0.08)*3 ? -4 : floor(3+wave*0.35)
-        case .lush: return abs(x-4)<11 && abs(z-4)<7 ? -3 : floor(3+wave*0.7)
-        case .mangrove, .swamp:
-            return abs(sin(x*0.19)+cos(z*0.23)) < 0.9 ? -2 : floor(2+wave*0.4)
-        case .deep, .trial: return 4
-        case .wastes, .crimson, .warped, .soul, .basalt:
-            if abs(z+6-sin(x*0.08)*5) < (biome == .basalt ? 7 : 4) { return -3 }
-            return floor(max(2,5+wave*(biome == .basalt ? 2.6 : 1.2)+max(0,-z-45)*0.5))
-        case .grove:
-            if abs(x+5-sin(z*0.13)*4)<3 { return -2 }
-            return floor(4+wave+max(0,-z-25)*0.2)
-        case .terraces: return floor(3+wave+max(0,-z-12)*0.24)
-        case .valley, .sculk: return floor(2+abs(x)*0.24+wave)
-        case .shards:
-            if hypot(x,z+12)>23 && sin(x*0.12)*cos(z*0.15)>0 { return -100 }
-            return floor(4+wave+max(0,-z-18)*0.2)
-        default: break
-        }
-        if [.meadow,.desert,.jungle,.mansion,.savanna,.snow].contains(biome), abs(x)<23, (-40 ... -6).contains(z) { return 4 }
-        switch biome {
-        case .peaks: return floor(3+wave+max(0,-z-4)*0.5+max(0,abs(x)-12)*0.28)
-        case .badlands: return floor(3+wave+max(0,abs(x)-12)*0.4+max(0,-z-24)*0.24)
-        case .dripstone: return floor(2+wave)
-        default:
-            if abs(z+43-sin(x*0.1)*5)<3 { return -2 }
-            return floor(max(1,4+wave+max(0,-z-32)*0.15))
-        }
+        Terrain(biome:biome).height(x-centre,z)
     }
 
     static func scene(_ world: World, biome: Int = 0, assets: Assets) throws -> SCNScene {
         let area = world.biomes[world.index(biome)], scene = SCNScene()
         let camera = SCNNode(); camera.name = "camera"; camera.camera = SCNCamera()
-        camera.camera?.fieldOfView = 48; camera.camera?.zFar = 230; camera.camera?.zNear = 0.1
+        camera.camera?.fieldOfView = 67; camera.camera?.zFar = 230; camera.camera?.zNear = 0.1
         camera.camera?.wantsHDR = true; camera.camera?.wantsExposureAdaptation = false
         camera.camera?.exposureOffset = -0.15; camera.camera?.bloomIntensity = 0.12
         camera.camera?.bloomThreshold = 1.2; camera.camera?.screenSpaceAmbientOcclusionIntensity = 0.65
@@ -123,42 +83,14 @@ enum Landscape {
         scene.rootNode.addChildNode(camera)
         let sun = SCNNode(); sun.light = SCNLight(); sun.light?.type = .directional
         sun.eulerAngles = .init(-0.8,-0.6,0); sun.light?.castsShadow = true
-        sun.light?.shadowMode = .deferred; sun.light?.shadowMapSize = .init(width:1024,height:1024)
+        sun.light?.shadowMode = .deferred; sun.light?.shadowMapSize = .init(width:2048,height:2048)
         sun.light?.shadowSampleCount = 4; sun.light?.shadowColor = NSColor.black.withAlphaComponent(0.28)
-        sun.light?.maximumShadowDistance = 100; scene.rootNode.addChildNode(sun)
+        sun.light?.maximumShadowDistance = 55; scene.rootNode.addChildNode(sun)
         let fill = SCNNode(); fill.light = SCNLight(); fill.light?.type = .ambient
         scene.rootNode.addChildNode(fill)
-        var land = Voxels(), detail = Voxels()
-        let surface = try assets.tiles(area.surface)
-        let stone = try assets.tiles(world == .nether ? "netherrack" : world == .end ? "end_stone" : area == .deep ? "deepslate" : "stone")
-        var heights: [Int:Double] = [:]
-        func key(_ x: Int, _ z: Int) -> Int { (x+70)*140+z+90 }
-        for x in -67...67 { for z in -82...40 { heights[key(x,z)] = height(area,x:Double(x),z:Double(z)) } }
-        func h(_ x: Int, _ z: Int) -> Double { heights[key(x,z)] ?? -100 }
-        let strata = try (area == .badlands ? ["red_terracotta","orange_terracotta","yellow_terracotta","terracotta"] : []).map { try assets.tiles($0) }
-        for x in -66...66 { for z in -81...39 {
-            let y = h(x,z); guard y > -90 else { continue }
-            var cap = 16
-            for (face,d) in [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))] {
-                if h(x+d.0,z+d.1)<y { cap |= 1 << face }
-            }
-            land.cube(.init(1,1,1),at:.init(Double(x),y-0.5,Double(z)),material:surface[0],faces:cap,faceMaterials:surface)
-            let bottom = world == .end || area == .shards ? -3-max(0,12-hypot(Double(x),Double(z+13))*0.3) : -8
-            if !strata.isEmpty {
-                for level in Int(bottom)..<Int(y)-1 {
-                    var faces = 0
-                    for (face,d) in [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))] {
-                        if h(x+d.0,z+d.1)<=Double(level) { faces |= 1 << face }
-                    }
-                    let tiles = strata[abs(level/2)%strata.count]
-                    if faces != 0 { land.cube(.init(1,1,1),at:.init(Double(x),Double(level)+0.5,Double(z)),material:tiles[0],faces:faces,faceMaterials:tiles) }
-                }
-            } else {
-                var sides = 0
-                for (face,d) in [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))] { if h(x+d.0,z+d.1)<y-1 { sides |= 1 << face } }
-                land.cube(.init(1,max(0.1,y-1-bottom),1),at:.init(Double(x),(y-1+bottom)/2,Double(z)),material:stone[0],faces:sides | (world == .end ? 32 : 0),faceMaterials:stone)
-            }
-        } }
+        let terrain = Terrain(biome:area)
+        var detail = Voxels()
+        scene.rootNode.addChildNode(try terrain.node(assets:assets))
         func block(_ size: SCNVector3, _ at: SCNVector3, _ name: String) throws {
             let tiles = try assets.tiles(name)
             detail.cube(size,at:at,material:tiles[0],faceMaterials:tiles)
@@ -166,28 +98,42 @@ enum Landscape {
         func sprite(_ name: String, x: Double, y: Double, z: Double, size: Double = 1, tint: UInt32? = nil) throws {
             let material = try assets.texture("textures/blocks/"+name,tint:tint)
             let uv = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
+            let first = detail.vertices.count
             detail.cube(.init(size,size,0),at:.init(x,y+size/2,z),material:material,faces:1,textureUV:uv)
             detail.cube(.init(0,size,size),at:.init(x,y+size/2,z),material:material,faces:2,textureUV:uv)
+            for index in first..<detail.vertices.count {
+                let p = detail.vertices[index], n = detail.normals[index], c = sqrt(0.5)
+                detail.vertices[index] = .init(x+(p.x-x)*c-(p.z-z)*c,p.y,z+(p.x-x)*c+(p.z-z)*c)
+                detail.normals[index] = .init(n.x*c-n.z*c,n.y,n.x*c+n.z*c)
+            }
         }
-        let trees = [.jungle,.forest,.mansion,.pale,.mangrove].contains(area) ? 90 : area.tree == nil ? 0 : 55
-        for index in 0..<max(90,trees) {
-            let x = Double((index*37)%113-56), z = Double((index*53)%105-72)
+        let trees = [.jungle,.forest,.mansion,.pale,.mangrove].contains(area) ? 320 : area.tree == nil ? 0 : 170
+        for index in 0..<max(180,trees) {
+            let x = (Terrain.random(index,3,seed:terrain.seed)*176-88).rounded(), z = (Terrain.random(index,19,seed:terrain.seed)*176-120).rounded()
             let ground = height(area,x:x,z:z)
             let y = area == .mangrove || area == .swamp ? max(0.35,ground) : ground
-            let building = [.meadow,.snow,.desert,.savanna,.mansion].contains(area)
-            let clearing = abs(x)<(building ? 23 : 11) && (building ? (-42 ... 15) : (-29 ... 12)).contains(z)
+            let clearing = terrain.reserved(x,z)
             if y <= 0 || y < -90 { continue }
             if index<trees, let selected = area.tree, !clearing {
                 let tree = area == .forest && index%4 == 0 ? "birch" : selected
                 let bark = try assets.tiles(tree+"_log"), leaves = try assets.tiles(tree+"_leaves")
-                let tall = tree == "jungle" ? 10+index%5 : tree == "spruce" ? 7+index%4 : tree == "dark_oak" ? 7 : 5+index%3
+                let tall = tree == "jungle" ? 11+index%9 : tree == "spruce" ? 7+index%4 : tree == "dark_oak" ? 7 : 4+index%3
                 let thick = tree == "jungle" && index%3 == 0 || tree == "dark_oak" ? 2.0 : 1
-                detail.cube(.init(thick,Double(tall),thick),at:.init(x,y+Double(tall)/2,z),material:bark[0],faceMaterials:bark)
+                let fork = tree == "acacia" || tree == "cherry"
+                let trunk = Double(tall-(fork ? 2 : 0))
+                detail.cube(.init(thick,trunk,thick),at:.init(x,y+trunk/2,z),material:bark[0],faceMaterials:bark)
+                if fork {
+                    for side in (tree == "cherry" ? [-1.0,1] : [index%2 == 0 ? -1.0 : 1]) {
+                        for level in 0..<3 {
+                            detail.cube(.init(1,1,1),at:.init(x+side*Double(level),y+trunk+Double(level)*0.5,z),material:bark[0],faceMaterials:bark)
+                        }
+                    }
+                }
                 var canopy = Voxels()
                 func leaf(_ x: Int, _ y: Int, _ z: Int) -> Bool {
                     let levels = tree == "spruce" ? 6 : tree == "acacia" ? 2 : 4
                     guard (0..<levels).contains(y) else { return false }
-                    let r = tree == "spruce" ? max(0,3-y/2) : tree == "acacia" ? 3-y : y<2 ? 3 : 2
+                    let r = tree == "spruce" ? max(0,3-y/2-(y%2)) : tree == "acacia" ? 3-y : tree == "jungle" || tree == "dark_oak" || tree == "mangrove" || tree == "cherry" ? (y<2 ? 3 : 2) : (y<2 ? 2 : 1)
                     return abs(x)<=r && abs(z)<=r && (r == 0 || abs(x)+abs(z)<r*2)
                 }
                 for dy in 0..<6 { for dx in -3...3 { for dz in -3...3 where leaf(dx,dy,dz) {
@@ -196,7 +142,7 @@ enum Landscape {
                     }
                     canopy.cube(.init(1,1,1),at:.init(Double(dx),Double(dy),Double(dz)),material:leaves[0],faces:faces,faceMaterials:leaves)
                 } } }
-                let crown = canopy.node("wind-canopy"); crown.position = .init(x,y+Double(tall)-1,z)
+                let crown = canopy.node("wind-canopy"); crown.position = .init(x+(tree == "acacia" ? (index%2 == 0 ? -2 : 2) : 0),y+Double(tall)-(tree == "spruce" ? 4 : 1),z)
                 VoxelAdventure.sway(crown,x:0.003,z:0.005,period:8+Double(index%4),phase:Double(index))
                 scene.rootNode.addChildNode(crown)
                 if area == .mangrove {
@@ -260,12 +206,12 @@ enum Landscape {
             }
         }
         if world == .overworld || area == .grove {
-            for index in 0..<360 {
-                let x = Double((index*17)%67-33)+0.2, z = Double((index*23)%65-34)+0.1
+            for index in 0..<1100 {
+                let x = Terrain.random(index,27,seed:5)*104-52, z = Terrain.random(index,37,seed:9)*104-55
                 let y = height(area,x:x,z:z)
                 if y < -1, [.coast,.reef,.mangrove,.swamp,.lush].contains(area) {
                     try sprite(area == .mangrove || area == .swamp ? "reeds" : "seagrass",x:x,y:y,z:z,size:1.3,tint:0x78A73F)
-                } else if y>0, !(abs(x)<23 && (-40 ... -7).contains(z)) {
+                } else if y>0, !terrain.reserved(x,z) {
                     switch area {
                     case .meadow,.forest,.cherry,.savanna,.jungle,.swamp,.mansion,.grove:
                         try sprite(index%9 == 0 ? "flower_dandelion" : index%11 == 0 ? "flower_rose" : "tallgrass",x:x,y:y,z:z,tint:index%9 == 0 || index%11 == 0 ? nil : 0x86B85B)
@@ -295,25 +241,13 @@ enum Landscape {
         }
         if area == .meadow {
             for z in -35...12 {
-                try block(.init(3,0.08,1),.init(0,4.04,Double(z)),"dirt_path")
-                if z%8 == 0 { try block(.init(13,0.08,2),.init(0,4.04,Double(z)),"dirt_path") }
+                try block(.init(3,0.08,1),.init(0,height(area,x:0,z:Double(z))+0.04,Double(z)),"dirt_path")
+                if z%8 == 0 { try block(.init(13,0.08,2),.init(0,height(area,x:0,z:Double(z))+0.04,Double(z)),"dirt_path") }
             }
         }
-        if area.underground || world == .nether {
-            let roof = area.underground ? 34.0 : 45
-            try block(.init(136,5,122),.init(0,roof,-30),world == .nether ? "netherrack" : "stone")
-            for index in 0..<24 {
-                let x = Double(index%2 == 0 ? -48+index%5 : 45-index%5), z = Double(index/2)*9-78
-                try block(.init(5,roof,5),.init(x,roof/2,z),world == .nether ? "netherrack" : "stone")
-                try block(.init(7,Double(index%6+3),6),.init(Double(index%7-3)*12,roof-Double(index%6+3)/2-2,-60),world == .nether ? "netherrack" : "stone")
-            }
-        }
-        scene.rootNode.addChildNode(land.node("terrain")); scene.rootNode.addChildNode(detail.node("habitat-detail"))
-        let landmark = try Structures.build(area,x:0,y:area == .coast ? 0 : area == .reef ? -5 : 4,assets:assets)
+        scene.rootNode.addChildNode(detail.node("habitat-detail"))
+        let landmark = try Structures.build(area,x:0,y:area == .coast ? 0 : area == .reef ? -7 : area == .monument ? -22 : area == .ice ? 2 : area == .swamp ? 0 : 4,assets:assets)
         scene.rootNode.addChildNode(landmark)
-        if world == .overworld || world == .nether || area == .grove {
-            try liquid(scene,assets:assets,lava:world == .nether,at:.init(0,0.35,-20),size:.init(width:136,height:122))
-        }
         if [.jungle,.lush,.terraces,.grove].contains(area) || world == .nether {
             for index in 0..<(world == .nether ? 3 : 2) {
                 let x = Double(index*27-26), z = -43.0-Double(index*9)
@@ -325,7 +259,7 @@ enum Landscape {
             for index in 0..<9 {
                 var shape = Voxels(); shape.cube(.init(13,1,5),at:.init(0,0,0),material:white)
                 shape.cube(.init(7,1,5),at:.init(2,0,4),material:white)
-                let cloud = shape.node("drifting-cloud"); cloud.position = .init(Double(index%4-2)*30,34+Double(index%2)*3,-60+Double(index/4)*30)
+                let cloud = shape.node("drifting-cloud"); cloud.position = .init(Double(index%4-2)*45,78+Double(index%2)*3,-110+Double(index/4)*45)
                 cloud.runAction(.repeatForever(.sequence([.moveBy(x:16,y:0,z:0,duration:55),.moveBy(x:-16,y:0,z:0,duration:55)])))
                 scene.rootNode.addChildNode(cloud)
             }
@@ -353,93 +287,158 @@ enum Landscape {
         return scene
     }
 
-    static func liquid(_ scene: SCNScene, assets: Assets, lava: Bool, at point: SCNVector3, size: CGSize, vertical: Bool = false) throws {
-        let material = try assets.texture(lava ? "textures/blocks/lava_still" : "textures/blocks/water_still_grey",tint:lava ? nil : 0x3F8FBB).copy() as! SCNMaterial
-        material.transparency = lava ? 1 : 0.42
-        if lava { material.emission.contents = material.diffuse.contents; material.emission.intensity = 0.4 }
-        let plane = SCNPlane(width:size.width,height:size.height); plane.firstMaterial = material
-        let surface = SCNNode(geometry:plane); surface.name = vertical ? "waterfall" : "flowing-surface"
-        surface.position = point; surface.eulerAngles.x = vertical ? 0 : -.pi/2
-        surface.runAction(.repeatForever(.customAction(duration:128) { node,time in
-            var transform = SCNMatrix4MakeScale(size.width,size.height,1)
-            transform.m41 = vertical ? 0 : time/12; transform.m42 = time/(vertical ? 2 : 18)
-            node.geometry?.firstMaterial?.diffuse.contentsTransform = transform
+    static func flow(assets: Assets, lava: Bool) throws -> SCNMaterial {
+        let material = try assets.texture(lava ? "textures/blocks/lava_still" : "textures/blocks/water_still_grey",tint:lava ? nil : 0x3F76E4,animated:true).copy() as! SCNMaterial
+        material.transparency = lava ? 1 : 0.72
+        if lava { material.emission.contents = material.diffuse.contents; material.emission.intensity = 0.45 }
+        return material
+    }
+
+    static func animate(_ node: SCNNode, material: SCNMaterial) {
+        let image = material.diffuse.contents as! CGImage, frames = max(1,image.height/image.width)
+        material.diffuse.contentsTransform = SCNMatrix4MakeScale(1,1/CGFloat(frames),1)
+        material.emission.contentsTransform = material.diffuse.contentsTransform
+        node.runAction(.repeatForever(.customAction(duration:Double(frames)*0.12) { _,time in
+            var transform = SCNMatrix4MakeScale(1,1/CGFloat(frames),1)
+            transform.m42 = CGFloat(min(frames-1,Int(time/0.12)))/CGFloat(frames)
+            material.diffuse.contentsTransform = transform
+            if material.emission.contents != nil { material.emission.contentsTransform = transform }
         }))
-        scene.rootNode.addChildNode(surface)
+    }
+
+    static func liquid(_ scene: SCNScene, assets: Assets, lava: Bool, at point: SCNVector3, size: CGSize, vertical: Bool = false) throws {
+        let material = try flow(assets:assets,lava:lava)
+        var mesh = Voxels()
+        for x in 0..<Int(ceil(size.width)) { for y in 0..<Int(ceil(size.height)) {
+            let dx = Double(x)+0.5-size.width/2, dy = Double(y)+0.5-size.height/2
+            mesh.cube(vertical ? .init(1,1,0) : .init(1,0,1),at:vertical ? .init(dx,dy,0) : .init(dx,0,dy),material:material,faces:vertical ? 1 : 16)
+        } }
+        let surface = mesh.node(vertical ? "waterfall" : "flowing-surface"); surface.position = point
+        animate(surface,material:material); scene.rootNode.addChildNode(surface)
+    }
+
+    static func pose(_ area: Biome, at time: Double) -> (eye: SCNVector3, aim: SCNVector3) {
+        let phase = (1-cos(min(1,max(0,time/18)) * .pi))/2
+        let x: Double, z: Double, target: SCNVector3, elevation: Double?
+        switch area {
+        case .wastes: x = 22-phase*6; z = -18; target = .init(-20,14,-18); elevation = 13.62
+        case .trial: x = 9-phase*2; z = -9-phase*2; target = .init(-7,7,-24); elevation = 5.62
+        case .reef: x = -8+phase*3; z = 18-phase*3; target = .init(1,-2,-18); elevation = -1.6
+        case .monument: x = 7-phase*3; z = 34-phase*4; target = .init(-3,-6,-20); elevation = -3.5
+        case .city: x = 9-phase*3; z = 17-phase*3; target = .init(-1,19,-23); elevation = nil
+        case .central: x = 5-phase*2; z = 24-phase*3; target = .init(-3,16,-23); elevation = nil
+        case .islands: x = 5-phase*2; z = -5-phase*2; target = .init(28,5,-55); elevation = nil
+        case .mansion: x = 7-phase*3; z = 35-phase*3; target = .init(0,12,-7); elevation = nil
+        case .deep: x = 8-phase*3; z = 9-phase*3; target = .init(-1,12,-27); elevation = nil
+        case .lush: x = -6+phase*2; z = 15-phase*3; target = .init(5,7,-24); elevation = nil
+        case .badlands: x = 1+phase; z = 5-phase*2; target = .init(0,7,-23); elevation = nil
+        case .river: x = 11-phase*2; z = 20-phase*3; target = .init(-6,4,-25); elevation = nil
+        case .mangrove,.swamp: x = 3+phase*2; z = 20-phase*3; target = .init(-2,5,-20); elevation = nil
+        case .peaks: x = 9-phase*2; z = 17-phase*2; target = .init(-9,18,-37); elevation = nil
+        default: x = 4-phase*3; z = 20-phase*4; target = .init(-2,7,-25); elevation = nil
+        }
+        let ground = height(area,x:x.rounded(),z:z.rounded())
+        return (.init(x,elevation ?? max(0.9,ground)+1.62,z),target)
     }
 
     static func focus(_ scene: SCNScene, world: World, biome: Int, animated: Bool) {
         let area = world.biomes[world.index(biome)], camera = scene.rootNode.childNode(withName:"camera",recursively:false)!
-        let eye: SCNVector3, aim: SCNVector3
-        switch area {
-        case .city: eye = .init(48,34,63); aim = .init(6,19,-21)
-        case .deep: eye = .init(34,24,40); aim = .init(0,10,-20)
-        case .trial: eye = .init(24,22,28); aim = .init(0,8,-17)
-        case .lush: eye = .init(23,13,30); aim = .init(0,6,-12)
-        case .badlands: eye = .init(24,15,28); aim = .init(0,5,-16)
-        case .mangrove,.swamp: eye = .init(25,13,34); aim = .init(0,4,-12)
-        case .reef: eye = .init(28,3,30); aim = .init(0,-1,-15)
-        case .mansion: eye = .init(37,23,48); aim = .init(0,10,-20)
-        case .central: eye = .init(47,32,62); aim = .init(0,13,-20)
-        default: eye = .init(29,20,42); aim = .init(0,6,-15)
-        }
-        scene.background.contents = colour(area.sky); scene.fogColor = colour(area.sky)
-        scene.fogStartDistance = area.underground ? 45 : 75; scene.fogEndDistance = area.underground ? 115 : 175
+        let underwater = area == .reef || area == .monument
+        scene.background.contents = colour(underwater ? 0x245A78 : area.sky)
+        scene.fogColor = colour(underwater ? 0x245A78 : area.sky)
+        scene.fogStartDistance = underwater ? 12 : area.underground || world == .nether ? 38 : 90
+        scene.fogEndDistance = underwater ? 62 : area.underground || world == .nether ? 100 : 155
         for light in scene.rootNode.childNodes.compactMap(\.light) {
-            if light.type == .ambient { light.intensity = area.underground ? 400 : area == .pale ? 300 : 500 }
+            if light.type == .ambient { light.intensity = area.underground ? 350 : area == .pale ? 300 : 450 }
             if light.type == .directional { light.intensity = area.underground ? 300 : area == .pale ? 450 : 900 }
         }
-        let orientation = SCNNode(); orientation.position = eye; orientation.look(at:aim)
         camera.removeAction(forKey:"journey")
-        let drift = SCNAction.repeatForever(.sequence([.moveBy(x:-1.3,y:0.15,z:-0.6,duration:9),.moveBy(x:1.3,y:-0.15,z:0.6,duration:9)]))
-        if animated {
-            let move = SCNAction.move(to:eye,duration:2), turn = SCNAction.rotateTo(x:orientation.eulerAngles.x,y:orientation.eulerAngles.y,z:orientation.eulerAngles.z,duration:2,usesShortestUnitArc:true)
-            camera.runAction(.sequence([.group([move,turn]),drift]),forKey:"journey")
-        } else { camera.position = eye; camera.orientation = orientation.orientation; camera.runAction(drift,forKey:"journey") }
+        let initial = pose(area,at:0); camera.position = initial.eye; camera.look(at:initial.aim)
+        camera.runAction(.repeatForever(.sequence([
+            .customAction(duration:18) { node,time in let p = pose(area,at:Double(time)); node.position = p.eye; node.look(at:p.aim) },
+            .customAction(duration:18) { node,time in let p = pose(area,at:18-Double(time)); node.position = p.eye; node.look(at:p.aim) }
+        ])),forKey:"journey")
     }
 
     private static func populate(_ scene: SCNScene, world: World, area: Biome, factory: Mobs) throws {
-        let spots: [(Double,Double)] = [(-12,9),(-3,5),(10,4),(18,13),(-21,-3),(24,-7),(-7,17),(10,19)]
+        let terrain = Terrain(biome:area)
         for (kind,species) in area.residents.enumerated() {
-            let solitary = [.warden,.creaking,.ironGolem,.ravager,.piglinBrute,.witch,.sniffer].contains(species)
-            let count = solitary ? 1 : [.cod,.salmon,.enderman,.chicken,.sheep,.cow,.pig,.strider].contains(species) ? 4 : 3
+            let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem].contains(species)
+            let count = solitary ? 1 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
             for index in 0..<count {
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"
-                let model = try factory.make(species,biome:area); actor.addChildNode(model)
+                let model = try factory.make(species,biome:area,variant:index); actor.addChildNode(model)
                 if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y) }
-                let spot = spots[kind%spots.count]
-                var x = spot.0+cos(Double(index)*2.4+Double(kind))*2, z = spot.1+sin(Double(index)*2.4+Double(kind))*2.5
+                let a = Terrain.random(kind,index,seed:3)*Double.pi*2
+                let radius = sqrt(Terrain.random(index,kind,seed:2))*3
+                var x = Double(kind%3-1)*11+cos(a)*radius, z = Double(kind/3)*9-5+sin(a)*radius
+                if area == .meadow {
+                    let patches: [(Double,Double)] = [(-9,6),(12,6),(-5,-1),(0,-7),(10,-12),(-5,-8),(4,-6)]
+                    let patch = patches[kind%patches.count]; x = patch.0+cos(a)*radius; z = patch.1+sin(a)*radius
+                }
+                if area == .trial { x = -9+Double(kind%3)*7+cos(a)*1.5; z = -21+Double(kind/3)*7+sin(a)*2 }
                 if species.swimming {
-                    if area == .lush { x = 1+Double(index)*2; z = 2+Double(kind%2)*3 }
-                    else if area == .coast || area == .reef { x = -14+Double(kind)*7+Double(index); z = -2-Double(index)*3 }
+                    if area == .lush { x = 6+Double(index%3)*3; z = 4+Double(index/3)*3 }
+                    else if area == .river {
+                        z = -5+Double(index)*3
+                        x = 4+Terrain.noise(0,z,scale:32,seed:9)*9+cos(a)*2
+                    }
+                    else if area == .monument { x = -17+Double(index)*7; z = 13+sin(a)*4 }
+                    else { x = -13+Double(kind)*6+cos(a)*3; z = -2-Double(index)*3 }
                 }
-                if area == .trial { x = -9+Double(kind%3)*8+Double(index)*1.2; z = -21+Double(kind/3)*8+Double(index%2)*2 }
-                if species == .strider { z = -6+sin(x*0.08)*5 }
-                if [.blaze,.witherSkeleton,.piglinBrute].contains(species) { x = -8+Double(index)*5; z = -19 }
+                if species == .strider { z = -6-Terrain.noise(x,0,scale:36,seed:13)*10 }
+                if [.blaze,.witherSkeleton].contains(species) { x = 3+Double(index)*4; z = -18+sin(a) }
+                if species == .piglinBrute { x = -3+Double(index)*4; z = -17 }
                 if species == .warden { x = -4; z = -1 }
-                if species == .shulker { x = -8+Double(index)*8; z = -13 }
-                if species == .endermite { x = -14+Double(index)*3; z = 12 }
-                if height(area,x:x,z:z) < -90 { x *= 0.35; z = -7+Double(index) }
-                func point(_ x: Double, _ z: Double) -> SCNVector3 {
-                    let ground = height(area,x:x.rounded(),z:z.rounded())
-                    let elevation = species.swimming ? -1.3 : species == .strider ? 0.35 : [.blaze,.witherSkeleton].contains(species) ? 12 : max(0.4,ground)
-                    return .init(x,elevation+(species.flying ? (species == .breeze ? 1.2 : 3) : 0),z)
+                if species == .shulker { x = 5+Double(index)*3; z = -13 }
+                if species == .endermite { x = -10; z = 10 }
+                if species == .turtle { x = 3+Double(index)*4; z = 11+sin(a)*2 }
+                if terrain.height(x,z) < -90 { x *= 0.3; z = -7+Double(index) }
+                if !species.flying && !species.swimming && species != .strider {
+                    for step in 0..<24 where terrain.height(x.rounded(),z.rounded()) < 1 {
+                        x += cos(Double(step)*2.4)*3
+                        z += sin(Double(step)*2.4)*3+2
+                    }
                 }
-                actor.position = point(x,z); actor.eulerAngles.y = Double(kind+index)*1.3
-                if species != .shulker && species != .warden {
-                    let destination = point(x+0.7,z+0.4)
-                    let move = SCNAction.move(to:destination,duration:Double(7+index))
-                    let back = SCNAction.move(to:point(x,z),duration:Double(9+kind))
-                    actor.runAction(.repeatForever(.sequence([.wait(duration:Double(index)),move,.wait(duration:2),back])))
+                func point(_ x: Double, _ z: Double) -> SCNVector3 {
+                    let h = terrain.height(x.rounded(),z.rounded())
+                    let y = species.swimming ? (area == .monument ? -5 : -1.8) : species == .strider ? 0.9 : [.blaze,.witherSkeleton].contains(species) ? 12 : species == .shulker ? 8+Double(index)*3 : max(0.9,h)
+                    return .init(x,y+(species.flying ? (species == .breeze ? 1.2 : 3) : 0),z)
+                }
+                let start = point(x,z)
+                var end = point(x+cos(a)*3,z+sin(a)*3)
+                if species.swimming && terrain.height(end.x.rounded(),end.z.rounded()) >= end.y-0.5 { end = start }
+                if !species.flying && !species.swimming && (abs(end.y-start.y)>1 || terrain.height(end.x,end.z)<0) { end = start }
+                actor.position = start; actor.eulerAngles.y = a
+                if species != .shulker && species != .warden && species != .snowGolem {
+                    var legs: [(SCNNode,SCNVector3)] = []
+                    model.enumerateChildNodes { node,_ in
+                        if node.name?.lowercased().contains("leg") == true { legs.append((node,node.eulerAngles)) }
+                    }
+                    let destination = end, heading = atan2(end.x-start.x,end.z-start.z)
+                    actor.runAction(.repeatForever(.customAction(duration:30+Double(index)) { node,time in
+                        let duration = 30+Double(index), t = Double(time)/duration
+                        let walking = (0.2...0.45).contains(t) || (0.7...0.95).contains(t)
+                        let fraction = t<0.2 ? 0 : t<0.45 ? (t-0.2)/0.25 : t<0.7 ? 1 : t<0.95 ? 1-(t-0.7)/0.25 : 0
+                        node.position = .init(start.x+(destination.x-start.x)*fraction,start.y+(destination.y-start.y)*fraction,start.z+(destination.z-start.z)*fraction)
+                        if species.flying || species.swimming { node.position.y += sin(Double(time)*1.4+Double(index))*0.2 }
+                        if walking {
+                            node.eulerAngles.y = heading+(t>0.7 ? .pi : 0)
+                            if species == .rabbit || species == .frog { node.position.y += abs(sin(Double(time)*4))*0.25 }
+                        }
+                        for (index,part) in legs.enumerated() {
+                            part.0.eulerAngles.x = part.1.x+(walking ? sin(Double(time)*6+Double(index%2)*Double.pi)*0.4 : 0)
+                        }
+                    }))
                 }
                 scene.rootNode.addChildNode(actor)
             }
         }
         if area == .central || world == .nether {
             let group = SCNNode(); group.name = "sky-resident"
-            let model = try factory.actor(world == .end ? "ender_dragon" : "ghast"); group.addChildNode(model)
-            group.position = .init(-20,23,-23)
-            group.runAction(.repeatForever(.sequence([.move(to:.init(22,25,-37),duration:20),.move(to:.init(-20,23,-23),duration:20)])))
+            group.addChildNode(try factory.actor(world == .end ? "ender_dragon" : "ghast"))
+            group.position = .init(-18,24,-35)
+            group.runAction(.repeatForever(.sequence([.move(to:.init(24,27,-49),duration:20),.rotateBy(x:0,y:.pi,z:0,duration:3),.move(to:.init(-18,24,-35),duration:20),.rotateBy(x:0,y:.pi,z:0,duration:3)])))
             scene.rootNode.addChildNode(group)
         }
     }

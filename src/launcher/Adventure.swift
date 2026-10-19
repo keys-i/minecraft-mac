@@ -43,15 +43,27 @@ struct Adventure: NSViewRepresentable {
     let moving: Bool
     let passage: Passage?
     let assets: Assets
+    let exploring: Bool
     let failed: () -> Void
 
-    final class Coordinator {
+    final class Coordinator: NSObject {
+        weak var view: SCNView?
+        var exploring = false
+        var angles = SCNVector3Zero
         var world: World?
         var biome: Int?
         var passage: Passage?
         var moving = false
         var request = 0
         var operation: Operation?
+
+        @objc func pan(_ gesture: NSPanGestureRecognizer) {
+            guard exploring, let view, let camera = view.pointOfView else { return }
+            if gesture.state == .began { angles = camera.eulerAngles }
+            let movement = gesture.translation(in:view)
+            camera.eulerAngles = .init(max(-1.1,min(1.1,angles.x+movement.y*0.004)),angles.y+movement.x*0.004,0)
+            view.needsDisplay = true
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -62,12 +74,21 @@ struct Adventure: NSViewRepresentable {
         view.preferredFramesPerSecond = 20
         view.antialiasingMode = .multisampling4X
         view.allowsCameraControl = false
+        view.addGestureRecognizer(NSPanGestureRecognizer(target:context.coordinator,action:#selector(Coordinator.pan(_:))))
+        context.coordinator.view = view
         return view
     }
 
     func updateNSView(_ view: SCNView, context: Context) {
         let coordinator = context.coordinator
         coordinator.moving = moving
+        if coordinator.exploring != exploring {
+            coordinator.exploring = exploring
+            if let scene = view.scene, passage == nil {
+                if exploring { view.pointOfView?.removeAction(forKey:"journey") }
+                else { Landscape.focus(scene,world:world,biome:biome,animated:moving) }
+            }
+        }
         if coordinator.world != world || coordinator.passage != passage
             || (passage == nil && coordinator.biome != biome) {
             coordinator.operation?.cancel()
@@ -81,6 +102,7 @@ struct Adventure: NSViewRepresentable {
                 switch result {
                 case .success(let scene):
                     let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
+                    if coordinator.exploring { camera?.removeAction(forKey:"journey") }
                     if coordinator.moving, view.scene != nil {
                         view.present(scene,with:.crossFade(withDuration:0.65),incomingPointOfView:camera,completionHandler:nil)
                     } else { view.scene = scene; view.pointOfView = camera }
@@ -104,5 +126,7 @@ struct Adventure: NSViewRepresentable {
         coordinator.request += 1
         motion(view, enabled: false)
         view.scene = nil
+        view.gestureRecognizers.removeAll()
+        coordinator.view = nil
     }
 }

@@ -27,6 +27,9 @@ class PackagingTests(unittest.TestCase):
             resources.mkdir(parents=True)
             (root / 'assets').mkdir()
             (root / 'assets/poster.webp').write_bytes(b'approved poster')
+            (root / 'assets/Monocraft.ttf').write_bytes(b'pixel font')
+            (root / 'vendor/licenses').mkdir(parents=True)
+            (root / 'vendor/licenses/Monocraft-OFL.txt').write_text('font licence')
             (resources / 'overworld.jpg').write_bytes(b'retired panorama')
             with patch.object(packager, 'ROOT', root), \
                     patch.object(packager.subprocess, 'run'), \
@@ -34,6 +37,8 @@ class PackagingTests(unittest.TestCase):
                 app = packager.build_launcher()
             self.assertEqual(app.name, 'Minecraft for MacOS.app')
             self.assertEqual((resources / 'poster.webp').read_bytes(), b'approved poster')
+            self.assertEqual((resources / 'Monocraft.ttf').read_bytes(), b'pixel font')
+            self.assertEqual((resources / 'vendor/licenses/Monocraft-OFL.txt').read_text(), 'font licence')
             for name in ('overworld.jpg', 'nether.jpg', 'end.jpg', 'sift.jpg'):
                 self.assertFalse((app / 'Contents/Resources' / name).exists())
             with (app / 'Contents/Info.plist').open('rb') as file:

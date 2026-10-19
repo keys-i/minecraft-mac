@@ -1,0 +1,188 @@
+import SceneKit
+
+struct Terrain {
+    let biome: Biome
+
+    static func random(_ x: Int, _ z: Int, seed: Int = 0) -> Double {
+        var n = UInt64(bitPattern:Int64(x)) &* 0x9E3779B185EBCA87
+        n = n &+ UInt64(bitPattern:Int64(z)) &* 0xC2B2AE3D27D4EB4F &+ UInt64(seed) &* 0x165667B19E3779F9
+        n = (n ^ (n >> 30)) &* 0xBF58476D1CE4E5B9
+        n = (n ^ (n >> 27)) &* 0x94D049BB133111EB
+        return Double((n ^ (n >> 31)) & 0xFFFFFF)/Double(0xFFFFFF)
+    }
+
+    static func noise(_ x: Double, _ z: Double, scale: Double, seed: Int = 0) -> Double {
+        let x = x/scale, z = z/scale, ix = Int(floor(x)), iz = Int(floor(z))
+        let fx = x-Double(ix), fz = z-Double(iz)
+        let sx = fx*fx*(3-2*fx), sz = fz*fz*(3-2*fz)
+        let a = random(ix,iz,seed:seed), b = random(ix+1,iz,seed:seed)
+        let c = random(ix,iz+1,seed:seed), d = random(ix+1,iz+1,seed:seed)
+        return ((a+(b-a)*sx)*(1-sz)+(c+(d-c)*sx)*sz)*2-1
+    }
+
+    var seed: Int { Biome.allCases.firstIndex(of:biome)!+1 }
+    var end: Bool { [.central,.highlands,.midlands,.islands,.barrens,.city].contains(biome) }
+
+    func reserved(_ x: Double, _ z: Double) -> Bool {
+        let footprint: (Double,Double,Double)
+        switch biome {
+        case .meadow,.snow,.savanna: footprint = (26,-39,0)
+        case .mansion: footprint = (23,-39,17)
+        case .desert: footprint = (13,-33,-7)
+        case .jungle: footprint = (9,-29,-6)
+        case .trial: footprint = (19,-34,-2)
+        case .deep: footprint = (35,-59,5)
+        case .crimson: footprint = (23,-52,7)
+        case .wastes: return abs(z+18)<6 || abs(x)<6 && (-50 ... -15).contains(z)
+        case .city: footprint = (9,-26,-9)
+        default: footprint = (7,-26,-10)
+        }
+        let structure = abs(x)<footprint.0 && (footprint.1...footprint.2).contains(z)
+        let route = biome == .mansion ? abs(x-5)<6 && (15...40).contains(z) : abs(x-3)<5 && (-2...25).contains(z)
+        return structure || route
+    }
+
+    func height(_ x: Double, _ z: Double) -> Double {
+        let broad = Self.noise(x,z,scale:42,seed:seed)
+        let fine = Self.noise(x,z,scale:13,seed:seed+43)
+        let ridge = Self.noise(x+26,z-14,scale:64,seed:seed+11)
+        let wave = broad*3+fine*0.8
+        if end {
+            let radius = biome == .central ? 46.0 : biome == .city ? 55 : biome == .highlands ? 43 : biome == .islands ? 17 : 36
+            let distance = hypot(x/1.15,z+17)
+            let boundary = radius+Self.noise(x,z,scale:11,seed:8)*4
+            if distance>boundary {
+                for (cx,cz,r) in [(-56.0,-49.0,18.0),(51,-72,22),(-28,31,11),(60,13,16)] {
+                    let distance = hypot(x-cx,z-cz)
+                    if distance<r+Self.noise(x,z,scale:8,seed:42)*3 { return floor(2+Self.noise(x,z,scale:12,seed:4)*2) }
+                }
+                return -100
+            }
+            let relief = biome == .highlands ? 2.2 : biome == .midlands || biome == .barrens ? 0.4 : 0.9
+            if biome == .central || biome == .city { return floor(4+max(0,distance-30)*0.04) }
+            return floor(max(1,4+wave*relief))
+        }
+        switch biome {
+        case .reef: return floor(-7+broad*2+fine)
+        case .monument: return floor(-24+broad*2)
+        case .coast:
+            let shore = z+Self.noise(x,0,scale:30,seed:7)*6
+            return floor(shore<3 ? max(-9,shore*0.45-3) : 3+wave*0.2)
+        case .river:
+            let channel = abs(x-4-Self.noise(0,z,scale:32,seed:9)*9)
+            return floor(channel<6 ? -4+channel*0.25 : 2+wave*0.45)
+        case .lush:
+            if hypot((x-9)/1.3,z-7)<10+fine*2 { return -4 }
+            return floor(3+wave*0.6+max(0,abs(x)-21)*0.32)
+        case .mangrove,.swamp:
+            let water = Self.noise(x,z,scale:16,seed:4)
+            return water < 0.15 ? floor(-3+water) : floor(2+water*2)
+        case .wastes,.crimson,.warped,.soul,.basalt:
+            if biome == .wastes && abs(z+18)<6 { return 3 }
+            let river = z+6-Self.noise(x,0,scale:36,seed:13)*10
+            let edge = abs(river)
+            if edge < (biome == .basalt ? 12 : 8) { return floor(-5+broad) }
+            return floor(max(2,4+wave*1.7+max(0,-z-55)*0.25+max(0,edge-17)*0.12))
+        case .trial,.deep: return 4
+        case .ice: return z < -25 ? -4 : floor(2+wave*0.5)
+        case .peaks:
+            return floor(4+wave+pow(max(0,-z-8)*0.16,1.4)+pow(max(0,abs(x)-20)*0.12,1.4))
+        case .badlands:
+            if abs(x)<3 && (-30 ... -9).contains(z) { return 4 }
+            return floor(4+wave*0.5+max(0,abs(x)-9)*0.4+max(0,-z-15)*0.22)
+        case .dripstone: return floor(2+wave*0.7+max(0,abs(x)-22)*0.35)
+        case .valley,.sculk: return floor(3+wave+max(0,abs(x)-12)*0.42)
+        case .terraces: return floor(4+wave+max(0,-z-15)*0.2)
+        case .shards:
+            if hypot(x,z+12)>36 && Self.noise(x,z,scale:17,seed:8)>0.12 { return -100 }
+            return floor(5+wave+max(0,-z-16)*0.15)
+        default: break
+        }
+        var y = 4+wave+max(0,-z-50)*max(0,ridge+0.3)*0.25
+        if [.meadow,.desert,.jungle,.mansion,.savanna,.snow,.cherry].contains(biome) {
+            let radius = biome == .mansion ? 22.0 : biome == .meadow ? 27 : biome == .desert ? 15 : 12
+            let dx = max(0,abs(x)-radius), dz = max(0,abs(z+(biome == .mansion ? 12 : 19))-(biome == .mansion ? 28 : 19))
+            let blend = min(1,hypot(dx,dz)/7)
+            y = 4*(1-blend)+y*blend
+        }
+        if biome == .grove && abs(x+7-Self.noise(0,z,scale:24,seed:4)*5)<4 { return -3 }
+        return floor(y)
+    }
+
+    func ceiling(_ x: Double, _ z: Double) -> Double {
+        let nether = [.wastes,.crimson,.warped,.soul,.basalt].contains(biome)
+        let noise = Self.noise(x,z,scale:22,seed:seed+30)
+        let arch = max(0,1-pow(x/70,2))*max(0,1-pow((z+22)/110,2))
+        return floor((nether ? 18 : biome == .deep ? 22 : 11)+(nether || biome == .deep ? 24 : 15)*arch+noise*5)
+    }
+}
+
+extension Terrain {
+
+    /// Chunked surfaces shared by habitat views and the Overworld portal approaches
+    func node(assets: Assets, x: Range<Int> = -96..<96, z: Range<Int> = -128..<64,
+              height sample: ((Int,Int) -> Double)? = nil) throws -> SCNNode {
+        let area = biome, terrain = self
+        let world = World.allCases.first { $0.biomes.contains(area) }!
+        let ground = SCNNode(); ground.name = "terrain"
+        let surface = try assets.tiles(area.surface)
+        let stone = try assets.tiles(world == .nether ? "netherrack" : world == .end ? "end_stone" : area == .deep ? "deepslate" : "stone")
+        let dirt = try assets.tiles("dirt")
+        let fluid = world == .overworld && area != .ice || world == .nether || area == .grove
+        let water = fluid ? try Landscape.flow(assets:assets,lava:world == .nether) : nil
+        let ice = area == .ice ? try assets.tiles("ice") : nil
+        var heights: [Int:Double] = [:]
+        func key(_ px: Int, _ pz: Int) -> Int { (px-x.lowerBound+1)*(z.count+2)+pz-z.lowerBound+1 }
+        for px in (x.lowerBound-1)...x.upperBound { for pz in (z.lowerBound-1)...z.upperBound { heights[key(px,pz)] = sample?(px,pz) ?? terrain.height(Double(px),Double(pz)) } }
+        func h(_ x: Int, _ z: Int) -> Double { heights[key(x,z)] ?? -100 }
+        let strata = try (area == .badlands ? ["red_terracotta","orange_terracotta","yellow_terracotta","terracotta"] : []).map { try assets.tiles($0) }
+        let soil = world == .overworld && !area.underground && ![.desert,.badlands,.reef,.monument,.coast,.peaks,.ice].contains(area)
+        let directions = [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))]
+        for cx in stride(from:x.lowerBound,to:x.upperBound,by:16) { for cz in stride(from:z.lowerBound,to:z.upperBound,by:16) {
+            var land = Voxels(), pools = Voxels(), roof = Voxels()
+            for x in cx..<min(cx+16,x.upperBound) { for z in cz..<min(cz+16,z.upperBound) {
+                let y = h(x,z); guard y > -90 else { continue }
+                var cap = 16
+                for (face,d) in directions { if h(x+d.0,z+d.1)<y { cap |= 1 << face } }
+                land.cube(.init(1,1,1),at:.init(Double(x),y-0.5,Double(z)),material:surface[0],faces:cap,faceMaterials:surface)
+                let bottom = terrain.end || area == .shards ? -3-max(0,18-hypot(Double(x),Double(z+17))*0.3) : -28
+                if !strata.isEmpty || soil {
+                    for level in 1...(soil ? 3 : Int(max(1,y-bottom-1))) {
+                        let by = y-Double(level)-0.5
+                        var faces = 0
+                        for (face,d) in directions { if h(x+d.0,z+d.1)<=by+0.5 { faces |= 1 << face } }
+                        let tiles = soil ? dirt : strata[abs(Int(by)/2)%strata.count]
+                        if faces != 0 { land.cube(.init(1,1,1),at:.init(Double(x),by,Double(z)),material:tiles[0],faces:faces,faceMaterials:tiles) }
+                    }
+                }
+                let depth = soil ? 4.0 : 1
+                var sides = 0
+                for (face,d) in directions { if h(x+d.0,z+d.1)<y-depth { sides |= 1 << face } }
+                if strata.isEmpty {
+                    land.cube(.init(1,max(0.1,y-depth-bottom),1),at:.init(Double(x),(y-depth+bottom)/2,Double(z)),material:stone[0],faces:sides | (terrain.end ? 32 : 0),faceMaterials:stone)
+                }
+                if y<0.9, let water {
+                    pools.cube(.init(1,0,1),at:.init(Double(x),0.9,Double(z)),material:water,faces:16)
+                } else if y<0.9, let ice {
+                    land.cube(.init(1,1,1),at:.init(Double(x),0.4,Double(z)),material:ice[0],faces:16,faceMaterials:ice)
+                }
+                if area.underground || world == .nether {
+                    let ceiling = max(y+9,terrain.ceiling(Double(x),Double(z)))
+                    var faces = 32
+                    for (face,d) in directions {
+                        if terrain.ceiling(Double(x+d.0),Double(z+d.1))>ceiling { faces |= 1 << face }
+                    }
+                    roof.cube(.init(1,max(1,64-ceiling),1),at:.init(Double(x),(ceiling+max(64,ceiling+1))/2,Double(z)),material:stone[0],faces:faces,faceMaterials:stone)
+                }
+            } }
+            ground.addChildNode(land.node("chunk-\(cx)-\(cz)"))
+            if !pools.vertices.isEmpty { ground.addChildNode(pools.node("pool-\(cx)-\(cz)")) }
+            if !roof.vertices.isEmpty { ground.addChildNode(roof.node("ceiling-\(cx)-\(cz)")) }
+        } }
+        if let water {
+            let controller = SCNNode(); controller.name = "flowing-surface"
+            Landscape.animate(controller,material:water); ground.addChildNode(controller)
+        }
+        return ground
+    }
+}

@@ -10,6 +10,7 @@ enum Biome: String, CaseIterable {
     case mushroom = "Mushroom fields", pale = "Pale Garden at dusk", coast = "Coast & shipwreck"
     case savanna = "Savanna · Outpost", swamp = "Swamp · Witch hut", reef = "Warm ocean · Coral reef"
     case mansion = "Dark forest · Woodland mansion", trial = "Trial Chambers", dripstone = "Dripstone caves"
+    case river = "River & birch woods", ice = "Ice spikes · Frozen ocean", monument = "Deep ocean · Monument"
     case lush = "Lush caves", deep = "Deep Dark · Ancient City"
     case wastes = "Nether Wastes · Fortress", crimson = "Crimson Forest · Bastion"
     case warped = "Warped Forest", soul = "Soul Sand Valley", basalt = "Basalt Deltas"
@@ -22,10 +23,10 @@ enum Biome: String, CaseIterable {
 
     var residents: [Species] {
         switch self {
-        case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem]
+        case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem, .cat]
         case .forest: return [.pig, .wolf, .bee, .creeper, .sniffer]
         case .cherry: return [.bee, .sheep, .rabbit]
-        case .snow: return [.fox, .wolf, .rabbit, .polarBear]
+        case .snow: return [.fox, .wolf, .rabbit]
         case .peaks: return [.goat, .llama]
         case .desert: return [.camel, .rabbit, .villager, .husk]
         case .badlands: return [.armadillo, .rabbit, .spider]
@@ -36,7 +37,10 @@ enum Biome: String, CaseIterable {
         case .coast: return [.turtle, .dolphin, .squid, .drowned, .cod]
         case .savanna: return [.horse, .llama, .armadillo, .illager, .ravager]
         case .swamp: return [.witch, .frog, .slime, .bogged]
-        case .reef: return [.guardian, .cod, .salmon, .dolphin, .turtle]
+        case .reef: return [.tropical, .dolphin, .turtle]
+        case .river: return [.salmon, .squid, .drowned, .bee, .cow]
+        case .ice: return [.polarBear, .rabbit, .snowGolem]
+        case .monument: return [.guardian, .squid, .cod]
         case .mansion: return [.vindicator, .illager, .allay, .spider]
         case .trial: return [.breeze, .bogged, .skeleton, .spider, .silverfish]
         case .dripstone: return [.bat, .spider, .zombie]
@@ -59,8 +63,8 @@ enum Biome: String, CaseIterable {
 
     var surface: String {
         switch self {
-        case .snow, .peaks: return "snow"
-        case .desert, .coast, .reef: return "sand"
+        case .snow, .peaks, .ice: return "snow"
+        case .desert, .coast, .reef, .monument: return "sand"
         case .trial: return "tuff_bricks"
         case .dripstone: return "dripstone_block"
         case .badlands: return "red_sand"
@@ -86,6 +90,7 @@ enum Biome: String, CaseIterable {
     var tree: String? {
         switch self {
         case .meadow, .forest: return "oak"
+        case .river: return "birch"
         case .cherry, .grove: return "cherry"
         case .snow: return "spruce"
         case .savanna: return "acacia"
@@ -100,14 +105,14 @@ enum Biome: String, CaseIterable {
 
     var sky: UInt32 {
         switch self {
-        case .snow, .peaks: return 0xAABCC9
+        case .snow, .peaks, .ice: return 0xAABCC9
         case .desert, .badlands: return 0xD6BF9B
         case .pale: return 0x444B58
         case .lush: return 0x263D42
         case .trial: return 0x263D43
         case .dripstone: return 0x342F2B
         case .swamp, .mansion: return 0x81999A
-        case .reef: return 0x9ECFDF
+        case .reef,.monument: return 0x5D9BAF
         case .deep: return 0x101E2C
         case .wastes, .crimson, .basalt: return 0x4B2536
         case .warped: return 0x24474B
@@ -123,7 +128,7 @@ extension World {
     var biomes: [Biome] {
         switch self {
         case .overworld: return [.meadow, .forest, .cherry, .snow, .peaks, .desert, .badlands,
-                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .coast, .reef, .lush, .dripstone, .trial, .deep]
+                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .river, .coast, .reef, .monument, .ice, .lush, .dripstone, .trial, .deep]
         case .nether: return [.wastes, .crimson, .warped, .soul, .basalt]
         case .end: return [.central, .highlands, .midlands, .islands, .barrens, .city]
         case .sift: return [.terraces, .grove, .valley, .shards, .ruins, .sculk]

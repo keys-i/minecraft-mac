@@ -110,3 +110,13 @@ longer used. Historical artwork references remain in [asset notes](../assets/REA
 
 The launcher image is an unaltered screenshot of the earlier locally running
 native launcher, captured on October 19, 2026. It does not show the 0.6 scenery
+
+
+## Monocraft
+
+The launcher bundles [Monocraft](https://github.com/IdreesInc/Monocraft) under
+the [SIL Open Font License](licenses/Monocraft-OFL.txt)
+Source revision: e498bf70aeb25b4bdcff1e44d878fb2cb4f7c2a9
+The unmodified font has SHA-256
+262e31822e0a75be567b02320bfa092143d871e8a273e529d1c5ab0c04cd215f
+It is registered for this process only and does not install a system font

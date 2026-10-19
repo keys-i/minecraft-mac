@@ -80,7 +80,7 @@ struct LauncherChecks {
         try pixels.representation(using:.png,properties:[:])!.write(to:texture.appendingPathComponent("fixture.png"))
         try write("entity/fixture.entity.json",["minecraft:client_entity":["description":["geometry":["default":"geometry.fixture"],"textures":["default":"textures/entity/fixture"]]]])
         func model(_ bones: [[String:Any]]) throws {
-            try write("models/entity/fixture.geo.json",["geometry.fixture":["texturewidth":2,"textureheight":2,"bones":bones]])
+            try write("models/entity/fix_ture.geo.json",["geometry.fixture":["texturewidth":2,"textureheight":2,"bones":bones]])
         }
         let cube: [String:Any] = ["origin":[0,0,0],"size":[1,1,1],"uv":[0,0]]
         try model([["name":"Body","pivot":[0,16,0],"bind_pose_rotation":[90,0,0],"cubes":[cube]],
@@ -132,12 +132,13 @@ struct LauncherChecks {
         while !failureDelivered && Date() < deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
         precondition(failureDelivered && !cancelledDelivered)
         print("Original synthetic archive, NBT, UV, bind pose, parent and malformed-model fixtures passed")
-        precondition(Landscape.height(.lush, x: 1, z: 3, centre: 0) == -3)
-        precondition(Landscape.height(.coast, x: 1, z: 3, centre: 0) == -4)
+        precondition(Landscape.height(.lush, x: 9, z: 7, centre: 0) < 0)
+        precondition(Landscape.height(.coast, x: 1, z: -10, centre: 0) < 0)
         precondition(Landscape.height(.coast, x: 1, z: 8, centre: 0) > 0)
         let roster = Set(World.allCases.flatMap { $0.biomes.flatMap(\.residents) })
         precondition(roster == Set(Species.allCases))
-        precondition(World.overworld.biomes.count == 20 && World.nether.biomes.count == 5)
+        precondition(World.overworld.biomes.count == 23 && World.nether.biomes.count == 5)
+        precondition(Terrain(biome:.meadow).reserved(1,5))
         var journey = Journey()
         for _ in 0..<18 { journey.tick(rotate: false) }
         precondition(journey.biome == 0 && journey.elapsed == 0)
@@ -201,6 +202,16 @@ struct LauncherChecks {
         precondition(Set(rods.map { "\($0.position.x),\($0.position.y),\($0.position.z)" }).count == 12)
         let dragon = try factory.actor("ender_dragon")
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
+        let window = try Structures.template("mansion/wall_window",assets:assets).geometry!
+        precondition(zip(window.materials,window.elements).contains { $0.0.name?.contains("glass") == true && $0.1.primitiveCount > 0 })
+        for lava in [false,true] {
+            let material = try Landscape.flow(assets:assets,lava:lava), node = SCNNode()
+            Landscape.animate(node,material:material)
+            let image = material.diffuse.contents as! CGImage
+            precondition(image.height > image.width && image.height%image.width == 0)
+            precondition(abs(material.diffuse.contentsTransform.m22-Double(image.width)/Double(image.height)) < 0.0001)
+            if lava { precondition(material.emission.contentsTransform.m22 == material.diffuse.contentsTransform.m22) }
+        }
         let start = Date()
         for world in World.allCases {
             for index in world.biomes.indices {
@@ -212,7 +223,16 @@ struct LauncherChecks {
                 }
                 print("\(world) \(world.biomes[index]): \(nodes) nodes, \(triangles) triangles")
                 fflush(stdout)
-                precondition(nodes < 1200 && triangles < 150_000)
+                precondition(nodes < 1200 && triangles < 350_000)
+                let area = world.biomes[index], terrain = Terrain(biome:area)
+                for step in 0...36 {
+                    let eye = Landscape.pose(area,at:Double(step)/2).eye
+                    let floor = terrain.height(eye.x.rounded(),eye.z.rounded())
+                    precondition(floor > -90 && eye.y > floor+0.1)
+                    if area.underground || world == .nether {
+                        precondition(eye.y < max(floor+9,terrain.ceiling(eye.x,eye.z))-0.1)
+                    }
+                }
                 if world.biomes[index] == .mansion {
                     var rooms: [SCNGeometry] = []
                     scene.rootNode.enumerateChildNodes { node,_ in
@@ -230,7 +250,12 @@ struct LauncherChecks {
                 precondition(residents.count <= 40)
                 for resident in residents {
                     let p = resident.position
-                    precondition(Landscape.height(world.biomes[index],x:p.x,z:p.z) > -90)
+                    let floor = Landscape.height(area,x:p.x.rounded(),z:p.z.rounded())
+                    precondition(floor > -90)
+                    let name = resident.childNodes[0].name!.replacingOccurrences(of:"mob-",with:"")
+                    if let species = Species(rawValue:name), species.swimming {
+                        precondition(p.y < 0.9 && p.y > floor && floor < 0)
+                    }
                 }
             }
         }

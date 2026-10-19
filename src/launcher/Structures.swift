@@ -49,7 +49,7 @@ enum Structures {
             try place("pillageroutpost/feature_targets",.init(-9,0,-12))
             try place("pillageroutpost/feature_logs",.init(12,0,-10))
         case .mansion:
-            try cube(.init(34,1,32),.init(0,0,0),"cobblestone")
+            try cube(.init(34,2,48),.init(0,-1,7),"cobblestone")
             for floor in [0.0,8] {
                 for z in stride(from:-12.0,through:12,by:8) {
                     try place("mansion/wall_window",.init(-16,floor,z))
@@ -62,11 +62,11 @@ enum Structures {
                 for x in [-8.0,0,8] { for z in [-8.0,0,8] { try place("mansion/1x1_a1",.init(x,floor,z)) } }
             }
             for x in stride(from:-12.0,through:12,by:8) { for z in stride(from:-12.0,through:12,by:8) { try place("mansion/roof",.init(x,16,z)) } }
-            try place("mansion/entrance",.init(0,0,18))
+            try place("mansion/entrance",.init(0,0,20),turn:-.pi/2)
         case .trial:
-            // Bury the template's six-block foundation and open the camera-facing walls
+            // Bury the template's six-block foundation beneath the interior camera
             root.position.y -= 6
-            let chamber = try template("trial_chambers/chamber/assembly",assets:assets,cutaway:true)
+            let chamber = try template("trial_chambers/chamber/assembly",assets:assets)
             root.addChildNode(chamber)
             for x in [-11.0,11] {
                 try place("trial_chambers/chamber/assembly/full_column",.init(x,7,-8))
@@ -95,6 +95,43 @@ enum Structures {
                 try cube(.init(2,1,2),.init(-13+side*9,4.5,-8),"sea_lantern")
             }
             try place("shipwreck/swrightsideupbackhalfdegraded",.init(15,0,3))
+        case .river: break
+        case .ice:
+            try place("igloo/igloo_top_no_trapdoor",.init(-9,0,-4))
+            for index in 0..<18 {
+                let x = Terrain.random(index,4,seed:8)*55-28, z = Terrain.random(index,9,seed:9)*55-35
+                let h = Double(8+index%13)
+                for level in 0..<Int(h) {
+                    let width = level < 3 ? 3.0 : level<Int(h)-3 ? 2 : 1
+                    try cube(.init(width,1,width),.init(x,Double(level)+0.5,z),"packed_ice")
+                }
+            }
+        case .monument:
+            try cube(.init(58,1,58),.init(0,0.5,0),"prismarine")
+            for tier in 0..<9 {
+                let width = Double(56-tier*4)
+                try cube(.init(width,1,width),.init(0,Double(tier)+1.5,-2),tier%3 == 0 ? "prismarine_bricks" : "prismarine")
+            }
+            for side in [-1.0,1] {
+                for x in stride(from:7.0,through:27,by:4) {
+                    try cube(.init(2,6,2),.init(side*x,5,22),"prismarine_bricks")
+                    try cube(.init(1,1,1),.init(side*x,8.5,23),"sea_lantern")
+                }
+                try cube(.init(21,2,6),.init(side*17,8,19),"prismarine_bricks")
+                try cube(.init(2,9,4),.init(side*5,5.5,20),"dark_prismarine")
+                try cube(.init(3,3,3),.init(side*17,10,17),"prismarine_bricks")
+                try cube(.init(2,1,2),.init(side*17,12,17),"sea_lantern")
+                for z in stride(from:-23.0,through:22,by:7) {
+                    try cube(.init(4,7,4),.init(side*25,-2,z),"prismarine_bricks")
+                }
+            }
+            try cube(.init(12,2,4),.init(0,10.5,20),"dark_prismarine")
+            for tier in 0..<7 {
+                let width = Double(20-tier*2)
+                try cube(.init(width,1,width),.init(0,Double(tier)+10.5,-9),"prismarine_bricks")
+                for side in [-1.0,1] { try cube(.init(1,1,width),.init(side*(width/2-1),Double(tier)+10.5,-9),"dark_prismarine") }
+            }
+            for side in [-1.0,1] { try cube(.init(2,3,2),.init(side*5,18,-9),"sea_lantern") }
         case .desert:
             for tier in 0..<10 {
                 let span = Double(21-tier*2)
@@ -212,15 +249,12 @@ enum Structures {
             mesh.cube(.init(1,1,1),at:.init(Double(x)+0.5,Double(y)+0.5,0),material:tiles[0],faceMaterials:tiles)
         } }
         let frame = mesh.node(sift ? "artistic-rift" : "nether-portal"); frame.position = p; root.addChildNode(frame)
-        let material = try assets.texture("textures/blocks/portal").copy() as! SCNMaterial
+        let material = try assets.texture("textures/blocks/portal",animated:true).copy() as! SCNMaterial
         material.lightingModel = .constant
         if sift { material.multiply.contents = NSColor.cyan }
         let plane = SCNPlane(width:2,height:3); plane.firstMaterial = material
         let surface = SCNNode(geometry:plane); surface.name = "portal-surface"; surface.position = .init(0,2.5,0)
-        surface.runAction(.repeatForever(.customAction(duration:32) { node,time in
-            var transform = SCNMatrix4MakeScale(1,1,1); transform.m41 = time/12; transform.m42 = time/8
-            node.geometry?.firstMaterial?.diffuse.contentsTransform = transform
-        }))
+        Landscape.animate(surface,material:material)
         frame.addChildNode(surface)
     }
 
@@ -317,8 +351,18 @@ extension Structures {
                 let axis = ["east","west"].contains(properties["facing"] ?? "")
                 cube(axis ? .init(0.1875,1,1) : .init(1,1,0.1875),axis ? .init(0.09,0.5,0.5) : .init(0.5,0.5,0.09),sprite:true)
             } else if name.contains("glass_pane") || name == "iron_bars" {
-                if properties["north"] == "true" || properties["south"] == "true" { cube(.init(0.0625,1,1),.init(0.5,0.5,0.5),sprite:true) }
-                if properties["east"] == "true" || properties["west"] == "true" { cube(.init(1,1,0.0625),.init(0.5,0.5,0.5),sprite:true) }
+                // Saved templates defer pane connections until their neighbours are placed
+                cube(.init(0.125,1,0.125),.init(0.5,0.5,0.5),sprite:true)
+                for (edge,d) in [("north",[0,0,-1]),("south",[0,0,1]),("west",[-1,0,0]),("east",[1,0,0])] {
+                    let neighbour = [p[0]+d[0],p[1],p[2]+d[2]]
+                    let inside = (0..<3).allSatisfy { (0..<size[$0]).contains(neighbour[$0]) }
+                    let other = inside ? blocks[key(neighbour)] : nil
+                    let connects = other.map { opaque[$0] || names[$0] == name } ?? false
+                    if properties[edge] == "true" || connects {
+                        cube(d[0] == 0 ? .init(0.125,1,0.5) : .init(0.5,1,0.125),
+                             .init(0.5+Double(d[0])*0.25,0.5,0.5+Double(d[2])*0.25),sprite:true)
+                    }
+                }
             } else if name.hasSuffix("_fence") {
                 cube(.init(0.25,1,0.25),.init(0.5,0.5,0.5))
                 for y in [0.4,0.8] {
