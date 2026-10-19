@@ -41,7 +41,10 @@ struct LauncherChecks {
             precondition(rejected)
         }
         var bytes = Data([0x7D,0x27,0x25,0xB1,0xA0,0x52,0x70,0x26,1,0,0,0,1,0,0,0])
-        bytes.append(contentsOf: [5]+Array("a.png".utf8)+Array(repeating:0,count:242)+[0,0,0,0,3,0,0,0]+[1,2,3])
+        bytes.append(5)
+        bytes.append(contentsOf: "a.png".utf8)
+        bytes.append(Data(count:242))
+        bytes.append(Data([0,0,0,0,3,0,0,0,1,2,3]))
         let archive = try Archive(bytes)
         precondition(archive["a.png"] == Data([1,2,3]))
         rejects { _ = try Archive(bytes.dropLast()) }
