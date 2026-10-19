@@ -38,6 +38,25 @@ combat, breeding, village jobs or the complete Minecraft simulation
 [Testing and remaining manual checks](test.md#material-hover-and-input-fidelity-in-0101)
 keep that limitation explicit
 
+The separate full 0.10.1 candidate and isolated preview verify against the final
+source machine code. All 1,051 baseline resources and 21 runtime symlinks remain
+unchanged, including the account helper, worker and approved poster
+The corrected small-island camera passes both smooth and rounded terrain checks
+Eight sampled route/flight views have a highest GPU p95 of 10.60 ms and wall p95
+of 14.56 ms, inside the existing 50 ms scenery budget. This is not game FPS
+All 125 reviewed source files pass boundary/checksum checks
+
+The local LZFSE DMG verifies, retains minimum macOS 27, and is 125,937,610 bytes
+SHA-256:
+
+```text
+39dcc7920cbc9e80087f07b9cca92755f21bd45d3bf1c7c81374de56c4f1a382
+```
+
+It remains an ad-hoc signed preview. Full-window mouse capture/release, developer
+link activation, VoiceOver, long-session memory and a complete real-time day/night
+cycle remain manual checks. No installed app, game, world or account was replaced
+
 ## Spectator title screen in 0.10
 
 The native launcher now uses the owner’s original Minecraft title artwork and
