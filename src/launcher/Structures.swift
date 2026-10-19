@@ -11,17 +11,20 @@ enum Structures {
         }
         func place(_ name: String, _ p: SCNVector3 = .init(0,0,0), turn: Double = 0) throws {
             let wrapper = SCNNode(); wrapper.position = p; wrapper.eulerAngles.y = turn
+            if biome == .meadow { wrapper.position.y += Terrain(biome:biome).height(p.x,p.z-18)-y }
             if templates[name] == nil { templates[name] = try template(name,assets:assets) }
             wrapper.addChildNode(templates[name]!.clone()); root.addChildNode(wrapper)
         }
         switch biome {
         case .meadow:
-            try place("village/plains/houses/plains_medium_house_1",.init(-10,0,-10))
+            try place("village/plains/houses/plains_medium_house_1",.init(-10,0,-10),turn:.pi)
             try place("village/plains/houses/plains_small_house_1",.init(11,0,-11))
             try place("village/plains/houses/plains_small_house_2",.init(-12,0,7),turn:.pi/2)
             try place("village/plains/houses/plains_large_farm_1",.init(13,0,8))
             try place("village/plains/town_centers/plains_fountain_01",.init(0,0,2))
             try place("village/plains/houses/plains_animal_pen_1",.init(-20,0,-1))
+            try place("village/plains/houses/plains_small_house_2",.init(-15,0,-27),turn:.pi)
+            try place("village/plains/houses/plains_small_house_1",.init(17,0,-25))
         case .forest:
             try place("ruined_portal/portal_4",.init(-5,-2,-3))
             for z in -4...4 { try cube(.init(1,1,1),.init(8,0.5,Double(z)),"oak_log") }
@@ -187,11 +190,21 @@ enum Structures {
                 try cube(.init(11,1,11),.init(side*22,7,-12),"nether_bricks")
                 for edge in [-5.0,5] {
                     try cube(.init(1,4,11),.init(side*22+edge,9.5,-12),"nether_bricks")
-                    try cube(.init(11,4,1),.init(side*22,9.5,-12+edge),"nether_bricks")
+                    if edge < 0 { try cube(.init(11,4,1),.init(side*22,9.5,-12+edge),"nether_bricks") }
+                    else {
+                        for jamb in [-1.0,1] { try cube(.init(4,4,1),.init(side*22+jamb*3.5,9.5,-7),"nether_bricks") }
+                        try cube(.init(3,1,1),.init(side*22,11,-7),"nether_bricks")
+                    }
                 }
+                try cube(.init(5,2,8),.init(side*22,7,-5),"nether_bricks")
                 try cube(.init(13,1,13),.init(side*22,12,-12),"nether_bricks")
             }
             try cube(.init(5,1,9),.init(0,8.5,-20),"soul_sand")
+            try cube(.init(11,1,11),.init(0,12,0),"nether_bricks")
+            for side in [-1.0,1] {
+                for z in [-5.0,5] { try cube(.init(2,4,2),.init(side*4.5,10,z),"nether_bricks") }
+                try cube(.init(1,1,11),.init(side*3.5,11,0),"nether_bricks")
+            }
             for x in -2...2 { for z in -3...3 { try cube(.init(0.6,0.6,0.6),.init(Double(x),9.3,Double(z)-20),"nether_wart") } }
             try cube(.init(1,1,1),.init(22,8.5,-12),"mob_spawner")
         case .central:

@@ -128,6 +128,16 @@ extension Passage {
                     scene.rootNode.addChildNode(shard)
                 }
             }
+            for index in 0..<180 {
+                let x = (Terrain.random(index,19)*60-30).rounded(), z = (Terrain.random(index,23)*80-30).rounded()
+                guard abs(x)>4 else { continue }
+                let y = terrain.height(x,z)
+                try sprite(index%5 == 0 ? "coral_fan_purple" : "nether_sprouts",.init(x,y+0.5,z))
+                if index%13 == 0 {
+                    try cube(.init(2,1,2),.init(x,y+0.5,z),"calcite")
+                    try cube(.init(1,1,1),.init(x,y+1.5,z),"amethyst_block")
+                }
+            }
             try Structures.portal(scene.rootNode,at:.init(0,2,-14),assets:assets,sift:true)
             let ruin = try Structures.template("ruined_portal/portal_3",assets:assets); ruin.position = .init(-13,2,-20); scene.rootNode.addChildNode(ruin)
             for index in 0..<6 {
@@ -167,7 +177,13 @@ extension Passage {
                 try cube(.init(radius*2+1,1,1),.init(0,floor-0.5,z),stone)
                 for side in [-1.0,1] {
                     let opening = mine ? (-15 ... -10).contains(z) : (-4 ... 5).contains(z)
-                    if !opening { try cube(.init(2,chamber ? 8 : 5,1),.init(side*(radius+1),floor+(chamber ? 4 : 2.5),z),stone) }
+                    if !opening {
+                        if !mine && chamber && index%3 == 0 {
+                            try cube(.init(2,2.5,1),.init(side*(radius+1),floor+1.25,z),stone)
+                            try cube(.init(2,3.5,1),.init(side*(radius+1),floor+6.25,z),stone)
+                            try cube(.init(1,8,3),.init(side*(radius+4),floor+4,z),stone)
+                        } else { try cube(.init(2,chamber ? 8 : 5,1),.init(side*(radius+1),floor+(chamber ? 4 : 2.5),z),stone) }
+                    }
                     if mine && index%5 == 0 { try cube(.init(0.02,1,1),.init(side*(radius-0.01),floor+1.5,z),["coal_ore","iron_ore","copper_ore","gold_ore","diamond_ore"][index/5%5]) }
                 }
                 if z < 22 { try cube(.init(radius*2+4,1,1),.init(0,floor+(chamber ? 8.5 : 5.5),z),stone) }
@@ -188,8 +204,8 @@ extension Passage {
                     }
                 } else if chamber && index%3 == 0 {
                     for side in [-1.0,1] {
-                        try cube(.init(1,6,1),.init(side*6,3,z),"chiseled_stone_bricks")
-                        for bar in -1...1 { try cube(.init(0.125,2,0.125),.init(side*5.9,3.5,z+Double(bar)*0.4),"iron_bars") }
+                        for bar in -1...1 { try cube(.init(0.125,2,0.125),.init(side*7.05,3.5,z+Double(bar)*0.4),"iron_bars") }
+                        for level in [2.6,4.4] { try cube(.init(0.125,0.125,1),.init(side*7.05,level,z),"iron_bars") }
                     }
                 }
                 if index%9 == 0 { try lamp(.init(radius-0.4,floor+2.3,z)) }

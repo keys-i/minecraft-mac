@@ -117,9 +117,9 @@ enum Biome: String, CaseIterable {
         case .wastes, .crimson, .basalt: return 0x4B2536
         case .warped: return 0x24474B
         case .soul: return 0x40535B
-        case .central, .highlands, .midlands, .islands, .barrens, .city: return 0x29243E
+        case .central, .highlands, .midlands, .islands, .barrens, .city: return 0x0F0B16
         case .terraces, .grove, .valley, .shards, .ruins, .sculk: return 0x8BAFBD
-        default: return 0x9EC9DF
+        default: return 0x78A7FF
         }
     }
 }

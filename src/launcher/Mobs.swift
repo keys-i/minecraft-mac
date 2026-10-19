@@ -55,13 +55,13 @@ final class Mobs {
         case .shulker: texture = "undyed"
         default: texture = "default"
         }
-        return try actor(name, texture: texture, label: species.rawValue)
+        return try actor(name, texture: texture, label: species.rawValue,variant:variant)
     }
 
-    func actor(_ name: String, texture: String = "default", label: String? = nil) throws -> SCNNode {
-        let key = name+"-"+texture
+    func actor(_ name: String, texture: String = "default", label: String? = nil, variant: Int = 0) throws -> SCNNode {
+        let key = name+"-"+texture+(name == "tropicalfish" ? "-\(variant)" : "")
         if let model = models[key] { return model.clone() }
-        let model = try assets.actor(name,texture:texture)
+        let model = try assets.actor(name,texture:texture,variant:variant)
         model.name = "mob-"+(label ?? name)
         var index = 0
         model.enumerateChildNodes { node,_ in

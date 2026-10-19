@@ -44,9 +44,10 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native window places a compact launch panel and four-slot realm hotbar over
-one live SceneKit world. Monocraft supplies the pixel titles; original installed
-item icons identify the realms. Stone controls share hover, press and focus states
+The native title screen places a central Play button and compact four-slot realm
+hotbar over one live SceneKit world. Busy/error states use a separate status panel
+Monocraft supplies the pixel titles; original installed item icons identify the realms
+Stone controls use the installed stone texture and share hover, press and focus states
 The searchable biome picker and native menus give direct access to every area
 Look around pauses the camera route and lets a pan gesture turn the view
 Leaving that mode restores the route; dismantling removes the recogniser
@@ -65,12 +66,19 @@ Camera routes stay at player height or low spectator height, including underwate
 Original block materials supply strata, vegetation, roots, fungi, chorus plants,
 waterfalls and flowing water/lava. Tree canopies, clouds and bounded ambient
 particles move independently of the camera
+Village clearings follow individual building plots and their connecting paths,
+instead of flattening and clearing an entire rectangle. Tree canopies share one
+geometry per wood type within each scene. Near-camera placement brings plants,
+fallen logs, roots, fungi, coral fans and ceiling-attached cave growth into view
+Original cloud art moves above the Overworld; the original greyscale End sky is
+darkened in a small native bitmap before it becomes the background cubemap
 
 `Mobs.swift` shares original geometry/skins within each scene and places 65 types
 in habitat-specific groups. Aquatic residents use water pockets, Striders use lava,
 and fortress residents use bridge height. River residents follow the actual
 channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
-use original skin variants. Residents alternate idle and local walking phases
+use original skin variants. Tropical fish add the original pattern layer and colour
+variants. Residents alternate idle and local walking phases
 The dragon stays at the central island
 Blaze rods, dragon parts and the Breeze's three original wind layers are assembled
 from the installed assets. Ambient actions do not reproduce the game's AI or

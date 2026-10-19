@@ -90,6 +90,45 @@ to its disposable preview, so these visible checks remain unverified
 
 The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
 
+### Gameplay-reference composition in 0.9
+
+The October 19, 2026 pass keeps the same 40 habitats and three passages, with
+denser foreground placement, connected village plots/paths, shared cutout tree
+canopies, patterned fish, coral fans and ceiling-attached cave vegetation
+Actual gameplay images guided composition; [the reference sources](../assets/README.md#native-scenery)
+are documented separately and their pixels are not shipped
+
+All 92 Python tests, native synthetic fixtures and installed-art integration pass
+New regressions cover village grading and clearings, shared canopy geometry,
+fish pattern layers and the End cubemap. All 40 areas and 24 passage viewpoints
+were rendered; all 40 paused comparisons remain within one channel step
+Source-rendered first-run, ready, busy, error, long-detail and playing layouts
+cover 760 × 620, 1040 × 760 and 1440 × 900 points
+
+The same 49-view M3 Pro / 36 GB probe and method described below produced:
+
+| Realm or passage | Views | GPU median range | Highest GPU p95 | Highest wall p95 |
+| --- | --- | --- | --- | --- |
+| Overworld | 23 | 4.27–7.38 ms | 12.00 ms | 14.71 ms |
+| Nether | 5 | 5.84–6.77 ms | 11.00 ms | 13.55 ms |
+| End | 6 | 3.28–5.37 ms | 7.01 ms | 8.35 ms |
+| Sift interpretation | 6 | 4.12–6.88 ms | 11.39 ms | 14.12 ms |
+| Mine crossing | 3 | 1.60–3.79 ms | 7.28 ms | 8.29 ms |
+| Stronghold crossing | 3 | 3.33–4.69 ms | 6.96 ms | 7.47 ms |
+| Rift crossing | 3 | 2.33–4.09 ms | 6.40 ms | 7.32 ms |
+
+The testing browser stayed open and other scenery render tools had finished
+Graphs contain 107–689 nodes and 24,046–303,452 logical triangles, inside the
+unchanged 1,200-node/350,000-triangle limits. Construction measured 22.02–178.67 ms
+Compared with 0.8, the added scenery raises the highest GPU p95 from 9.57 to
+12.00 ms while remaining inside the 50 ms budget. No speedup is claimed
+The final source stores village plots once instead of rebuilding their array
+during height queries; the graph and rendering work remain the same
+
+These are offscreen scenery measurements and source-generated layouts
+Full-window interaction, VoiceOver, long-session memory and game performance
+remain unverified. The 138-second tour shows authored scenery rather than gameplay
+
 ### Player-height worlds and launcher 0.8 measurements
 
 On October 19, 2026, all 92 Python tests, native source fixtures and installed-art

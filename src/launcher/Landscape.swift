@@ -90,6 +90,7 @@ enum Landscape {
         scene.rootNode.addChildNode(fill)
         let terrain = Terrain(biome:area)
         var detail = Voxels()
+        var crowns: [String:SCNGeometry] = [:]
         scene.rootNode.addChildNode(try terrain.node(assets:assets))
         func block(_ size: SCNVector3, _ at: SCNVector3, _ name: String) throws {
             let tiles = try assets.tiles(name)
@@ -109,7 +110,9 @@ enum Landscape {
         }
         let trees = [.jungle,.forest,.mansion,.pale,.mangrove].contains(area) ? 320 : area.tree == nil ? 0 : 170
         for index in 0..<max(180,trees) {
-            let x = (Terrain.random(index,3,seed:terrain.seed)*176-88).rounded(), z = (Terrain.random(index,19,seed:terrain.seed)*176-120).rounded()
+            let nearby = index < max(180,trees)*3/4
+            let x = (Terrain.random(index,3,seed:terrain.seed)*(nearby ? 96 : 176)-(nearby ? 48 : 88)).rounded()
+            let z = (Terrain.random(index,19,seed:terrain.seed)*(nearby ? 104 : 176)-(nearby ? 66 : 120)).rounded()
             let ground = height(area,x:x,z:z)
             let y = area == .mangrove || area == .swamp ? max(0.35,ground) : ground
             let clearing = terrain.reserved(x,z)
@@ -129,20 +132,24 @@ enum Landscape {
                         }
                     }
                 }
-                var canopy = Voxels()
-                func leaf(_ x: Int, _ y: Int, _ z: Int) -> Bool {
-                    let levels = tree == "spruce" ? 6 : tree == "acacia" ? 2 : 4
-                    guard (0..<levels).contains(y) else { return false }
-                    let r = tree == "spruce" ? max(0,3-y/2-(y%2)) : tree == "acacia" ? 3-y : tree == "jungle" || tree == "dark_oak" || tree == "mangrove" || tree == "cherry" ? (y<2 ? 3 : 2) : (y<2 ? 2 : 1)
-                    return abs(x)<=r && abs(z)<=r && (r == 0 || abs(x)+abs(z)<r*2)
-                }
-                for dy in 0..<6 { for dx in -3...3 { for dz in -3...3 where leaf(dx,dy,dz) {
-                    let faces = [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated().reduce(0) {
-                        $0 | (leaf(dx+$1.element[0],dy+$1.element[1],dz+$1.element[2]) ? 0 : 1 << $1.offset)
+                if crowns[tree] == nil {
+                    var canopy = Voxels()
+                    func leaf(_ x: Int, _ y: Int, _ z: Int) -> Bool {
+                        let levels = tree == "spruce" ? 6 : tree == "acacia" ? 2 : 4
+                        guard (0..<levels).contains(y) else { return false }
+                        let r = tree == "spruce" ? max(0,3-y/2-(y%2)) : tree == "acacia" ? 3-y : tree == "jungle" || tree == "dark_oak" || tree == "mangrove" || tree == "cherry" ? (y<2 ? 3 : 2) : (y<2 ? 2 : 1)
+                        return abs(x)<=r && abs(z)<=r && (r == 0 || abs(x)+abs(z)<r*2)
                     }
-                    canopy.cube(.init(1,1,1),at:.init(Double(dx),Double(dy),Double(dz)),material:leaves[0],faces:faces,faceMaterials:leaves)
-                } } }
-                let crown = canopy.node("wind-canopy"); crown.position = .init(x+(tree == "acacia" ? (index%2 == 0 ? -2 : 2) : 0),y+Double(tall)-(tree == "spruce" ? 4 : 1),z)
+                    for dy in 0..<6 { for dx in -3...3 { for dz in -3...3 where leaf(dx,dy,dz) {
+                        let faces = [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated().reduce(0) {
+                            $0 | (leaf(dx+$1.element[0],dy+$1.element[1],dz+$1.element[2]) ? 0 : 1 << $1.offset)
+                        }
+                        canopy.cube(.init(1,1,1),at:.init(Double(dx),Double(dy),Double(dz)),material:leaves[0],faces:faces,faceMaterials:leaves)
+                    } } }
+                    crowns[tree] = canopy.node("canopy").geometry
+                }
+                let crown = SCNNode(geometry:crowns[tree]); crown.name = "wind-canopy"
+                crown.position = .init(x+(tree == "acacia" ? (index%2 == 0 ? -2 : 2) : 0),y+Double(tall)-(tree == "spruce" ? 4 : 1),z)
                 VoxelAdventure.sway(crown,x:0.003,z:0.005,period:8+Double(index%4),phase:Double(index))
                 scene.rootNode.addChildNode(crown)
                 if area == .mangrove {
@@ -189,9 +196,6 @@ enum Landscape {
                         try block(.init(0.75,2,0.75),.init(x+1.5,y+tall-0.5,z),"chorus_plant")
                         try block(.init(1,1,1),.init(x+1.5,y+tall+0.5,z),"chorus_flower")
                     }
-                case .lush, .dripstone:
-                    for level in 0..<(2+index%5) { try sprite("pointed_dripstone_"+(area == .lush ? "down" : "up")+(level == index%5+1 ? "_tip" : "_middle"),x:x,y:area == .lush ? 25-Double(level) : y+Double(level),z:z) }
-                    if area == .lush { try sprite("cave_vines_body_berries",x:x+1,y:22-Double(index%7),z:z,size:2) }
                 case .terraces:
                     let coral = try assets.texture("textures/blocks/coral_"+["pink","purple","blue"][index%3])
                     let tall = Double(3+index%5)
@@ -206,17 +210,22 @@ enum Landscape {
             }
         }
         if world == .overworld || area == .grove {
-            for index in 0..<1100 {
-                let x = Terrain.random(index,27,seed:5)*104-52, z = Terrain.random(index,37,seed:9)*104-55
+            var plants: Set<Int> = []
+            for index in 0..<2400 {
+                let nearby = index < 1800
+                let x = (Terrain.random(index,27,seed:5)*(nearby ? 72 : 104)-(nearby ? 36 : 52)).rounded()
+                let z = (Terrain.random(index,37,seed:9)*(nearby ? 80 : 104)-(nearby ? 45 : 55)).rounded()
                 let y = height(area,x:x,z:z)
+                guard plants.insert((Int(x)+100)*256+Int(z)+132).inserted else { continue }
                 if y < -1, [.coast,.reef,.mangrove,.swamp,.lush].contains(area) {
                     try sprite(area == .mangrove || area == .swamp ? "reeds" : "seagrass",x:x,y:y,z:z,size:1.3,tint:0x78A73F)
-                } else if y>0, !terrain.reserved(x,z) {
+                } else if y>0, !terrain.occupied(x,z), Terrain.noise(x,z,scale:7,seed:2) > -0.5 {
                     switch area {
                     case .meadow,.forest,.cherry,.savanna,.jungle,.swamp,.mansion,.grove:
                         try sprite(index%9 == 0 ? "flower_dandelion" : index%11 == 0 ? "flower_rose" : "tallgrass",x:x,y:y,z:z,tint:index%9 == 0 || index%11 == 0 ? nil : 0x86B85B)
                     case .lush:
-                        try sprite("azalea_leaves_flowers",x:x,y:y,z:z)
+                        if index%23 == 0 { try block(.init(1,1,1),.init(x,y+0.5,z),"azalea_leaves_flowers") }
+                        else { try sprite("tallgrass",x:x,y:y,z:z,tint:0x86B85B) }
                     case .pale:
                         try sprite("pale_hanging_moss_tip",x:x,y:y,z:z)
                     default: break
@@ -225,24 +234,123 @@ enum Landscape {
             }
         }
         if area == .jungle {
-            for index in 0..<24 {
-                let x = Double(index%2 == 0 ? -20-index%5 : 20+index%5), z = Double(index/2)*3-30
+            for index in 0..<90 {
+                let x = (Terrain.random(index,24)*48-24).rounded(), z = (Terrain.random(index,29)*60-38).rounded()
                 let y = height(area,x:x,z:z)
-                try block(.init(0.125,Double(5+index%4),0.125),.init(x,y+Double(5+index%4)/2,z),"bamboo")
+                guard !terrain.reserved(x,z) else { continue }
+                let tall = Double(5+index%7)
+                try sprite("bamboo_stem",x:x,y:y,z:z,size:1)
+                for level in 1..<Int(tall) { try sprite(level>Int(tall)-4 ? "bamboo_leaf" : "bamboo_stem",x:x,y:y+Double(level),z:z) }
+            }
+        }
+        if [.forest,.jungle,.mansion,.pale,.snow,.cherry,.river,.mangrove,.swamp,.grove].contains(area) {
+            for index in 0..<100 {
+                let x = (Terrain.random(index,41)*76-38).rounded(), z = (Terrain.random(index,43)*86-48).rounded()
+                let y = height(area,x:x,z:z)
+                guard y>0, !terrain.reserved(x,z) else { continue }
+                if index%7 == 0 {
+                    let bark = area == .snow ? "spruce" : area == .river ? "birch" : "oak"
+                    let tiles = try assets.tiles(bark+"_log",states:["axis":"x"])
+                    detail.cube(.init(3,1,1),at:.init(x,y+0.5,z),material:tiles[0],faceMaterials:tiles)
+                    try sprite("mushroom_red",x:x-1,y:y+1,z:z)
+                } else if index%3 == 0 {
+                    try block(.init(2,1,2),.init(x,y+0.35,z),"mossy_cobblestone")
+                } else if area != .snow && area != .pale {
+                    let tiles = try assets.tiles((area == .jungle ? "jungle" : "oak")+"_leaves")
+                    detail.cube(.init(2,1,2),at:.init(x,y+0.5,z),material:tiles[0],faceMaterials:tiles)
+                }
+            }
+        }
+        if area == .swamp || area == .mangrove {
+            let lily = try assets.texture("textures/blocks/waterlily")
+            for index in 0..<150 {
+                let x = (Terrain.random(index,53)*78-39).rounded(), z = (Terrain.random(index,59)*82-43).rounded()
+                if height(area,x:x,z:z) < 0 { detail.cube(.init(1,0,1),at:.init(x,0.93,z),material:lily,faces:16) }
+            }
+        }
+        if area == .lush || area == .dripstone {
+            for index in 0..<110 {
+                let x = (Terrain.random(index,61)*76-38).rounded(), z = (Terrain.random(index,67)*90-50).rounded()
+                guard abs(x-3)>4 else { continue }
+                let y = height(area,x:x,z:z), ceiling = max(y+9,terrain.ceiling(x,z))
+                for level in 0..<(3+index%6) {
+                    try sprite(area == .lush ? "cave_vines_body_berries" : "pointed_dripstone_down_middle",x:x,y:ceiling-1-Double(level),z:z)
+                }
+                if area == .lush && index%9 == 0 {
+                    let material = try assets.texture("textures/blocks/spore_blossom")
+                    detail.cube(.init(1,0,1),at:.init(x,ceiling-0.03,z),material:material,faces:32)
+                }
+                if area == .dripstone {
+                    for level in 0..<(2+index%5) { try sprite(level == 1+index%5 ? "pointed_dripstone_up_tip" : "pointed_dripstone_up_middle",x:x,y:y+Double(level),z:z) }
+                }
             }
         }
         if area == .reef {
             for index in 0..<90 {
                 let x = Double((index*17)%87-43), z = Double((index*31)%87-63), y = height(area,x:x,z:z)
                 let coral = try assets.texture("textures/blocks/coral_"+["blue","pink","purple","red","yellow"][index%5])
-                detail.cube(.init(2,Double(1+index%3),2),at:.init(x,y+Double(1+index%3)/2,z),material:coral)
+                let tall = Double(1+index%4)
+                detail.cube(.init(2,tall,2),at:.init(x,y+tall/2,z),material:coral)
+                detail.cube(.init(3,1,2),at:.init(x+1,y+tall+0.5,z),material:coral)
+                try sprite("coral_fan_"+["blue","pink","purple","red","yellow"][index%5],x:x-1,y:y,z:z,size:1.5)
                 try sprite("seagrass",x:x+2,y:y,z:z)
             }
         }
+        if world == .nether {
+            for index in 0..<130 {
+                let x = (Terrain.random(index,71)*90-45).rounded(), z = (Terrain.random(index,73)*110-60).rounded()
+                let y = height(area,x:x,z:z), ceiling = max(y+9,terrain.ceiling(x,z))
+                if abs(x)>8 {
+                    let tall = Double(4+index%9)
+                    for level in 0..<Int(tall) {
+                        let width = Double(max(1,3-level/4))
+                        try block(.init(width,1,width),.init(x,ceiling-Double(level)-0.5,z),area == .basalt ? "basalt" : "netherrack")
+                    }
+                    if index%9 == 0 { try block(.init(3,2,3),.init(x+1,ceiling-2,z),"glowstone") }
+                }
+                if y>1, !terrain.reserved(x,z) {
+                    if area == .warped || area == .crimson {
+                        try sprite(area == .warped ? "warped_fungus" : "crimson_fungus",x:x,y:y,z:z)
+                        if area == .warped { try sprite("nether_sprouts",x:x+1,y:y,z:z) }
+                    } else if index%5 == 0 {
+                        try block(.init(2,1,2),.init(x,y+0.4,z),area == .soul ? "bone_block" : "magma")
+                    }
+                }
+            }
+        }
+        if world == .sift {
+            for index in 0..<360 {
+                let x = (Terrain.random(index,79)*78-39).rounded(), z = (Terrain.random(index,83)*90-50).rounded()
+                let y = height(area,x:x,z:z)
+                guard y > -90, !terrain.occupied(x,z) else { continue }
+                try sprite(index%7 == 0 ? "coral_fan_"+["pink","purple","blue"][index%3] : "tallgrass",x:x,y:y,z:z,tint:index%7 == 0 ? nil : 0x71C9C1)
+                if index%17 == 0 && !terrain.reserved(x,z) {
+                    try block(.init(2,1,2),.init(x,y+0.5,z),"calcite")
+                    try block(.init(1,1,1),.init(x,y+1.5,z),"amethyst_block")
+                }
+            }
+        }
         if area == .meadow {
-            for z in -35...12 {
-                try block(.init(3,0.08,1),.init(0,height(area,x:0,z:Double(z))+0.04,Double(z)),"dirt_path")
-                if z%8 == 0 { try block(.init(13,0.08,2),.init(0,height(area,x:0,z:Double(z))+0.04,Double(z)),"dirt_path") }
+            var road: Set<Int> = []
+            func paving(_ x: Int, _ z: Int) throws {
+                guard road.insert((x+100)*256+z+132).inserted else { return }
+                try block(.init(1,0.08,1),.init(Double(x),height(area,x:Double(x),z:Double(z))+0.04,Double(z)),"dirt_path")
+            }
+            for z in -48...18 {
+                let x = Int(terrain.path(Double(z)).rounded())
+                for dx in -1...1 { try paving(x+dx,z) }
+            }
+            for (ex,ez) in [(-5,-28),(8,-29),(-12,-7),(6,-10),(-17,-19),(-11,-45),(14,-43)] {
+                for step in 0...abs(ex) {
+                    let x = ex < 0 ? -step : step, z = ez+Int(sin(Double(step)*0.4))
+                    try paving(x,z); try paving(x,z+1)
+                }
+            }
+            for (x,z) in [(-18.0,-7.0),(20,-15),(9,-40)] {
+                let y = height(area,x:x,z:z)
+                for (dx,dz,dy) in [(0.0,0.0,0.5),(1,0,0.5),(0,1,0.5),(0,0,1.5)] {
+                    try block(.init(1,1,1),.init(x+dx,y+dy,z+dz),"hay_block")
+                }
             }
         }
         scene.rootNode.addChildNode(detail.node("habitat-detail"))
@@ -255,14 +363,13 @@ enum Landscape {
             }
         }
         if world == .overworld && !area.underground || world == .sift {
-            let white = SCNMaterial(); white.diffuse.contents = NSColor.white; white.lightingModel = .constant
-            for index in 0..<9 {
-                var shape = Voxels(); shape.cube(.init(13,1,5),at:.init(0,0,0),material:white)
-                shape.cube(.init(7,1,5),at:.init(2,0,4),material:white)
-                let cloud = shape.node("drifting-cloud"); cloud.position = .init(Double(index%4-2)*45,78+Double(index%2)*3,-110+Double(index/4)*45)
-                cloud.runAction(.repeatForever(.sequence([.moveBy(x:16,y:0,z:0,duration:55),.moveBy(x:-16,y:0,z:0,duration:55)])))
-                scene.rootNode.addChildNode(cloud)
-            }
+            let material = try assets.texture("textures/environment/clouds").copy() as! SCNMaterial
+            material.lightingModel = .constant
+            let plane = SCNPlane(width:512,height:512); plane.firstMaterial = material
+            let cloud = SCNNode(geometry:plane); cloud.name = "drifting-cloud"; cloud.castsShadow = false
+            cloud.position = .init(0,60,-20); cloud.eulerAngles.x = -.pi/2
+            cloud.runAction(.repeatForever(.sequence([.moveBy(x:32,y:0,z:0,duration:120),.moveBy(x:-32,y:0,z:0,duration:120)])))
+            scene.rootNode.addChildNode(cloud)
         }
         if area.underground || world == .nether || world == .sift || area == .cherry || area == .snow || area == .pale {
             let material = SCNMaterial(); material.diffuse.contents = colour(world == .nether ? 0xF4BE8F : area == .cherry ? 0xFFD9E7 : 0xBDDBDB)
@@ -284,6 +391,17 @@ enum Landscape {
         }
         try populate(scene,world:world,area:area,factory:Mobs(assets:assets))
         focus(scene,world:world,biome:biome,animated:false)
+        if world == .end {
+            // The original sky is greyscale and receives a dark purple tint in game
+            let source = try assets.texture("textures/environment/end_sky").diffuse.contents as! CGImage
+            guard let context = CGContext(data:nil,width:source.width,height:source.height,bitsPerComponent:8,bytesPerRow:0,
+                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
+            let rect = CGRect(x:0,y:0,width:source.width,height:source.height)
+            context.draw(source,in:rect); context.setBlendMode(.multiply)
+            context.setFillColor(colour(0x24182E).cgColor); context.fill(rect)
+            guard let sky = context.makeImage() else { throw AssetError.image }
+            scene.background.contents = Array(repeating:sky,count:6)
+        }
         return scene
     }
 
@@ -321,9 +439,10 @@ enum Landscape {
         let phase = (1-cos(min(1,max(0,time/18)) * .pi))/2
         let x: Double, z: Double, target: SCNVector3, elevation: Double?
         switch area {
-        case .wastes: x = 22-phase*6; z = -18; target = .init(-20,14,-18); elevation = 13.62
+        case .meadow: x = 3-phase; z = 8-phase*6; target = .init(-1,5,-23); elevation = nil
+        case .wastes: x = 24-phase*6; z = -18; target = .init(-7,14,-34); elevation = 13.62
         case .trial: x = 9-phase*2; z = -9-phase*2; target = .init(-7,7,-24); elevation = 5.62
-        case .reef: x = -8+phase*3; z = 18-phase*3; target = .init(1,-2,-18); elevation = -1.6
+        case .reef: x = -8+phase*3; z = 18-phase*3; target = .init(1,-5,-18); elevation = -3.5
         case .monument: x = 7-phase*3; z = 34-phase*4; target = .init(-3,-6,-20); elevation = -3.5
         case .city: x = 9-phase*3; z = 17-phase*3; target = .init(-1,19,-23); elevation = nil
         case .central: x = 5-phase*2; z = 24-phase*3; target = .init(-3,16,-23); elevation = nil
@@ -335,7 +454,7 @@ enum Landscape {
         case .river: x = 11-phase*2; z = 20-phase*3; target = .init(-6,4,-25); elevation = nil
         case .mangrove,.swamp: x = 3+phase*2; z = 20-phase*3; target = .init(-2,5,-20); elevation = nil
         case .peaks: x = 9-phase*2; z = 17-phase*2; target = .init(-9,18,-37); elevation = nil
-        default: x = 4-phase*3; z = 20-phase*4; target = .init(-2,7,-25); elevation = nil
+        default: x = 4-phase*3; z = 12-phase*4; target = .init(-2,6,-25); elevation = nil
         }
         let ground = height(area,x:x.rounded(),z:z.rounded())
         return (.init(x,elevation ?? max(0.9,ground)+1.62,z),target)
@@ -344,7 +463,7 @@ enum Landscape {
     static func focus(_ scene: SCNScene, world: World, biome: Int, animated: Bool) {
         let area = world.biomes[world.index(biome)], camera = scene.rootNode.childNode(withName:"camera",recursively:false)!
         let underwater = area == .reef || area == .monument
-        scene.background.contents = colour(underwater ? 0x245A78 : area.sky)
+        if world != .end { scene.background.contents = colour(underwater ? 0x245A78 : area.sky) }
         scene.fogColor = colour(underwater ? 0x245A78 : area.sky)
         scene.fogStartDistance = underwater ? 12 : area.underground || world == .nether ? 38 : 90
         scene.fogEndDistance = underwater ? 62 : area.underground || world == .nether ? 100 : 155

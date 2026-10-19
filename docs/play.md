@@ -136,7 +136,7 @@ releases and offers the Releases page for manual review. It distinguishes app
 DMGs from source archives and does not replace your installation. Use **Settings…**
 for scenery preferences; game graphics and controls stay in Minecraft's settings
 Use **Explore biomes** to search and jump to any biome or landmark.
-Choose realms with the four hotbar slots or keys **1–4**. **Look around** lets you
+Choose realms with the four hotbar slots or keys **1–4**. **Look around** or **⌘L** lets you
 drag the world; **Done** or **Escape** returns to the camera route
 
 Realm changes include a mine,

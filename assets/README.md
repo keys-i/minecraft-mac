@@ -15,11 +15,20 @@ alternative text
 
 ## Native scenery
 
-Version 0.8 uses original Minecraft models, textures and structure templates
+Version 0.9 uses original Minecraft models, textures and structure templates
 read from the owner's installed game. It builds 40 area views, 65 resident types,
 two hero actors and three passages in native SceneKit. Those Minecraft assets
 are not bundled or committed. The approved poster supplies first-run fallback
 Versions 0.4/0.5 used procedural stand-ins that were rejected for fidelity
+
+The 0.9 composition pass used actual gameplay views as visual references:
+[a village path](https://cdn-ak.f.st-hatena.com/images/fotolife/s/shiwaken/20230408/20230408192830.png),
+[Mojang's plains village](https://www.minecraft.net/en-us/article/around-block--plains),
+[a Nether fortress](https://livedoor.blogimg.jp/umidori50r/imgs/5/0/5006f1d1.png),
+[a portal chamber](https://minecraft-seeds.com/wp-content/uploads/2021/03/4530634556500121041.png)
+and [Mojang's End City](https://www.minecraft.net/en-us/article/end-city)
+The reference images remain outside the repository and app; their pixels are not
+used in the scenery. Sift views remain labelled as an artistic interpretation
 
 The area list includes structure visits; it does not claim each stop is a
 separate official biome. Sift area names, scenery and routes are interpretations

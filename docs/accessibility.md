@@ -15,7 +15,7 @@ sign-in window also depends on those applications
 | Pause or resume background motion | The labelled scenery button beside Help |
 | Choose a scene | The four realm slots, keys <kbd>1</kbd>–<kbd>4</kbd>, or **View**, with the selection exposed to assistive technology |
 | Choose an area | **Explore biomes**, its search field, or **View → Choose Biome or Landmark** |
-| Look around | **Look around**, then drag the world; **Done** or <kbd>Escape</kbd> restores the route |
+| Look around | **Look around** or <kbd>⌘</kbd> + <kbd>L</kbd>, then drag the world; **Done** or <kbd>Escape</kbd> restores the route |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
 | Scenery preferences | **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd> |
 | Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
@@ -26,6 +26,7 @@ The interface uses standard SwiftUI text, buttons and progress controls with
 custom world-style drawing. Buttons have an explicit keyboard focus
 outline. The segmented experience bar has a label and percentage, and the
 decorative scenery, 3D actors and particles are hidden from assistive technology
+The free-look crosshair is decorative and is hidden too
 The area menu and passage controls remain accessible outside that decorative layer
 Each
 setup step exposes whether it is current, complete or upcoming. Status and errors are

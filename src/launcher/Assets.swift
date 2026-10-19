@@ -79,7 +79,7 @@ final class Assets {
         return operation
     }
 
-    func icons(completion: @escaping @MainActor ([World:NSImage]) -> Void) {
+    func icons(completion: @escaping @MainActor ([World:NSImage],NSImage?) -> Void) {
         let operation = BlockOperation()
         operation.addExecutionBlock {
             let paths: [World:String] = [.overworld:"diamond_pickaxe",.nether:"flint_and_steel",.end:"ender_eye",.sift:"amethyst_shard"]
@@ -90,7 +90,9 @@ final class Assets {
                     images[world] = NSImage(cgImage:bitmap,size:NSSize(width:32,height:32))
                 }
             }
-            DispatchQueue.main.async { completion(images) }
+            let face = try? self.texture("textures/blocks/stone")
+            let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
+            DispatchQueue.main.async { completion(images,stone) }
         }
         queue.addOperation(operation)
     }
@@ -169,7 +171,7 @@ final class Assets {
         return material
     }
 
-    func actor(_ name: String, texture key: String = "default") throws -> SCNNode {
+    func actor(_ name: String, texture key: String = "default", variant: Int = 0) throws -> SCNNode {
         let document = try json("entity/"+name+".entity.json")
         guard let entity = document["minecraft:client_entity"] as? [String: Any],
               let description = entity["description"] as? [String: Any],
@@ -198,6 +200,13 @@ final class Assets {
         }
         if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
         let model = try node(definition,material:material)
+        if name == "tropicalfish", let path = textures[(key == "typeA" ? "aPattern" : "bPattern")+String(variant%6+1)] {
+            let markings = try texture(path).copy() as! SCNMaterial
+            markings.multiply.contents = Landscape.colour([0xFAF7E9,0xD95D39,0x4DA9BB,0x292D36,0xB471C9,0xF1B844][variant%6])
+            let layer = try node(definition,material:markings)
+            layer.name = "fish-pattern"; layer.scale = .init(1.006,1.006,1.006)
+            model.addChildNode(layer)
+        }
         if name == "breeze", let wind = textures["breeze_wind"] {
             for key in ["breeze_wind_top", "breeze_wind_mid", "breeze_wind_bottom"] {
                 guard let identifier = geometries[key] else { throw AssetError.model }
@@ -452,7 +461,7 @@ extension Assets {
             }
             if name == wood+"_leaves" {
                 let stem = wood == "dark_oak" ? "big_oak" : wood
-                let material = try texture("textures/blocks/leaves_"+stem+"_opaque",tint:wood == "spruce" ? 0x619961 : 0x77AB2F)
+                let material = try texture("textures/blocks/leaves_"+stem,tint:wood == "spruce" ? 0x619961 : 0x77AB2F)
                 return Array(repeating:material,count:6)
             }
             if name.hasPrefix(wood+"_") && ["planks","stairs","slab","fence","fence_gate","pressure_plate","button"].contains(String(name.dropFirst(wood.count+1))) {

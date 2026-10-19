@@ -42,6 +42,7 @@ final class Launcher: ObservableObject {
     @Published var assets: Assets?
     @Published var sceneryFailed = false
     @Published var items: [World:NSImage] = [:]
+    @Published var stone: NSImage?
     #if LAUNCHER_TEST
     var previewImage: NSImage?
     init(status: Status, background: NSImage, assets: Assets) {
@@ -71,9 +72,9 @@ final class Launcher: ObservableObject {
         let development = Bundle.main.object(forInfoDictionaryKey: "BedrockProjectPath") as? String ?? ""
         assets = try? Assets(data: !development.isEmpty && !FileManager.default.fileExists(atPath: data.path) ? installed : data)
         if let art = assets {
-            art.icons { [weak self] images in
+            art.icons { [weak self] images,stone in
                 guard let self, self.assets === art else { return }
-                self.items = images
+                self.items = images; self.stone = stone
             }
         }
     }
@@ -266,6 +267,7 @@ private enum Blocks {
 private struct BlockButton: ButtonStyle {
     var colour: Color = Blocks.stone
     var selected = false
+    var texture: NSImage?
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.isFocused) private var focused
     @Environment(\.isEnabled) private var enabled
@@ -274,7 +276,12 @@ private struct BlockButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(colour == Blocks.grass ? Blocks.ink : .white)
-            .background(colour.brightness(hovered ? 0.08 : 0))
+            .background {
+                colour.brightness(hovered ? 0.08 : 0)
+                if let texture, colour != Blocks.grass {
+                    Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.28)
+                }
+            }
             .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2) }
             .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.45)).frame(height:4) }
             .overlay { Rectangle().strokeBorder(selected ? Blocks.gold : .black.opacity(0.7),lineWidth:2) }
@@ -396,6 +403,13 @@ struct LauncherView: View {
             ZStack {
                 Scenery(journey:launcher.journey,moving:moving,exploring:exploring,launcher:launcher)
                     .frame(width:geometry.size.width,height:geometry.size.height).clipped().ignoresSafeArea().allowsHitTesting(exploring)
+                if exploring {
+                    ZStack {
+                        Rectangle().frame(width:13,height:1)
+                        Rectangle().frame(width:1,height:13)
+                    }.foregroundStyle(.white.opacity(0.7)).shadow(color:.black,radius:1)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
                 VStack(spacing:0) {
                     header.padding(.horizontal,28).padding(.top,28)
                     Spacer(minLength:40)
@@ -403,30 +417,27 @@ struct LauncherView: View {
                         Button { exploring = false } label: {
                             Label("Drag to look around · Done",systemImage:"viewfinder").font(Blocks.type(13))
                                 .padding(.horizontal,18).frame(height:44)
-                        }.buttonStyle(BlockButton()).padding(.bottom,24)
+                        }.buttonStyle(BlockButton(texture:launcher.stone)).padding(.bottom,24)
                     } else {
                         VStack(spacing:16) {
-                            location
-                            HStack(alignment:.bottom,spacing:14) {
+                            installation
+                            HStack(alignment:.center,spacing:12) {
                                 hotbar
-                                Spacer(minLength:14)
                                 Button { exploring = true } label: {
                                     VStack(spacing:5) {
                                         Image(systemName:"viewfinder").font(.system(size:20))
-                                        Text("Look around").font(.system(size:11,weight:.semibold))
-                                    }.frame(width:90,height:72)
-                                }.buttonStyle(BlockButton()).disabled(!available || launcher.journey.passage != nil)
+                                        Text("Look around").font(.system(size:10,weight:.semibold))
+                                    }.frame(width:72,height:64)
+                                }.buttonStyle(BlockButton(texture:launcher.stone))
+                                    .disabled(!available || launcher.journey.passage != nil)
+                                    .keyboardShortcut("l",modifiers:.command)
                                     .help("Drag the world to look around. Escape returns to the trail")
                             }
-                            installation
-                        }.frame(maxWidth:760).padding(.horizontal,28)
-                        HStack {
-                            Text(launcher.sceneryFailed ? "Scenery unavailable for this game version" : available ? "Unofficial launcher · Windows Bedrock Edition" : "Install Minecraft to explore the live worlds")
-                                .font(.system(size:11)).foregroundStyle(.white.opacity(0.75))
-                            Spacer()
-                            Text("↵  \(primaryTitle)").font(.system(size:11,weight:.medium)).foregroundStyle(.white.opacity(0.75))
-                                .opacity(launcher.running ? 0 : 1)
-                        }.frame(maxWidth:760).padding(.horizontal,28).padding(.top,18).padding(.bottom,18)
+                            location
+                        }.frame(maxWidth:640).padding(.horizontal,28)
+                        Text(launcher.sceneryFailed ? "Scenery unavailable for this game version" : available ? "1–4 change realms   ·   ⌘L look around" : "Install Minecraft to explore the live worlds")
+                            .font(.system(size:11)).foregroundStyle(.white.opacity(0.85))
+                            .shadow(color:.black,radius:2).padding(.top,14).padding(.bottom,18)
                     }
                 }
             }
@@ -453,14 +464,16 @@ struct LauncherView: View {
     }
 
     private var header: some View {
-        HStack(alignment:.top) {
-            VStack(alignment:.leading,spacing:5) {
-                Text("Minecraft").font(Blocks.type(34)).shadow(color:.black,radius:0,x:3,y:3)
+        ZStack(alignment:.top) {
+            VStack(spacing:4) {
+                Text("Minecraft").font(Blocks.type(42))
+                    .shadow(color:.black,radius:0,x:4,y:5)
+                    .shadow(color:.gray,radius:0,x:0,y:2)
                 Text("for MacOS").font(Blocks.type(14)).foregroundStyle(Blocks.gold)
                     .shadow(color:.black,radius:0,x:1,y:2)
-            }.accessibilityElement(children:.combine).accessibilityAddTraits(.isHeader)
-            Spacer()
+            }.padding(.top,12).accessibilityElement(children:.combine).accessibilityAddTraits(.isHeader)
             HStack(spacing:8) {
+                Spacer()
                 Button { launcher.showHelp() } label: { Image(systemName:"questionmark").frame(width:44,height:44) }
                     .help("Help").accessibilityLabel("Help")
                 Button { openSettings() } label: { Image(systemName:"gearshape.fill").frame(width:44,height:44) }
@@ -469,15 +482,15 @@ struct LauncherView: View {
                     .accessibilityLabel(animateScenery ? "Pause scenery" : "Resume scenery")
                     .help(reduceMotion ? "Reduced Motion is enabled" : lowPower ? "Scenery pauses in Low Power Mode" : "Pause or resume the adventure")
                     .disabled(reduceMotion || lowPower)
-            }.buttonStyle(BlockButton())
-        }
+            }.buttonStyle(BlockButton(texture:launcher.stone))
+        }.frame(height:84)
     }
 
     private var location: some View {
         HStack(alignment:.bottom) {
             VStack(alignment:.leading,spacing:6) {
-                Text(launcher.journey.world.title).font(Blocks.type(14)).foregroundStyle(Blocks.gold)
-                Text(launcher.journey.title).font(Blocks.type(20))
+                Text(launcher.journey.world == .sift ? "The Sift · interpretation" : launcher.journey.world.title).font(Blocks.type(12)).foregroundStyle(Blocks.gold)
+                Text(launcher.journey.title).font(Blocks.type(16))
                     .shadow(color:.black,radius:0,x:2,y:2).lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
             }
@@ -485,12 +498,12 @@ struct LauncherView: View {
             if launcher.journey.passage != nil {
                 Button { launcher.journey.skip() } label: {
                     Text("Skip journey").font(Blocks.type(12)).padding(.horizontal,14).frame(height:44)
-                }.buttonStyle(BlockButton())
+                }.buttonStyle(BlockButton(texture:launcher.stone))
             } else {
                 Button { search = ""; map = true } label: {
                     Label("Explore biomes",systemImage:"map").font(.system(size:13,weight:.semibold))
                         .padding(.horizontal,14).frame(height:44)
-                }.buttonStyle(BlockButton()).disabled(!available)
+                }.buttonStyle(BlockButton(texture:launcher.stone)).disabled(!available)
                     .popover(isPresented:$map) { biomeMap }
             }
         }.frame(maxWidth:.infinity)
@@ -505,11 +518,11 @@ struct LauncherView: View {
                 } label: {
                     VStack(spacing:5) {
                         Slot(world:world,image:launcher.items[world])
-                        Text(world.title).font(.system(size:11,weight:.semibold)).lineLimit(1)
-                    }.frame(width:93,height:72)
+                        Text(world.title).font(.system(size:10,weight:.semibold)).lineLimit(1)
+                    }.frame(width:66,height:64)
                         .overlay(alignment:.topLeading) { Text("\(index+1)").font(.system(size:9,weight:.bold)).foregroundStyle(.white.opacity(0.5)).padding(5) }
                 }
-                .buttonStyle(BlockButton(selected:launcher.selection == index))
+                .buttonStyle(BlockButton(selected:launcher.selection == index,texture:launcher.stone))
                 .keyboardShortcut(KeyEquivalent(Character(String(index+1))),modifiers:[])
                 .disabled(!available)
                 .accessibilityLabel("\(world.title) scenery")
@@ -538,7 +551,7 @@ struct LauncherView: View {
                                 Text(launcher.journey.world.biomes[index].rawValue).font(.system(size:12,weight:.medium))
                                     .frame(maxWidth:.infinity,alignment:.leading).multilineTextAlignment(.leading)
                             }.padding(10).frame(minHeight:52)
-                        }.buttonStyle(BlockButton(selected:index == launcher.journey.biome))
+                        }.buttonStyle(BlockButton(selected:index == launcher.journey.biome,texture:launcher.stone))
                     }
                 }
             }.frame(maxHeight:330)
@@ -546,7 +559,40 @@ struct LauncherView: View {
         }.padding(20).frame(width:570).background(Blocks.stone)
     }
 
-    private var installation: some View {
+    @ViewBuilder private var installation: some View {
+        if !launcher.running && ["ready","new","cancelled"].contains(launcher.status.state) {
+            VStack(spacing:12) {
+                playButton(width:320)
+                if !detail.isEmpty {
+                    Text(detail).font(.system(size:13,weight:.medium)).multilineTextAlignment(.center)
+                        .frame(maxWidth:500).shadow(color:.black,radius:2).textSelection(.enabled)
+                }
+                if fresh || launcher.status.state == "cancelled" { setupSteps }
+            }
+        } else { panel }
+    }
+
+    private func playButton(width: CGFloat) -> some View {
+        Button { launcher.start() } label: {
+            Label(primaryTitle,systemImage:"play.fill").font(Blocks.type(width>200 ? 22 : 18))
+                .frame(width:width,height:62)
+        }.buttonStyle(BlockButton(colour:Blocks.grass)).keyboardShortcut(.defaultAction)
+    }
+
+    private var setupSteps: some View {
+        HStack(spacing:16) {
+            ForEach(0..<4,id:\.self) { index in
+                HStack(spacing:6) {
+                    Image(systemName:launcher.status.stage.map { index < $0 } == true ? "checkmark" : ["person.fill","arrow.down","hammer.fill","play.fill"][index])
+                        .foregroundStyle(launcher.status.stage == index ? Blocks.gold : Blocks.grass)
+                    Text(["Sign in","Download","Prepare","Play"][index])
+                }.font(.system(size:11,weight:.medium))
+                    .accessibilityLabel("\(["Sign in","Download","Prepare","Play"][index]), \(launcher.status.stage.map { index < $0 ? "complete" : index == $0 ? "current" : "upcoming" } ?? "upcoming")")
+            }
+        }
+    }
+
+    private var panel: some View {
         VStack(alignment:.leading,spacing:14) {
             HStack(spacing:24) {
                 VStack(alignment:.leading,spacing:7) {
@@ -565,14 +611,11 @@ struct LauncherView: View {
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
                 if !launcher.running {
-                    Button { launcher.start() } label: {
-                        Label(primaryTitle,systemImage:"play.fill").font(Blocks.type(18))
-                            .frame(width:fresh ? 230 : 188,height:62)
-                    }.buttonStyle(BlockButton(colour:Blocks.grass)).keyboardShortcut(.defaultAction)
+                    playButton(width:188)
                 } else if launcher.canCancel {
                     Button { launcher.cancel() } label: {
                         Text("Cancel setup").font(Blocks.type(14)).frame(width:160,height:54)
-                    }.buttonStyle(BlockButton()).keyboardShortcut(.cancelAction)
+                    }.buttonStyle(BlockButton(texture:launcher.stone)).keyboardShortcut(.cancelAction)
                 } else {
                     Label(launcher.status.state == "playing" ? "Game running" : "Please wait",systemImage:launcher.status.state == "playing" ? "checkmark" : "hourglass")
                         .font(Blocks.type(13)).frame(width:160,height:54)
@@ -587,22 +630,13 @@ struct LauncherView: View {
                 ProgressView(value:fraction).progressViewStyle(Experience()).accessibilityLabel("Overall setup")
             }
             if fresh || launcher.status.state == "busy" || launcher.status.state == "cancelled" {
-                HStack(spacing:16) {
-                    ForEach(0..<4,id:\.self) { index in
-                        HStack(spacing:6) {
-                            Image(systemName:launcher.status.stage.map { index < $0 } == true ? "checkmark" : ["person.fill","arrow.down","hammer.fill","play.fill"][index])
-                                .foregroundStyle(launcher.status.stage == index ? Blocks.gold : Blocks.grass)
-                            Text(["Sign in","Download","Prepare","Play"][index])
-                        }.font(.system(size:11,weight:.medium))
-                            .accessibilityLabel("\(["Sign in","Download","Prepare","Play"][index]), \(launcher.status.stage.map { index < $0 ? "complete" : index == $0 ? "current" : "upcoming" } ?? "upcoming")")
-                    }
-                }
+                setupSteps
             }
             if launcher.status.state == "error" {
                 Button { launcher.showLog() } label: {
                     Label("Open setup log",systemImage:"doc.text").font(.system(size:12,weight:.semibold))
                         .padding(.horizontal,12).frame(height:36)
-                }.buttonStyle(BlockButton())
+                }.buttonStyle(BlockButton(texture:launcher.stone))
             }
         }
         .padding(20)

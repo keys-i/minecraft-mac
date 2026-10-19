@@ -10,6 +10,45 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Gameplay-reference scenery and title screen in 0.9
+
+Version 0.9 follows actual Minecraft gameplay references for the village,
+fortress, stronghold portal chamber and End City. Village clearings follow
+individual building foundations and connecting paths; nearby foliage, fallen
+logs, roots, fungi, coral fans and hanging cave growth fill the camera foreground
+Original cutout leaves, cloud art, darkened End sky and patterned fish replace
+several simplified surfaces. Sift terrain and its rift remain labelled interpretations
+
+Play is now central on the title screen, above a compact item hotbar
+Installed stone art supplies button faces. The larger centred title and smaller
+control area leave more of the live world visible. Look around also uses ⌘L
+The mine/Nether and stronghold/End journeys remain; the fortress has a roofed
+junction and connected side rooms, and the stronghold has recessed barred openings
+
+The 92 Python tests, native fixtures and installed-art checks pass locally
+All 40 area renders, 24 passage views and paused comparisons pass, alongside
+source-generated narrow/normal/wide UI states. The 49-view probe's highest GPU
+p95 is 12.00 ms and wall p95 is 14.71 ms against a 50 ms budget
+[Method, baseline and limits](test.md#gameplay-reference-composition-in-09)
+distinguish these scenery measurements from game or Windows performance
+
+The separate 0.9.0 candidate retains all 1,051 resources from 0.8 byte-for-byte,
+including the runtime, worker, account helper, font and approved poster
+Only the launcher executable, app version metadata and outer signature change
+The installed app, accounts and saved worlds remain untouched
+The outer signature and LZFSE disk image verify; minimum macOS remains 27
+The DMG is 128,076,318 bytes with SHA-256:
+
+```text
+15f0b548533081d79ee1e185783955c9076232ec6d4840ff22581f6bf4fa91dd
+```
+
+The isolated preview uses a simulated worker; its scenery reads installed art
+The 138-second local tour records the authored scenery and portal journeys
+Full-window interaction, VoiceOver, long-session memory and gameplay performance
+remain unverified. Developer ID signing, notarisation and clean-Mac installation
+remain release gates; no binary release is published
+
 ## Player-height worlds and Minecraft controls in 0.8
 
 Version 0.8 replaces the elevated diorama framing with low routes through wider,

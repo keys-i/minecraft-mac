@@ -139,6 +139,15 @@ struct LauncherChecks {
         precondition(roster == Set(Species.allCases))
         precondition(World.overworld.biomes.count == 23 && World.nether.biomes.count == 5)
         precondition(Terrain(biome:.meadow).reserved(1,5))
+        let village = Terrain(biome:.meadow)
+        for plot in village.plots {
+            let level = village.height(plot.midX,plot.midY)
+            precondition(village.occupied(plot.midX,plot.midY))
+            for x in [plot.midX-1,plot.midX+1] { for z in [plot.midY-1,plot.midY+1] {
+                precondition(village.height(x,z) == level)
+            } }
+        }
+        precondition(!village.occupied(24,6) && !village.reserved(24,6))
         var journey = Journey()
         for _ in 0..<18 { journey.tick(rotate: false) }
         precondition(journey.biome == 0 && journey.elapsed == 0)
@@ -195,6 +204,8 @@ struct LauncherChecks {
         loaded = nil
         for species in Species.allCases { _ = try factory.make(species) }
         let breeze = try factory.make(.breeze)
+        let fish = try factory.make(.tropical,variant:3)
+        precondition(fish.childNode(withName:"fish-pattern",recursively:true) != nil)
         precondition(breeze.childNodes.filter { $0.name?.hasPrefix("breeze_wind_") == true }.count == 3)
         let blaze = try factory.make(.blaze)
         let rods = blaze.childNodes.filter { $0.name?.hasPrefix("rod-orbit-") == true }.flatMap(\.childNodes)
@@ -224,6 +235,13 @@ struct LauncherChecks {
                 print("\(world) \(world.biomes[index]): \(nodes) nodes, \(triangles) triangles")
                 fflush(stdout)
                 precondition(nodes < 1200 && triangles < 350_000)
+                if world == .end {
+                    precondition((scene.background.contents as? [CGImage])?.count == 6)
+                }
+                if world.biomes[index] == .meadow {
+                    let crowns = scene.rootNode.childNodes.filter { $0.name == "wind-canopy" }
+                    precondition(crowns.count > 2 && crowns.allSatisfy { $0.geometry === crowns[0].geometry })
+                }
                 let area = world.biomes[index], terrain = Terrain(biome:area)
                 for step in 0...36 {
                     let eye = Landscape.pose(area,at:Double(step)/2).eye

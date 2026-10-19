@@ -184,7 +184,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='8', CFBundleShortVersionString='0.8.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='9', CFBundleShortVersionString='0.9.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)

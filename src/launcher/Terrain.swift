@@ -23,7 +23,25 @@ struct Terrain {
     var seed: Int { Biome.allCases.firstIndex(of:biome)!+1 }
     var end: Bool { [.central,.highlands,.midlands,.islands,.barrens,.city].contains(biome) }
 
+    private static let villagePlots = [CGRect(x:-17,y:-34,width:14,height:12),.init(x:7,y:-33,width:8,height:8),
+                .init(x:-16,y:-15,width:8,height:8),.init(x:6,y:-15,width:14,height:10),
+                .init(x:-5,y:-21,width:10,height:10),.init(x:-23,y:-23,width:6,height:8),
+                .init(x:-20,y:-50,width:10,height:10),.init(x:12,y:-48,width:10,height:10)]
+    var plots: [CGRect] { biome == .meadow ? Self.villagePlots : [] }
+
+    func path(_ z: Double) -> Double { biome == .meadow ? sin(z/8)*1.5 : 3 }
+
+    func occupied(_ x: Double, _ z: Double) -> Bool {
+        if biome == .meadow {
+            return plots.contains { $0.contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<1.7 && (-48...18).contains(z)
+        }
+        return reserved(x,z) && z < -2
+    }
+
     func reserved(_ x: Double, _ z: Double) -> Bool {
+        if biome == .meadow {
+            return plots.contains { $0.insetBy(dx:-2,dy:-2).contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<3 && (-48...20).contains(z)
+        }
         let footprint: (Double,Double,Double)
         switch biome {
         case .meadow,.snow,.savanna: footprint = (26,-39,0)
@@ -38,11 +56,22 @@ struct Terrain {
         default: footprint = (7,-26,-10)
         }
         let structure = abs(x)<footprint.0 && (footprint.1...footprint.2).contains(z)
-        let route = biome == .mansion ? abs(x-5)<6 && (15...40).contains(z) : abs(x-3)<5 && (-2...25).contains(z)
+        let route = biome == .mansion ? abs(x-5)<6 && (15...40).contains(z) : abs(x-3)<3 && (-2...25).contains(z)
         return structure || route
     }
 
     func height(_ x: Double, _ z: Double) -> Double {
+        var level = shape(x,z)
+        for plot in plots {
+            let dx = max(0,max(plot.minX-x,x-plot.maxX)), dz = max(0,max(plot.minY-z,z-plot.maxY))
+            if dx >= 3 || dz >= 3 { continue }
+            let blend = min(1,hypot(dx,dz)/3)
+            level = level*blend+shape(plot.midX,plot.midY)*(1-blend)
+        }
+        return floor(level)
+    }
+
+    private func shape(_ x: Double, _ z: Double) -> Double {
         let broad = Self.noise(x,z,scale:42,seed:seed)
         let fine = Self.noise(x,z,scale:13,seed:seed+43)
         let ridge = Self.noise(x+26,z-14,scale:64,seed:seed+11)
@@ -99,8 +128,8 @@ struct Terrain {
         default: break
         }
         var y = 4+wave+max(0,-z-50)*max(0,ridge+0.3)*0.25
-        if [.meadow,.desert,.jungle,.mansion,.savanna,.snow,.cherry].contains(biome) {
-            let radius = biome == .mansion ? 22.0 : biome == .meadow ? 27 : biome == .desert ? 15 : 12
+        if [.desert,.jungle,.mansion,.savanna,.snow,.cherry].contains(biome) {
+            let radius = biome == .mansion ? 22.0 : biome == .desert ? 15 : 12
             let dx = max(0,abs(x)-radius), dz = max(0,abs(z+(biome == .mansion ? 12 : 19))-(biome == .mansion ? 28 : 19))
             let blend = min(1,hypot(dx,dz)/7)
             y = 4*(1-blend)+y*blend
