@@ -6,9 +6,9 @@ enum Passage: String, Sendable {
     var duration: Int { self == .mine ? 26 : self == .stronghold ? 28 : 16 }
     var title: String {
         switch self {
-        case .mine: return "Into the mineshaft · Nether portal"
-        case .stronghold: return "Back in the Overworld · Stronghold portal"
-        case .rift: return "Through the rift · Sift interpretation"
+        case .mine: return "Nether portal mineshaft"
+        case .stronghold: return "Stronghold portal"
+        case .rift: return "Rift valley"
         }
     }
 

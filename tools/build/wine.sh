@@ -18,51 +18,7 @@ DEPS="$BUILD/downloads/wine-devel-11.8-osx64.tar.xz"
 if [ ! -f "$DEPS" ]; then
   curl -fL --retry 3 "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.8/wine-devel-11.8-osx64.tar.xz" -o "$DEPS"
 fi
-python3 - "$DEPS" "$PREFIX/lib" "$BUILD/dependency-unused" <<'PYDEPS'
-import hashlib, os, pathlib, subprocess, sys, tarfile
-archive, destination, spare = map(pathlib.Path, sys.argv[1:])
-expected = "5c9f0984961ee6289f4f2c4fe751c27f02b6c28855154e3f99b7e2bd8108b620"
-if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
-    raise SystemExit("Wine dependency archive SHA256 mismatch")
-# Extract only portable open-source dependencies; Wine itself is compiled below.
-with tarfile.open(archive, "r|xz") as tf:
-    for member in tf:
-        if not (member.name.startswith("Wine Devel.app/Contents/Resources/wine/lib/")
-                and member.name.count("/") == 5 and member.name.endswith(".dylib")):
-            continue
-        output = destination / pathlib.Path(member.name).name
-        if member.issym():
-            if pathlib.Path(member.linkname).name != member.linkname:
-                raise SystemExit("Unsafe dependency symlink")
-            if not output.exists() and not output.is_symlink():
-                output.symlink_to(member.linkname)
-        elif member.isfile():
-            output.write_bytes(tf.extractfile(member).read())
-            output.chmod(member.mode)
-# Keep the transitive library closure actually used by this Wine configuration.
-# Preserve other archive files in the build cache instead of shipping them.
-needed = set()
-pending = ["libgnutls.30.dylib", "libfreetype.6.dylib", "libgnutls.dylib", "libfreetype.dylib"]
-while pending:
-    name = pending.pop()
-    if name in needed:
-        continue
-    needed.add(name)
-    library = destination / name
-    if library.is_symlink():
-        pending.append(library.readlink().name)
-    dependencies = subprocess.check_output(["/usr/bin/otool", "-L", str(library)], text=True)
-    for line in dependencies.splitlines()[2:]:
-        dependency = line.strip().split(" (")[0]
-        if dependency.startswith(("@loader_path/", "@rpath/")):
-            pending.append(pathlib.Path(dependency).name)
-        elif not dependency.startswith(("/System/", "/usr/lib/")):
-            raise SystemExit("Unexpected portable dependency: " + dependency)
-spare.mkdir(exist_ok=True)
-for library in destination.glob("*.dylib"):
-    if library.name not in needed:
-        os.replace(library, spare / library.name)
-PYDEPS
+"$ROOT/minecraft" wine dependencies "$DEPS" "$PREFIX/lib" "$BUILD/dependency-unused"
 # Build tools link FreeType directly; a bare dylib install name fails after
 # macOS strips DYLD environment variables when executing system shells.
 install_name_tool -id '@rpath/libfreetype.6.dylib' "$PREFIX/lib/libfreetype.6.dylib"
@@ -111,25 +67,5 @@ cd "$BUILD"
   --without-gstreamer --without-ffmpeg > "$BUILD/configure.log" 2>&1
 make -j"$JOBS" > "$BUILD/build.log" 2>&1
 make install > "$BUILD/install.log" 2>&1
-python3 - "$ROOT" "$PREFIX" "$SOURCE" <<'PYMANIFEST'
-import hashlib, json, pathlib, subprocess, sys
-root, prefix, source = map(pathlib.Path, sys.argv[1:])
-manifest = {
-    "wine_source_repository": "https://github.com/Sightem/WineGDK",
-    "wine_source_revision": subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip(),
-    "wine_version": subprocess.check_output([str(prefix / "bin/wine"), "--version"], text=True).strip(),
-    "architecture": "x86_64",
-    "dependency_archive": {
-        "url": "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.8/wine-devel-11.8-osx64.tar.xz",
-        "sha256": "5c9f0984961ee6289f4f2c4fe751c27f02b6c28855154e3f99b7e2bd8108b620",
-        "extracted": "GnuTLS/FreeType dylibs and their transitive dependencies; Wine compiled locally"
-    },
-    "patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (root / "vendor/patches").glob("standalone-wine*.patch")},
-    "required_portable_libraries": sorted(p.name for p in (prefix / "lib").glob("*.dylib")),
-    "capabilities": {"win64": True, "win32": False, "macdriver": True, "coreaudio": True,
-                     "gnutls": True, "freetype": True, "gstreamer": False, "vulkan": False},
-    "graphics": "Run tools/build/graphics.sh --wine-runtime with this prefix after rebuilding Wine; validate graphics before gameplay."
-}
-(prefix / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-PYMANIFEST
+"$ROOT/minecraft" wine manifest "$PREFIX" "$SOURCE"
 printf 'Built standalone Wine: %s\n' "$PREFIX/bin/wine"

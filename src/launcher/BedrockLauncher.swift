@@ -55,6 +55,8 @@ final class Launcher: ObservableObject {
     @Published var journey = Journey()
     @Published var assets: Assets?
     @Published var sceneryFailed = false
+    let chart = Chart()
+    let simulated = Bundle.main.url(forResource:"preview",withExtension:"json") != nil
     @Published var items: [World:NSImage] = [:]
     @Published var frames: [String:NSImage] = [:]
     @Published var stone: NSImage?
@@ -112,13 +114,13 @@ final class Launcher: ObservableObject {
         let resources = Bundle.main.resourceURL!
         let worker = resources.appendingPathComponent("worker/BedrockWorker")
         let packaged = FileManager.default.isExecutableFile(atPath: worker.path)
-        task.executableURL = packaged ? worker : URL(fileURLWithPath: "/usr/bin/python3")
-        task.arguments = (packaged ? [] : [root.appendingPathComponent("src/launcher/setup.py").path]) + (check ? ["--warmup"] : signOut ? ["--sign-out"] : [])
+        task.executableURL = packaged ? worker : root.appendingPathComponent("target/release/MinecraftWorker")
+        task.arguments = check ? ["--warmup"] : signOut ? ["--sign-out"] : []
         task.currentDirectoryURL = packaged ? resources : root
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
         var env = Self.environment()
-        env["PYTHONUNBUFFERED"] = "1"
+        env["BEDROCK_HOME"] = root.path
         if packaged { env["BEDROCK_BUNDLE"] = resources.path }
         task.environment = env
         if opening { preparePresentation(task,resources:resources) }
@@ -498,7 +500,7 @@ private struct Scenery: View {
     let travel: (Int) -> Void
     let finish: () -> Void
     let renderDistance: Int
-    let seed: Int
+    let seed: String
     let farLands: Int
     let location: (String?) -> Void
     let report: ((SCNVector3,Double) -> Void)?
@@ -526,11 +528,33 @@ private struct Scenery: View {
     }
 
     @ViewBuilder private var world: some View {
-        if let assets = launcher.assets, !launcher.sceneryFailed {
-            Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
+        if let assets = launcher.assets, !launcher.sceneryFailed, !launcher.simulated {
+            if journey.world.dimension != nil && !(journey.world == .overworld && farLands != 0) {
+                Expedition(world:journey.world,biome:journey.biome,seed:seed,assets:assets,root:launcher.root,chart:launcher.chart,
+                    exploring:exploring,moving:moving,active:active,distance:renderDistance,sensitivity:sensitivity,
+                    inverted:inverted,controls:controls,finish:finish,location:location,report:report,activity:activity,
+                    cinematic:journey.passage != nil,arrived:{ world in
+                        if launcher.journey.world != world { launcher.journey.select(world,animated:false) }
+                        launcher.journey.skip()
+                    })
+                    .overlay(alignment:.bottomLeading) { GenerationStatus(chart:launcher.chart).padding(24) }
+            } else { Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
                 travel:travel,arrived:{ launcher.journey.area($0) },finish:finish,
-                renderDistance:renderDistance,seed:seed,farLands:farLands,location:location,activity:activity,report:report,
-                sensitivity:sensitivity,inverted:inverted,controls:controls,active:active) { launcher.sceneryFailed = true }
+                renderDistance:renderDistance,seed:Seed.number(seed),farLands:farLands,location:location,activity:activity,report:report,
+                sensitivity:sensitivity,inverted:inverted,controls:controls,active:active) { launcher.sceneryFailed = true } }
+        }
+    }
+}
+
+private struct GenerationStatus: View {
+    @ObservedObject var chart: Chart
+    var body: some View {
+        if let text = chart.error ?? chart.message {
+            VStack(alignment:.leading,spacing:8) {
+                Text(text).font(Blocks.type(16)).foregroundStyle(Blocks.ink).lineLimit(3)
+                if chart.error != nil { Button("Try again") {chart.retry?()}.buttonStyle(BlockButton()) }
+                if chart.error == nil, let progress = chart.progress { ProgressView(value:min(1,max(0,progress))).tint(.green) }
+            }.padding(12).frame(maxWidth:300,alignment:.leading).background(Blocks.stone).border(.black,width:2)
         }
     }
 }
@@ -638,11 +662,25 @@ private struct Disc: Shape {
     }
 }
 
+private struct ToastFrame: Shape {
+    func path(in rect: CGRect) -> Path {
+        let x = rect.minX, y = rect.minY, w = rect.width, h = rect.height, c = 3.0
+        var path = Path()
+        path.addLines([.init(x:x+c,y:y),.init(x:x+w-c,y:y),.init(x:x+w-c,y:y+c),
+            .init(x:x+w,y:y+c),.init(x:x+w,y:y+h-c),.init(x:x+w-c,y:y+h-c),
+            .init(x:x+w-c,y:y+h),.init(x:x+c,y:y+h),.init(x:x+c,y:y+h-c),
+            .init(x:x,y:y+h-c),.init(x:x,y:y+c),.init(x:x+c,y:y+c)])
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct Minimap: View {
     let world: World
     @ObservedObject var position: Position
+    @ObservedObject var chart: Chart
     var seed: Int = 0
-    var size: CGFloat = 208
+    var size: CGFloat = 160
     var shortcut = "M"
     @State private var image: CGImage?
 
@@ -651,9 +689,50 @@ struct Minimap: View {
     private var x: Int { Int(floor(point.x/8)) }
     private var z: Int { Int(floor(point.z/8)) }
     private var historical: Bool { Region.at(point)?.historical(world) == true }
-    private var key: String { "\(world.rawValue):\(seed):\(x):\(z):\(Int(floor((point.y+16)/32)))" }
+    private var key: String { "\(world.rawValue):\(seed):\(x):\(z):\(Int(floor((point.y+16)/32))):\(chart.revision)" }
 
-    static func image(world: World, at point: SCNVector3, seed: Int = 0) -> CGImage? {
+    nonisolated static func image(data: WorldData, at point: SCNVector3) -> CGImage? {
+        guard point.x.isFinite, point.y.isFinite, point.z.isFinite, [point.x,point.y,point.z].allSatisfy({abs($0)<30_000_000}) else { return nil }
+        let covered = data.surface(Int(floor(point.x)),Int(floor(point.z))).map {Double($0)>point.y+6} ?? false
+        let ceiling = data.dimension == 1 || covered ? Int(floor(point.y)) : 320
+        let side = 128, cx = Int(floor(point.x/8))*8, cz = Int(floor(point.z/8))*8
+        var pixels = [UInt8](); pixels.reserveCapacity(side*side*4)
+        var previous = (0..<side).map {data.surface(cx+$0-side/2,cz-side/2-1,below:ceiling)}
+        for row in 0..<side {
+            guard !Task.isCancelled else {return nil}
+            for column in 0..<side {
+            let x = cx+column-side/2, z = cz+row-side/2
+            let height = data.surface(x,z,below:ceiling)
+            let block = height.flatMap { data.block(x,$0,z) }
+            let name = block?.name ?? ""
+            let colour: UInt32
+            if block == nil { colour = 0x181B1B }
+            else if name.contains("water") { colour = 0x376CC4 }
+            else if name.contains("lava") { colour = 0xF37117 }
+            else if name.contains("snow") || name.contains("ice") { colour = 0xD8E8EC }
+            else if name.contains("leaves") { colour = name.contains("cherry") ? 0xDF9FC4 : 0x356A2D }
+            else if name.contains("sand") && !name.contains("soul") || name == "end_stone" { colour = 0xD9CA8E }
+            else if name.contains("planks") || name.contains("log") { colour = 0x99754D }
+            else if name.contains("path") { colour = 0xAF965F }
+            else if name.contains("grass") || name.contains("moss") { colour = 0x7EAF49 }
+            else if name.contains("dirt") { colour = 0x8B6545 }
+            else if name.contains("nylium") { colour = name.contains("warped") ? 0x228A80 : 0x9B3448 }
+            else if name.contains("netherrack") { colour = 0x793C3B }
+            else if name.contains("terracotta") { colour = 0xA97548 }
+            else if name.contains("deepslate") || name.contains("blackstone") { colour = 0x42434C }
+            else { colour = 0x999B90 }
+            let neighbour = previous[column] ?? height ?? 0
+            previous[column] = height
+            let shade = max(0.65,min(1.18,0.94+Double((height ?? 0)-neighbour)*0.08))
+            pixels += [UInt8(min(255,Double((colour>>16)&255)*shade)),UInt8(min(255,Double((colour>>8)&255)*shade)),UInt8(min(255,Double(colour&255)*shade)),255]
+        } }
+        guard let provider = CGDataProvider(data:Data(pixels) as CFData) else { return nil }
+        return CGImage(width:side,height:side,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:side*4,
+            space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent)
+    }
+
+    nonisolated static func image(world: World, at point: SCNVector3, seed: Int = 0) -> CGImage? {
         guard point.x.isFinite, point.y.isFinite, point.z.isFinite,
               abs(point.x)<=30_000_000, abs(point.z)<=30_000_000,
               Region.at(point)?.historical(world) != true else { return nil }
@@ -701,7 +780,7 @@ struct Minimap: View {
                     path.addLine(to:.init(x:8,y:11)); path.addLine(to:.init(x:3,y:14)); path.closeSubpath()
                 }.fill(.white).shadow(color:.black,radius:0,x:1,y:1)
                     .frame(width:16,height:16).rotationEffect(.radians(-yaw))
-                    .offset(x:(point.x/8-Double(x))*Double(size/33),y:(point.z/8-Double(z))*Double(size/33))
+                    .offset(x:(point.x-Double(x*8))*Double(size/128),y:(point.z-Double(z*8))*Double(size/128))
             }.frame(width:size,height:size).clipShape(Disc())
                 .padding(4).background(Disc().fill(Blocks.stone))
                 .padding(3).background(Disc().fill(.black))
@@ -710,10 +789,15 @@ struct Minimap: View {
                 }
             Text("\(Int(point.x))  \(Int(point.y))  \(Int(point.z))").font(Blocks.type(13))
                 .foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1).padding(.top,10)
-            Text("\(shortcut) · Map").font(Blocks.type(12)).foregroundStyle(.white)
-                .shadow(color:.black,radius:0,x:1,y:1).padding(.top,6)
         }
-            .task(id:key) { image = Self.image(world:world,at:point,seed:seed) }
+            .task(id:key) {
+                let data = chart.data, point = point, world = world, seed = seed
+                let worker = Task.detached(priority:.utility) {
+                    world.dimension == nil ? Self.image(world:world,at:point,seed:seed) : Self.image(data:data,at:point)
+                }
+                let result = await withTaskCancellationHandler(operation:{await worker.value},onCancel:{worker.cancel()})
+                if !Task.isCancelled { image = result }
+            }
             .accessibilityElement(children:.ignore)
             .accessibilityLabel("Minimap, north up, position \(Int(point.x)), \(Int(point.y)), \(Int(point.z))")
     }
@@ -888,9 +972,11 @@ struct GameTitle: View {
 private struct Marquee: View {
     let text: String
     let active: Bool
+    var size: CGFloat = 18
+    var available: CGFloat = 164
     @Environment(\.accessibilityReduceMotion) private var reduced
     @State private var offset: CGFloat = 0
-    private var width: CGFloat { (text as NSString).size(withAttributes:[.font:NSFont(name:"Mojangles",size:18) ?? NSFont(name:"Monocraft",size:18) ?? .monospacedSystemFont(ofSize:18,weight:.regular)]).width }
+    private var width: CGFloat { (text as NSString).size(withAttributes:[.font:NSFont(name:"Mojangles",size:size) ?? NSFont(name:"Monocraft",size:size) ?? .monospacedSystemFont(ofSize:size,weight:.regular)]).width }
 
     var body: some View {
         Group {
@@ -898,17 +984,17 @@ private struct Marquee: View {
             else {
                 HStack(spacing:32) {
                     Text(text).fixedSize()
-                    if width > 164 { Text(text).fixedSize() }
-                }.offset(x:offset).frame(width:164,alignment:.leading).clipped()
-                    .task(id:active ? text : "") {
+                    if width > available { Text(text).fixedSize() }
+                }.offset(x:offset).frame(width:available,alignment:.leading).clipped()
+                    .task(id:active ? "\(text):\(size):\(available)" : "") {
                         var transaction = Transaction(); transaction.disablesAnimations = true
                         withTransaction(transaction) { offset = 0 }
-                        guard active, width > 164 else { return }
+                        guard active, width > available else { return }
                         do { try await Task.sleep(for:.seconds(2)) } catch { return }
                         withAnimation(.linear(duration:Double(width+32)/28).repeatForever(autoreverses:false)) { offset = -width-32 }
                     }
             }
-        }.font(Blocks.action(18)).accessibilityLabel(text)
+        }.font(Blocks.action(size)).accessibilityElement(children:.ignore).accessibilityLabel(text)
     }
 }
 
@@ -923,7 +1009,7 @@ struct LauncherView: View {
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @StateObject private var music = Music()
     @AppStorage("renderDistance") private var renderDistance = 8
-    @AppStorage("worldSeed") private var worldSeed = 0
+    @AppStorage("generationSeed") private var worldSeed = "0"
     @AppStorage("controls") private var controlData = Data()
     @AppStorage("skinPath") private var skinPath = ""
     @AppStorage("capePath") private var capePath = ""
@@ -1026,7 +1112,7 @@ struct LauncherView: View {
                         }.frame(maxWidth:640*scale).padding(.horizontal,28).padding(.bottom,footer)
                     }
                     if exploring && mapVisible {
-                        VStack { HStack { Minimap(world:launcher.journey.world,position:position,seed:worldSeed,size:min(260,max(192,geometry.size.width*0.16)),shortcut:controls.label(.map)); Spacer() }; Spacer() }
+                        VStack { HStack { Minimap(world:launcher.journey.world,position:position,chart:launcher.chart,seed:Seed.number(worldSeed),size:min(160,max(128,geometry.size.width*0.11)),shortcut:controls.label(.map)); Spacer() }; Spacer() }
                             .padding(.leading,28).padding(.top,108).allowsHitTesting(false)
                     }
                     if exploring, let assets = launcher.assets, !skinPath.isEmpty {
@@ -1046,7 +1132,7 @@ struct LauncherView: View {
                             look(scale:scale).padding(.trailing,24).padding(.bottom,footer)
                         }
                     } }
-                    VStack {
+                    if !exploring { VStack {
                         Spacer()
                         HStack {
                             Hover(anchor:.leading) { _ in Link("@Keys-i",destination:URL(string:"https://keysi.dev")!)
@@ -1058,7 +1144,7 @@ struct LauncherView: View {
                         }.font(Blocks.type(max(24,20*scale))).foregroundStyle(.white)
                             .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                             .padding(.horizontal,24).padding(.bottom,16)
-                    }
+                    } }
                     if hintAvailable && hint.showing && !map && sideHint {
                         VStack {
                             HStack { Spacer(); achievement }
@@ -1071,7 +1157,7 @@ struct LauncherView: View {
             }.animation(reduceMotion ? nil : .easeOut(duration:0.18),value:launcher.loading)
         }
         .disabled(map || launcher.settings || launcher.help).accessibilityHidden(map || launcher.settings || launcher.help)
-        .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing" && launcher.journey.passage == nil,controls:controls,changed:{ step in
+        .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing" && launcher.journey.passage != .rift,controls:controls,changed:{ step in
             let index = (launcher.selection+step+launcher.worlds.count)%launcher.worlds.count
             launcher.journey.select(launcher.worlds[index],animated:moving)
         },action:{ action in
@@ -1113,6 +1199,7 @@ struct LauncherView: View {
         .foregroundStyle(.white).environment(\.colorScheme,.dark)
         .frame(minWidth:760,minHeight:620)
         .onAppear {
+            if UserDefaults.standard.object(forKey:"generationSeed") == nil, let previous = UserDefaults.standard.object(forKey:"worldSeed") as? Int { worldSeed = String(previous) }
             if let window = NSApp?.keyWindow { focused = window.title == launcherName }
         }
         .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
@@ -1163,13 +1250,11 @@ struct LauncherView: View {
     private func header(in size: CGSize) -> some View {
         VStack(spacing:18) {
             HStack(alignment:.top,spacing:8) {
-                location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
+                location(in:size).opacity(available ? 1 : 0).accessibilityHidden(!available)
                 Spacer()
                 if !exploring {
                     Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
                         .help("Help").accessibilityLabel("Help")
-                } else {
-                    Text("Esc · Menu").font(Blocks.type(16)).shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                 }
             }.buttonStyle(BlockButton(texture:launcher.stone))
             if !exploring {
@@ -1184,21 +1269,23 @@ struct LauncherView: View {
         else { Image(systemName:fallback).font(.system(size:size*22/24,weight:.medium)) }
     }
 
-    private var location: some View {
-        VStack(alignment:.leading,spacing:8) {
+    private func location(in size: CGSize) -> some View {
+        let type = max(24,20*Self.scale(in:size))*1.25
+        let width = min(size.width*0.46,max(230,type*9))
+        return VStack(alignment:.leading,spacing:8) {
             if let passage = launcher.journey.passage {
-                Text(passage == .mine ? "Mineshaft" : passage == .stronghold ? "Stronghold" : "Rift valley")
-                    .font(Blocks.action(18)).accessibilityAddTraits(.isHeader)
+                Marquee(text:sceneryTitle ?? (passage == .mine ? "Mineshaft" : passage == .stronghold ? "Stronghold" : "Rift valley"),active:focused,size:type,available:width)
+                    .accessibilityAddTraits(.isHeader)
                 Button { launcher.journey.skip() } label: {
                     Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,12).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             } else if exploring {
-                Marquee(text:sceneryTitle ?? launcher.journey.title,active:moving && focused)
+                Marquee(text:sceneryTitle ?? launcher.journey.title,active:focused,size:type,available:width)
                     .frame(minHeight:44).shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
             } else {
                 Button { map = true } label: {
                     HStack(spacing:8) {
-                        Marquee(text:sceneryTitle ?? launcher.journey.title,active:moving && focused && !map)
+                        Marquee(text:sceneryTitle ?? launcher.journey.title,active:focused && !map,size:type,available:width-22)
                         Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
                     }.frame(minHeight:44)
                         .shadow(color:.black.opacity(0.25),radius:2,y:1)
@@ -1208,7 +1295,7 @@ struct LauncherView: View {
                     .help("Choose biome")
                     .disabled(!available)
             }
-        }
+        }.frame(width:width,alignment:.leading)
     }
 
     private func hotbar(scale: CGFloat) -> some View {
@@ -1233,44 +1320,36 @@ struct LauncherView: View {
         Button { explore(!exploring) } label: {
             glyph("spyglass",fallback:exploring ? "eye.fill" : "eye",size:32.4*scale).frame(width:56*scale,height:56*scale)
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone,scale:scale))
-            .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
+            .disabled(!available || launcher.journey.passage == .rift || launcher.status.state == "playing")
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
             .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
             .help(exploring ? "Return · Esc" : "Look around · \(controls.label(.look))")
     }
 
     private func explore(_ enabled: Bool) {
-        if enabled && (!available || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage != nil) { return }
+        if enabled && (!available || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage == .rift) { return }
         if enabled { hint.show(at:ProcessInfo.processInfo.systemUptime) }
         else { hint.dismiss(at:ProcessInfo.processInfo.systemUptime) }
         exploring = enabled
     }
 
     private var achievement: some View {
-        HStack(spacing:14) {
-            glyph("spyglass",fallback:"eye",size:44).frame(width:48,height:48).foregroundStyle(Blocks.gold)
-            if exploring {
-                VStack(alignment:.leading,spacing:5) {
-                    Text("Spectator mode").font(Blocks.type(16)).foregroundStyle(Blocks.gold)
-                    Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly").font(Blocks.type(14))
-                    Text("\(controls.label(.map)) · Map    Esc · Menu").font(Blocks.type(12))
-                }
-            } else {
-                VStack(alignment:.leading,spacing:5) {
-                    HStack(spacing:6) {
-                        glyph("achievements_pause_menu_icon",fallback:"trophy.fill",size:16)
-                        Text("Advancement made!").font(Blocks.type(15))
-                    }.foregroundStyle(Blocks.gold)
-                    Text("\(controls.label(.look)) to look around").font(Blocks.type(14)).lineLimit(1)
-                }
+        HStack(spacing:12) {
+            ZStack {
+                glyph("map",fallback:"map",size:32).offset(x:-3,y:-3)
+                glyph("compass",fallback:"location.north.circle",size:23).offset(x:8,y:8)
+            }.frame(width:40,height:40)
+            VStack(alignment:.leading,spacing:5) {
+                Text("Achievement made").font(Blocks.type(15)).foregroundStyle(Blocks.gold)
+                Text("Exploring the world").font(Blocks.type(16)).lineLimit(1)
             }
-        }.padding(.horizontal,16).frame(width:360,height:exploring ? 96 : 80,alignment:.leading)
+        }.padding(.horizontal,12).frame(width:304,height:64,alignment:.leading)
             .background {
-                Rectangle().fill(Color(white:0.16))
-                    .shadow(color:.black.opacity(0.3),radius:2,y:3)
+                Rectangle().fill(Color(white:0.13))
             }
-            .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
-            .overlay { Rectangle().strokeBorder(Color(white:0.5),lineWidth:2).padding(3) }
+            .clipShape(ToastFrame())
+            .overlay { ToastFrame().stroke(.black,lineWidth:2) }
+            .overlay { ToastFrame().stroke(Color(white:0.35),lineWidth:3).padding(3) }
             .accessibilityElement(children:.combine)
             .accessibilityLabel(exploring ? "Spectator mode. Mouse looks, \(controls.label(.map)) toggles the map, Escape returns to the menu" : "Press \(controls.label(.look)) to look around")
             .allowsHitTesting(false)
@@ -1547,7 +1626,7 @@ struct Preferences: View {
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @AppStorage("renderDistance") private var renderDistance = 8
-    @AppStorage("worldSeed") private var worldSeed = 0
+    @AppStorage("generationSeed") private var worldSeed = "0"
     @AppStorage("controls") private var controlData = Data()
     @AppStorage("skinPath") private var skinPath = ""
     @AppStorage("capePath") private var capePath = ""
@@ -1574,10 +1653,10 @@ struct Preferences: View {
         }
         var glyph: String {
             switch self {
-            case .accessibility: return "accessibility_glyph"
-            case .input,.bindings: return "keyboard_and_mouse_glyph"
-            case .video: return "video_glyph"
-            case .audio: return "sound_glyph"
+            case .accessibility: return "accessibility_glyph_color"
+            case .input,.bindings: return "keyboard_and_mouse_glyph_color"
+            case .video: return "video_glyph_color"
+            case .audio: return "sound_glyph_color"
             case .character: return "character_glyph"
             }
         }
@@ -1647,7 +1726,7 @@ struct Preferences: View {
                 renderDistance = min(16,max(4,renderDistance))
                 lookSensitivity = lookSensitivity.isFinite ? min(100,max(1,lookSensitivity)) : 50
                 musicVolume = musicVolume.isFinite ? min(1,max(0,musicVolume)) : 0.18
-                seedText = String(worldSeed)
+                seedText = worldSeed
             }
     }
 
@@ -1702,7 +1781,7 @@ struct Preferences: View {
                     Button(action:applySeed) { Text("Generate").font(Blocks.type(15*scale)).padding(.horizontal,16*scale).frame(minHeight:44*scale) }
                         .buttonStyle(BlockButton(scale:scale))
                 }
-                if seedError { Text("Enter a whole number").font(Blocks.type(13*scale)).foregroundStyle(.white) }
+                if seedError { Text("Use up to 256 characters, without control characters").font(Blocks.type(13*scale)).foregroundStyle(.white) }
             }.padding(22*scale)
         case .audio:
             SettingSlider(title:"Master volume",detail:"Adjust menu and game music in the launcher",value:Binding(get:{musicEnabled ? musicVolume : 0},set:{musicVolume = $0; musicEnabled = $0>0}),range:0...1,step:0.01,scale:scale,format:{"\(Int(($0*100).rounded()))%"})
@@ -1737,7 +1816,8 @@ struct Preferences: View {
         }
     }
     private func applySeed() {
-        guard let seed = Int(seedText.trimmingCharacters(in:.whitespacesAndNewlines)) else { seedError = true; return }
+        let seed = seedText.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !seed.isEmpty, seed.utf8.count<=256, seed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { seedError = true; return }
         seedError = false; worldSeed = seed
     }
     private func character(_ title: String, path: String, scale: CGFloat, cape: Bool) -> some View {
@@ -1768,7 +1848,7 @@ struct Preferences: View {
     }
     private func reset() {
         switch page {
-        case .video: animateScenery = true; rotateScenery = true; renderDistance = 8; worldSeed = 0; seedText = "0"; seedError = false
+        case .video: animateScenery = true; rotateScenery = true; renderDistance = 8; worldSeed = "0"; seedText = "0"; seedError = false
         case .audio: musicEnabled = true; musicVolume = 0.18
         case .input: lookSensitivity = 50; invertLook = false
         case .bindings: controlData = Controls().data

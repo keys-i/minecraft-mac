@@ -20,15 +20,15 @@ signed download URL. Review logs before sharing excerpts.
 ## Current boundaries and known gaps
 
 The [security workflow](workflows/security.yml) runs GitHub CodeQL analysis for
-Python on every pull request, `main` push and weekly schedule. Dependabot checks
-Actions and the packaging requirements weekly. Secret scanning, push protection
+Rust on every pull request, `main` push and weekly schedule. Dependabot checks
+Actions and Cargo dependencies weekly. Secret scanning, push protection
 and private vulnerability reporting are enabled on the public repository
 
 Native Swift compilation and Rust helper tests run in
 [source checks](workflows/checks.yml). Swift CodeQL analysis remains unverified:
 its traced build did not complete during validation, while native builds passed
 
-CodeQL does not cover Swift, Rust, upstream Wine/DXMT sources or game bytes.
+CodeQL does not cover Swift, upstream Wine/DXMT sources or game bytes
 These checks do not resolve the game-download integrity gap below
 
 - Microsoft user/device credentials are kept in macOS Keychain. The account
@@ -61,7 +61,7 @@ process's socket. Report the failed boundary with redacted evidence instead.
 
 ## Source and binary distribution
 
-Only files explicitly listed in `tools/source.py` enter source exports.
+Only files explicitly listed in `tools/sources.txt` enter source exports
 Ignored runtime directories are not a publication boundary by themselves.
 Review the staged file list and checksum inventory before pushing changes.
 Never include a game, user data, Microsoft payloads, or raw local logs.

@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml/badge.svg?branch=main" alt="Build and test checks" /></a>
   <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/release.yml/badge.svg?branch=main" alt="Source release checks" /></a>
-  <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml/badge.svg?branch=main" alt="Python security analysis" /></a>
+  <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/security.yml/badge.svg?branch=main" alt="Rust security analysis" /></a>
 </p>
 
 ![Minecraft Bedrock on a Mac — a block-built world, waterfalls and a laptop portal](assets/poster.webp)
@@ -81,8 +81,8 @@ Start with the [build guide](docs/build.md). Once the runtime and packaging
 environment are prepared, the same CLI builds the app and DMG:
 
 ```sh
-python3 minecraft.py build app
-python3 minecraft.py build dmg
+./minecraft build app
+./minecraft build dmg
 ```
 
 | Working on | Guide |

@@ -48,7 +48,7 @@ Source development uses this checkout. Never confuse either with the older
 Author changes in tracked source files. `sources/` is generated from pinned
 upstream revisions; durable upstream fixes belong in `vendor/patches/` and the bootstrap
 configuration. `src/standalone-helper.rs` is copied into the Xodus example directory
-by `src/standalone-setup.py --build-helper`. `tools/legacy/build.sh helper` builds the older helper.
+by `./minecraft setup helper`. `tools/legacy/build.sh helper` builds the older helper.
 
 Retain upstream notices, real Microsoft ownership checks, the pinned Cargo
 lockfile, and exact download digest checks. Runtime and game payloads never go
@@ -62,16 +62,16 @@ Use [Testing](docs/test.md) to select checks appropriate to the change.
 The common source checks are:
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 minecraft.py source check
+cargo test --locked
+./minecraft source check
 shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
 After changing an exported file, regenerate `tools/SOURCE-SHA256.txt` using the recipe
 in [Source releases](docs/build.md#update-the-source-inventory) before
-running the checksum check. Add new public source/docs to `ALLOWED_FILES` in
-`tools/source.py` explicitly; never broaden it to recursively copy directories.
+running the checksum check. Add new public source/docs to `tools/sources.txt`
+explicitly; never broaden it to recursively copy directories
 Stage exact files, inspect the staged diff, and keep the working tree free of
 accidentally staged runtime data.
 

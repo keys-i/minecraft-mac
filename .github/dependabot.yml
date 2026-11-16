@@ -7,10 +7,10 @@ updates:
     groups:
       actions:
         patterns: ['*']
-  - package-ecosystem: pip
-    directory: /tools
+  - package-ecosystem: cargo
+    directory: /
     schedule:
       interval: weekly
     groups:
-      packaging:
+      rust:
         patterns: ['*']

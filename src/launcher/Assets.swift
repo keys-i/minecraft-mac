@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SceneKit
 import simd
 import CoreText
@@ -34,7 +35,8 @@ enum AssetError: Error {
     case archive, model, image, missing(String)
 }
 
-final class Assets {
+final class Assets: @unchecked Sendable {
+    let data: URL
     let started = ProcessInfo.processInfo.systemUptime
     // The live launcher transfers completed graphs from this serial builder to the main thread
     let queue: OperationQueue = {
@@ -56,6 +58,7 @@ final class Assets {
     private var registeredUI = false
 
     init(data: URL, classic: Bool = false) throws {
+        self.data = data
         func packs(_ directory: String) throws -> [URL] {
             try FileManager.default.contentsOfDirectory(at:data.appendingPathComponent(directory),includingPropertiesForKeys:nil)
                 .filter { $0.lastPathComponent == "vanilla" || $0.lastPathComponent.hasPrefix("vanilla_") }
@@ -106,8 +109,15 @@ final class Assets {
             let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
             var frames: [String:NSImage] = [:]
             for name in ["hotbar_0","selected_hotbar_slot","title","icon_setting","sound_glyph","how_to_play_button_default","camera-small","spyglass","loading_bar",
-                         "accessibility_glyph","keyboard_and_mouse_glyph","video_glyph","controller_glyph","achievements_pause_menu_icon"] {
+                         "accessibility_glyph","keyboard_and_mouse_glyph","video_glyph","controller_glyph","achievements_pause_menu_icon",
+                         "accessibility_glyph_color","keyboard_and_mouse_glyph_color","video_glyph_color","sound_glyph_color"] {
                 if let material = try? self.texture((name == "spyglass" ? "textures/items/" : "textures/ui/")+name) {
+                    let bitmap = material.diffuse.contents as! CGImage
+                    frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
+                }
+            }
+            for (name,path) in [("compass","compass_item"),("map","map_filled")] {
+                if let material = try? self.texture("textures/items/"+path) {
                     let bitmap = material.diffuse.contents as! CGImage
                     frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
                 }
@@ -415,6 +425,18 @@ final class Assets {
             material.emission.intensity = 0.4
         }
         if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
+        if name == "trader_llama" {
+            guard let path = textures[baby ? "baby_decor_wandering_trader" : "decor_wandering_trader"] else { throw AssetError.model }
+            let base = material.diffuse.contents as! CGImage, decor = try texture(path).diffuse.contents as! CGImage
+            guard base.width == decor.width, base.height == decor.height,
+                  let context = CGContext(data:nil,width:base.width,height:base.height,bitsPerComponent:8,bytesPerRow:base.width*4,
+                    space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
+            context.interpolationQuality = .none
+            let rect = CGRect(x:0,y:0,width:base.width,height:base.height)
+            context.draw(base,in:rect); context.draw(decor,in:rect)
+            guard let image = context.makeImage() else { throw AssetError.image }
+            material.diffuse.contents = image
+        }
         let model = try node(definition,material:material)
         if name == "cat" {
             model.childNode(withName:"tail1",recursively:true)?.eulerAngles.x += 51.57 * .pi/180
@@ -441,11 +463,6 @@ final class Assets {
             model.enumerateChildNodes { part,_ in
                 if let name = part.name, (["Saddle","Bit","Bridle","Rein","Bag"]+[mule ? "Ear" : "MuleEar"]).contains(where:{ name.hasPrefix($0) }) { part.isHidden = true }
             }
-        }
-        if name == "trader_llama" {
-            guard let path = textures[baby ? "baby_decor_wandering_trader" : "decor_wandering_trader"] else { throw AssetError.model }
-            let blanket = try node(definition,material:texture(path))
-            blanket.name = "trader-blanket"; model.addChildNode(blanket)
         }
         if name == "llama" || name == "trader_llama" {
             model.enumerateChildNodes { part,_ in if part.name?.lowercased().hasPrefix("chest") == true { part.isHidden = true } }
@@ -493,6 +510,12 @@ final class Assets {
         }
         model.eulerAngles.y = .pi
         return model
+    }
+
+    func straw(head: Bool) throws -> SCNNode {
+        let document = try json("models/blocks/straw_bed_"+(head ? "head" : "foot")+".geo.json")
+        guard let definitions = document["minecraft:geometry"] as? [[String:Any]], definitions.count == 1 else { throw AssetError.model }
+        return try node(definitions[0],material:texture("textures/blocks/straw_bed"))
     }
 
     private func assemble(_ model: SCNNode, name: String) {
@@ -717,6 +740,16 @@ final class Assets {
                 mesh.cube(.init((w+inflate*2)/16,(h+inflate*2)/16,(d+inflate*2)/16),
                     at:.init((origin.x+size.x/2-pivot.x)/16,(origin.y+size.y/2-pivot.y)/16,(origin.z+size.z/2-pivot.z)/16),
                     material:material,faces:faces,textureUV:rects)
+                if let uv = cube["uv"] as? [String:[String:Any]] {
+                    var cursor = firstVertex
+                    for (face,key) in ["south","east","north","west","up","down"].enumerated() where faces & (1 << face) != 0 {
+                        let rotation = uv[key]?["uv_rotation"] as? Int ?? 0
+                        guard [0,90,180,270].contains(rotation) else { throw AssetError.model }
+                        let original = Array(mesh.uv[cursor..<(cursor+4)])
+                        for index in 0..<4 { mesh.uv[cursor+index] = original[(index+rotation/90)%4] }
+                        cursor += 4
+                    }
+                }
                 if cube["rotation"] != nil {
                     let centre = try cube["pivot"].map(vector) ?? SCNVector3(origin.x+size.x/2,origin.y+size.y/2,origin.z+size.z/2)
                     let angles = try vector(cube["rotation"])
@@ -852,6 +885,8 @@ extension Assets {
             return Array(repeating:try texture("textures/blocks/"+name+"_stage_\(stage)"),count:6)
         }
         if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
+        if name == "copper" { name = "copper_block" }
+        if name == "chain" || name == "iron_chain" { return Array(repeating:try texture("textures/blocks/chain1"),count:6) }
         if name == "planks" { name = (states["variant"] ?? "oak")+"_planks" }
         if name == "wooden_door" { name = "oak_door" }
         let pane = name == "glass_pane" || name == "stained_glass_pane" || name.hasSuffix("_stained_glass_pane")
@@ -879,6 +914,12 @@ extension Assets {
             let side = try texture("textures/blocks/grass_side_carried")
             return [side,side,side,side,try texture("textures/blocks/grass_top",tint:0x91BD59),try texture("textures/blocks/dirt")]
         }
+        if ["short_grass","tallgrass","fern","tall_grass","large_fern"].contains(name) {
+            let fern = name.contains("fern")
+            let tall = name == "tall_grass" || name == "large_fern"
+            let path = tall ? "double_plant_"+(fern ? "fern" : "grass")+(states["half"] == "upper" ? "_top" : "_bottom") : fern ? "fern" : "tallgrass"
+            return Array(repeating:try texture("textures/blocks/"+path,tint:0x91BD59),count:6)
+        }
         let woods = ["oak","spruce","birch","jungle","acacia","dark_oak"]
         for wood in woods {
             if name == wood+"_log" || name == "stripped_"+wood+"_log" {
@@ -902,7 +943,7 @@ extension Assets {
             }
         }
         if name.hasSuffix("_bed") { return Array(repeating:try texture("textures/blocks/wool_colored_"+name.replacingOccurrences(of:"_bed",with:"")),count:6) }
-        let aliases = ["dirt_path":"grass_path", "cobblestone_stairs":"cobblestone", "mossy_cobblestone_stairs":"mossy_cobblestone",
+        let aliases = ["cobweb":"web", "dirt_path":"grass_path", "cobblestone_stairs":"cobblestone", "mossy_cobblestone_stairs":"mossy_cobblestone",
                        "stone_brick_stairs":"stonebrick", "stone_brick_slab":"stonebrick", "polished_andesite_stairs":"stone_andesite_smooth",
                        "cut_copper_stairs":"cut_copper", "cut_copper_slab":"cut_copper", "tuff_brick_stairs":"tuff_bricks", "tuff_brick_slab":"tuff_bricks", "stone_bricks":"stonebrick", "mossy_stone_bricks":"stonebrick_mossy", "cracked_stone_bricks":"stonebrick_cracked",
                        "chiseled_stone_bricks":"stonebrick_carved", "end_stone_bricks":"end_bricks", "nether_bricks":"nether_brick",

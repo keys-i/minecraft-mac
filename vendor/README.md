@@ -15,7 +15,7 @@ of compatibility work, not an independently implemented Windows or Xbox runtime.
 | Xodus | [xodus-gaming/xodus](https://github.com/xodus-gaming/xodus/tree/0670e25aeb0e0e9f800f8f2f4968ae3b681842a7) | GPLv3; Xodus contributors. The root [LICENSE](../LICENSE) is an unchanged copy of this revision's license. |
 | WineGDK and Wine | [Sightem/WineGDK](https://github.com/Sightem/WineGDK/tree/b5d23b074cfd5e28e79acceaaefaf41a26ce6272) | LGPL 2.1 or later; Wine project authors and WineGDK contributors. Upstream XUser identifies Olivia Ryan. See the unchanged [notice](licenses/Wine-NOTICE.txt), [license](licenses/Wine-LGPL-2.1-or-later.txt), and upstream AUTHORS/per-file notices. |
 | macOS Store/runtime integration | [wtfsayo/cricket26-crossover](https://github.com/wtfsayo/cricket26-crossover/tree/81c7a2f80023a9f03fc42fbc16f491d97306c54b) | GPLv3 for original scripts and Xodus-derived work; its README expressly retains LGPL terms for Wine-derived patches. Credit belongs to that repository's contributors and the upstream authors identified there. |
-| GameInput MSI/CAB reader | [Wyze3306/BedrockOnLinux](https://github.com/Wyze3306/BedrockOnLinux/tree/7a315c836b7ae8068042bc466b0540c16ffe3a5e) | MIT; BedrockOnLinux contributors. The adapted OLE/MSZIP reader in `src/standalone-gameinput.py` preserves the full upstream notice. Microsoft payloads are obtained from the owned game's installer and are not included here. |
+| GameInput MSI/CAB reader | [Wyze3306/BedrockOnLinux](https://github.com/Wyze3306/BedrockOnLinux/tree/7a315c836b7ae8068042bc466b0540c16ffe3a5e) | MIT; BedrockOnLinux contributors. The Rust port uses the CFB and CAB crates and retains the original investigation notice in `licenses/BedrockOnLinux-MIT.txt` Microsoft payloads are obtained from the owned game's installer and are not included here. |
 | DXMT 0.80 | [3Shain/dxmt](https://github.com/3Shain/dxmt/tree/589adb780354b461645b29999cefaf533594ee99) | MIT at this revision; copyright 2023 Feifan He. The [license](licenses/dxmt-LICENSE.txt) is copied unchanged. Its vendored code carries additional [DXVK](licenses/dxmt-DXVK-LICENSE.txt), [LLVM](licenses/dxmt-LLVM-LICENSE.txt), and [MinGW](licenses/dxmt-MinGW-LICENSE.txt) notices. |
 
 `vendor/patches/xodus-real-store-license.patch` and `vendor/patches/winegdk-macos-local.patch`
@@ -49,7 +49,7 @@ licensing.
 The WineGDK startup fixes reuse its `windows.web`, `twinapi.appcore`,
 `windows.ui.core.textinput`, and `wintypes` implementations. Their full source
 and notices are in the pinned WineGDK tree fetched by
-`python3 minecraft.py source fetch`
+`./minecraft source fetch`
 
 No license in this package grants rights to Minecraft, its assets or trademarks,
 Microsoft's GDK/GameInput DLLs, CrossOver, D3DMetal, Apple SDKs, or Rosetta. These
@@ -120,3 +120,6 @@ Source revision: e498bf70aeb25b4bdcff1e44d878fb2cb4f7c2a9
 The unmodified font has SHA-256
 262e31822e0a75be567b02320bfa092143d871e8a273e529d1c5ab0c04cd215f
 It is registered for this process only and does not install a system font
+
+The native chunk reader uses Mojang's pinned LevelDB fork, with its unchanged BSD licence in `licenses/LevelDB-BSD.txt`
+The Rust worker pins its dependencies in Cargo.lock and packages each dependency's available licence, copyright and notice files under `vendor/licenses/rust/`

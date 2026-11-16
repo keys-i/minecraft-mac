@@ -44,6 +44,9 @@ final class FlightView: SCNView {
     var travel: ((Int) -> Void)?
     var finish: (() -> Void)?
     var report: ((SCNVector3,Double) -> Void)?
+    var step: ((Double) -> Void)?
+    var sweep: ((SCNVector3,SCNVector3) -> SCNVector3)?
+    private var heartbeat = false
     var sensitivity: Float = 0.15
     var inverted = false
     var controls = Controls() { didSet { if controls != oldValue { stop() } } }
@@ -138,14 +141,14 @@ final class FlightView: SCNView {
 
     override func keyUp(with event: NSEvent) {
         modifiers = event.modifierFlags
-        if keys.remove(Controls.Key.canonical(event.keyCode)) != nil { if keys.isEmpty && !moving { suspend() }; return }
+        if keys.remove(Controls.Key.canonical(event.keyCode)) != nil { if keys.isEmpty && !moving && !heartbeat { suspend() }; return }
         super.keyUp(with:event)
     }
 
     override func flagsChanged(with event: NSEvent) {
         guard exploring else { super.flagsChanged(with:event); return }
         modifiers = event.modifierFlags
-        if moving || !keys.isEmpty { start() } else { suspend() }
+        if heartbeat || moving || !keys.isEmpty { start() } else { suspend() }
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -166,11 +169,15 @@ final class FlightView: SCNView {
     }
 
     func stop() { suspend(); keys.removeAll(); modifiers = [] }
+    func clock(_ enabled: Bool) {
+        heartbeat = enabled
+        if enabled { start() } else { stop() }
+    }
     private func suspend() { timer?.invalidate(); timer = nil }
 
     private func start() {
-        guard exploring, !loading, timer == nil, window?.isKeyWindow == true,
-              !keys.isEmpty || moving else { return }
+        guard !loading, timer == nil, window?.isKeyWindow == true,
+              heartbeat || exploring && (!keys.isEmpty || moving) else { return }
         last = ProcessInfo.processInfo.systemUptime
         let timer = Timer(timeInterval:1.0/60,target:self,selector:#selector(tick),userInfo:nil,repeats:true)
         self.timer = timer
@@ -178,10 +185,12 @@ final class FlightView: SCNView {
     }
 
     @objc private func tick() {
-        guard exploring, window?.isKeyWindow == true, window?.occlusionState.contains(.visible) == true,
+        guard heartbeat || exploring, window?.isKeyWindow == true, window?.occlusionState.contains(.visible) == true,
               NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); release(); return }
         let now = ProcessInfo.processInfo.systemUptime
-        advance(seconds:now-last); last = now
+        let seconds = min(0.1,max(0,now-last)); last = now
+        step?(seconds)
+        if exploring { advance(seconds:seconds) }
     }
 
     func advance(seconds: Double) {
@@ -203,11 +212,11 @@ final class FlightView: SCNView {
             feet.y -= Self.eyeHeight
             var destination = atlas?.constrain(SCNVector3(next)) ?? SCNVector3(next)
             destination.y -= Self.eyeHeight
-            let moved = Collision.move(scene.rootNode,from:feet,to:destination,radius:0.3,height:1.8)
+            let moved = sweep?(feet,destination) ?? Collision.move(scene.rootNode,from:feet,to:destination,radius:0.3,height:1.8)
             camera.worldPosition = .init(moved.x,moved.y+Self.eyeHeight,moved.z)
         }
         camera.position.y = min(320,max(-96,camera.position.y))
-        if atlas == nil, let scene { Landscape.medium(scene,area:area,eye:camera.position) }
+        if atlas == nil, sweep == nil, let scene { Landscape.medium(scene,area:area,eye:camera.position) }
         let yaw = key(124)-key(123), pitch = key(126)-key(125)
         if yaw != 0 || pitch != 0 { controller.rotateBy(x:-yaw*70*dt,y:pitch*70*dt) }
         needsDisplay = true
@@ -220,7 +229,7 @@ final class FlightView: SCNView {
     }
 
     func dispose() {
-        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; report = nil; controller.pointOfView = nil
+        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; sweep = nil; controller.pointOfView = nil
         NotificationCenter.default.removeObserver(self)
     }
 }

@@ -1,0 +1,6 @@
+#!/bin/sh
+# One Rust entry point for source development and local builds
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cargo build --quiet --locked --release --manifest-path "$ROOT/Cargo.toml" --target-dir "$ROOT/target" --bin MinecraftWorker
+exec env -u BEDROCK_BUNDLE BEDROCK_HOME="$ROOT" "$ROOT/target/release/MinecraftWorker" "$@"

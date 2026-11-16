@@ -11,44 +11,35 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  python:
+  rust:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ['3.12', '3.14']
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -m unittest discover -s tests -p 'test_*.py'
-      - run: python minecraft.py source check
+      - run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
+      - run: cargo +1.97.1 fmt --check
+      - run: cargo +1.97.1 clippy --locked --all-targets -- -D warnings
+      - run: cargo +1.97.1 test --locked
+      - run: ./minecraft source check
       - run: sha256sum --check --quiet tools/SOURCE-SHA256.txt
   native-launcher:
     runs-on: macos-15
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
-      - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: python3 minecraft.py build launcher
-      - name: Check native progress and motion policies
-        run: |
-          xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache src/launcher/BedrockLauncher.swift src/launcher/Music.swift src/launcher/Input.swift src/launcher/Skin.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
-          build/launcher-checks
+      - run: rustup toolchain install 1.97.1 --profile minimal
+      - run: rustup override set 1.97.1
+      - run: ./minecraft build launcher
+      - name: Check native rendering, input and route clearance
+        run: ./minecraft build test
   account-helper:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
-      - run: python3 minecraft.py source fetch --project xodus
+      - run: rustup toolchain install 1.97.1 --profile minimal
+      - run: rustup override set 1.97.1
+      - run: ./minecraft source fetch --project xodus
       - run: command -v protoc || brew install protobuf
       - run: rustup toolchain install 1.98.0 --profile minimal
       - run: |

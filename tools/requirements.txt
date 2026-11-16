@@ -1,2 +1,0 @@
-# Developer-only packaging tool; bundled app needs no Python installation.
-pyinstaller==6.22.3

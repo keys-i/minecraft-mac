@@ -82,13 +82,8 @@ enum Landscape {
         Terrain(biome:biome).height(x-centre,z)
     }
 
-    static func scene(_ world: World, biome: Int = 0, region destination: Region? = nil, terrain buildTerrain: Bool = true, assets: Assets) throws -> SCNScene {
-        let area = world.biomes[world.index(biome)], scene = SCNScene()
-        if let passage = area.passage {
-            let visit = try passage.scene(assets:assets)
-            focus(visit,world:world,biome:biome,animated:true)
-            return visit
-        }
+    static func stage() -> SCNScene {
+        let scene = SCNScene()
         let camera = SCNNode(); camera.name = "camera"; camera.camera = SCNCamera()
         camera.camera?.fieldOfView = 67; camera.camera?.zFar = 230; camera.camera?.zNear = 0.1
         camera.camera?.wantsHDR = true; camera.camera?.wantsExposureAdaptation = false
@@ -104,6 +99,16 @@ enum Landscape {
         sun.light?.maximumShadowDistance = 55; scene.rootNode.addChildNode(sun)
         let fill = SCNNode(); fill.name = "skylight"; fill.light = SCNLight(); fill.light?.type = .ambient
         scene.rootNode.addChildNode(fill)
+        return scene
+    }
+
+    static func scene(_ world: World, biome: Int = 0, region destination: Region? = nil, terrain buildTerrain: Bool = true, assets: Assets) throws -> SCNScene {
+        let area = world.biomes[world.index(biome)], scene = stage()
+        if let passage = area.passage {
+            let visit = try passage.scene(assets:assets)
+            focus(visit,world:world,biome:biome,animated:true)
+            return visit
+        }
         let region = destination ?? Region.from(world.index(biome),count:world.biomes.count), origin = region.origin
         let terrain = Terrain(biome:area,authored:region.landmark(world),worldSeed:region.landmark(world) ? 0 : region.seed)
         func sample(_ x: Double, _ z: Double, surface: Bool = false) -> Terrain.Sample {
@@ -841,7 +846,7 @@ enum Landscape {
         }
     }
 
-    private static func heal(_ dragon: SCNNode, root: SCNNode, assets: Assets) throws -> @Sendable (CGFloat) -> Void {
+    static func heal(_ dragon: SCNNode, root: SCNNode, assets: Assets) throws -> @Sendable (CGFloat) -> Void {
         var crystals = [SCNNode]()
         root.enumerateChildNodes { node,_ in
             if node.name == "ender_crystal", let shell = node.childNode(withName:"outerglass",recursively:true) { crystals.append(shell) }

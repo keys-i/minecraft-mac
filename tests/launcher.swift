@@ -7,6 +7,35 @@ import SwiftUI
 @main
 struct LauncherChecks {
     @MainActor static func main() throws {
+        var assetErrors = Set<String>()
+        for kind in ["nether","end"] {
+            let record = Trail.Record(kind:kind,x:0,y:70,z:0,seed:42), trail = Trail(record)
+            precondition(trail.blocks == Trail(record).blocks && trail.route.count>8)
+            precondition(trail.blocks.values.contains(where:{$0.name == (kind == "end" ? "end_portal" : "portal")}))
+            precondition(trail.route.allSatisfy {$0.point.x.isFinite && $0.point.y > -64 && $0.point.y<320 && $0.point.z.isFinite})
+            let decoded = try JSONDecoder().decode(Trail.Record.self,from:JSONEncoder().encode(record))
+            precondition(decoded.valid)
+            var terrain = WorldData(dimension:0)
+            for key in Set(trail.blocks.keys.map {WorldData.key($0.x,$0.z)}) {
+                terrain.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)
+            }
+            terrain.apply(trail.blocks)
+            let start = SCNVector3(trail.entrance.x,trail.entrance.y+6,trail.entrance.z-10)
+            let approach = trail.approach(data:terrain,eye:start,chest:false)
+            let points = [start]+approach.map(\.point)+trail.route.map(\.point)
+            for (a,b) in zip(points,points.dropFirst()) {
+                let count = max(1,Int(ceil(hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y)*10)))
+                for index in 0...count {
+                    let t = Double(index)/Double(count), feet = SCNVector3(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t-1.62,a.z+(b.z-a.z)*t)
+                    precondition(terrain.vacant(feet),"Blocked portal route: \(kind) at \(feet)")
+                }
+            }
+        }
+        precondition(!Trail.Record(kind:"end",x:Int.min,y:0,z:0,seed:0).valid)
+        precondition(!Block(name:"grass_block").passable && Block(name:"short_grass").passable)
+        precondition(!Block(name:"mangrove_roots").passable && !Block(name:"brown_mushroom_block").passable)
+        precondition(!Block(name:"end_portal_frame").passable && Block(name:"end_portal").passable)
+        precondition(Crowd.attention(.villager) == 0.4 && Crowd.attention(.cow) == 0.1)
         func status(_ progress: Double?, state: String = "busy") -> Status {
             Status(state: state, title: "Fixture", detail: "", progress: progress)
         }
@@ -37,6 +66,10 @@ struct LauncherChecks {
             precondition(chart?.width == 33 && chart?.height == 33)
         }
         precondition(Minimap.image(world:.overworld,at:.init(Double.nan,0,0)) == nil)
+        let emptyMap = WorldData(dimension:0)
+        precondition(Minimap.image(data:emptyMap,at:.init(Double.nan,0,0)) == nil)
+        precondition(Minimap.image(data:emptyMap,at:.init(0,Double.greatestFiniteMagnitude,0)) == nil)
+        precondition(Minimap.image(data:emptyMap,at:.init(0,70,0))?.width == 128)
         precondition(Minimap.image(world:.overworld,at:.init(30_000_001,0,0)) == nil)
         let coloured = GameTitle.formatted("§1C§2o§3l§4o§5r§6m§7a§8t§9i§ac!")
         precondition(String(coloured.characters) == "Colormatic!" && coloured.runs.count == 10)
@@ -325,6 +358,18 @@ struct LauncherChecks {
         let nbt = Data([10,0,0,3,0,1,110,0,0,0,42,0])
         let plainNBT = try NBT.read(nbt)
         precondition(plainNBT["n"] as? Int == 42)
+        let littleNBT = Data([10,0,0,3,1,0,110,42,0,0,0,0])
+        let littleValue = try NBT.read(littleNBT,littleEndian:true)
+        precondition(littleValue["n"] as? Int == 42)
+        var paletteOffset = 0
+        let paletteNBT = littleNBT+littleNBT
+        let paletteFirst = try NBT.decode(paletteNBT,offset:&paletteOffset,littleEndian:true)
+        precondition(paletteFirst["n"] as? Int == 42)
+        precondition(paletteOffset == littleNBT.count)
+        let paletteSecond = try NBT.decode(paletteNBT,offset:&paletteOffset,littleEndian:true)
+        precondition(paletteSecond["n"] as? Int == 42)
+        precondition(paletteOffset == paletteNBT.count)
+        rejects { _ = try NBT.read(littleNBT+littleNBT,littleEndian:true) }
         let compressedNBT = try NBT.read(Data(base64Encoded:"H4sIAAAAAAAA/+NiYGBmYMxjYGDQYgAAfbuNUwwAAAA=")!)
         precondition(compressedNBT["n"] as? Int == 42)
         rejects { _ = try NBT.read(nbt.dropLast()) }
@@ -627,6 +672,84 @@ struct LauncherChecks {
             return
         }
         let assets = try Assets(data:URL(fileURLWithPath:data)), factory = Mobs(assets:try Assets(data:URL(fileURLWithPath:data)))
+        do {
+            let chart = Chart(), view = FlightView(frame:.zero), scene = SCNScene(), camera = SCNNode()
+            camera.name = "camera"; camera.camera = SCNCamera(); scene.rootNode.addChildNode(camera)
+            view.scene = scene; view.pointOfView = camera
+            let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
+            coordinator.view = view; coordinator.world = .overworld; coordinator.initial = false
+            let centre = Chunk(x:32,z:32)
+            for dx in -8...8 {for dz in -8...8 {
+                let key = Chunk(x:centre.x+dx,z:centre.z+dz)
+                coordinator.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil); coordinator.wanted.insert(key)
+            } }
+            coordinator.region = centre; camera.position = .init(520.5,22.62,520.5); camera.eulerAngles = .init(-0.2,0.8,0)
+            coordinator.populated = camera.position; coordinator.home = .init(10,4,10)
+            var returned: World?
+            coordinator.arrived = {returned = $0}; coordinator.pending = (.end,0)
+            coordinator.route = [.init(point:.init(525.5,22.62,525.5),title:"Fixture")]
+            view.exploring = true; coordinator.advance(1.0/60)
+            precondition(returned == .overworld && coordinator.pending == nil && coordinator.route.isEmpty,"Entering Look around must cancel the cinematic in the current world")
+            camera.position = .init(525.5,26.62,525.5); coordinator.populated = camera.position
+            let before = camera.position, direction = camera.convertVector(.init(0,0,-1),to:nil)
+            view.exploring = false; coordinator.advance(1.0/60)
+            let after = camera.position, retained = camera.convertVector(.init(0,0,-1),to:nil)
+            // SceneKit stores positions as Float even though its Mac API exposes Double
+            let precision = [before.x,before.y,before.z].map {Double(Float($0).ulp)}.max()!*sqrt(3)
+            precondition(hypot(hypot(after.x-before.x,after.z-before.z),after.y-before.y)<=0.02+precision,"Leaving Look around must retain the camera and obey the hover speed budget")
+            precondition(direction.x*retained.x+direction.y*retained.y+direction.z*retained.z>0.999,"Leaving Look around must retain the viewing direction")
+            var grass: [Cell:Block] = [:]
+            for x in 470...570 {for z in 470...570 {grass[Cell(x:x,y:20,z:z)] = Block(name:"grass_block")}}
+            var terrain = coordinator.data; terrain.apply(grass)
+            let crowd = try Crowd(data:terrain,at:.init(520.5,22.62,520.5),assets:assets)
+            let resident = crowd.residents.first(where:{$0.head != nil && !$0.species.flying && !$0.species.swimming})!
+            resident.actor.position = .init(520.5,21,520.5); resident.actor.eulerAngles = .init(0,0,0)
+            resident.target = .init(525.5,21,520.5); resident.wait = 2; resident.glance = 0; resident.watching = true
+            crowd.advance(1.0/30,data:terrain,observer:.init(516.5,22.62,520.5))
+            let delta = resident.actor.position.x-520.5
+            precondition(delta>0 && delta*sin(resident.actor.eulerAngles.y)>0,"Camera attention must never reverse a walking mob")
+            resident.target = nil; resident.wait = 4; resident.watching = true; resident.glance = 0
+            let head = resident.head!, original = head.eulerAngles
+            let point = head.presentation.worldPosition
+            crowd.advance(1.0/30,data:terrain,observer:.init(point.x+8,point.y+1,point.z+4))
+            precondition(abs(head.eulerAngles.y-original.y)+abs(head.eulerAngles.x-original.x)>0.0001,"An attentive resident must turn its head towards the observer")
+            crowd.advance(1.0/30,data:terrain,visible:{_ in false})
+            precondition(crowd.residents.allSatisfy {$0.actor.isHidden},"Residents wait for their terrain mesh to become visible")
+            crowd.advance(1.0/30,data:terrain,visible:{_ in true})
+            precondition(crowd.residents.contains {!$0.actor.isHidden},"Residents return as their terrain is drawn")
+            coordinator.dispose()
+        }
+        let waxed = try assets.tiles("waxed_copper"), plain = try assets.tiles("copper_block"), links = try assets.tiles("iron_chain")
+        precondition(waxed[0] === plain[0] && links[0].diffuse.contents != nil)
+        var chain = WorldData(dimension:0)
+        chain.chunks[.init(x:0,z:0)] = try VoxelChunk(key:.init(x:0,z:0),dimension:0,sections:[:],biomeData:nil)
+        chain.apply([Cell(x:0,y:0,z:0):Block(name:"iron_chain",states:["pillar_axis":"y"])])
+        precondition(chain.vacant(.init(0.1,0,0.1),radius:0.1) && !chain.vacant(.init(0.5,0,0.5),radius:0.1))
+        _ = try chain.node(.init(x:0,z:0),assets:assets)
+        let region = Set((-16...16).flatMap { x in (-16...16).map {Chunk(x:x,z:$0)} })
+        let extra = Set((17...25).flatMap {x in (-2...2).map {Chunk(x:x,z:$0)} })
+        let requested = region.union(extra), batch = Expedition.Coordinator.batch(requested,near:.init(x:0,z:0))
+        precondition(batch.count == 1089 && batch.first == Chunk(x:0,z:0))
+        let remainder = requested.subtracting(batch)
+        precondition(!remainder.isEmpty && Set(batch).union(remainder) == requested)
+        precondition(Expedition.Coordinator.batch(remainder,near:.init(x:0,z:0)).count == remainder.count)
+        for kind in ["nether","end"] {
+            let trail = Trail(.init(kind:kind,x:0,y:70,z:0,seed:42))
+            var terrain = WorldData(dimension:0)
+            for key in Set(trail.blocks.keys.map {WorldData.key($0.x,$0.z)}) {terrain.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}
+            terrain.apply(trail.blocks)
+            var meshes = 0
+            for key in terrain.chunks.keys {
+                do {let node = try terrain.node(key,assets:assets); meshes += node.childNodes.count}
+                catch {assetErrors.insert(String(describing:error))}
+            }
+            precondition(meshes>0)
+            _ = try trail.decoration(assets:assets)
+        }
+        _ = try assets.texture("textures/blocks/portal",animated:true)
+        _ = try assets.texture("textures/items/ender_eye")
+        for error in assetErrors.sorted() {print("Portal asset failure: "+error)}
+        precondition(assetErrors.isEmpty)
         let legacyPixels = CGContext(data:nil,width:64,height:32,bitsPerComponent:8,bytesPerRow:256,
             space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
         legacyPixels.setFillColor(CGColor(gray:0,alpha:1)); legacyPixels.fill(CGRect(x:0,y:0,width:64,height:32))
@@ -703,7 +826,8 @@ struct LauncherChecks {
         precondition(abs(babyArms.eulerAngles.x)<0.001,"Baby cubes already fold the arms; adult general pose must stay excluded")
         precondition(nativeBaby.scale.x == 1 && nativeBaby.childNode(withName:"head",recursively:true)!.scale.x == 1)
         let traderLlama = try factory.make(.traderLlama)
-        precondition(traderLlama.childNode(withName:"trader-blanket",recursively:false) != nil)
+        let traderCoat = traderLlama.childNode(withName:"head",recursively:true)!.geometry!.firstMaterial!.diffuse.contents as! CGImage
+        precondition(traderCoat.width>0 && traderCoat.height>0)
         precondition(traderLlama.childNode(withName:"chest1",recursively:true)?.isHidden == true)
         let sulfurCube = try factory.make(.sulfurCube)
         precondition(sulfurCube.childNode(withName:"sulfur-shell",recursively:false)?.childNode(withName:"sulfur_cube",recursively:true)?.geometry?.firstMaterial?.blendMode == .alpha)

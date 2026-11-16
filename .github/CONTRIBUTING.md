@@ -19,8 +19,8 @@ the complete local build. Use a descriptive branch; do not use `Codex/*` or
    as a patch and update the pinned bootstrap/build configuration. Edits only in
    ignored `sources/` or `build/` directories are not reproducible contributions.
 4. Run the relevant checks below and update the user/developer documentation.
-5. Add new public source/docs to `ALLOWED_FILES` and regenerate the checked-in
-   checksum inventory using [this recipe](../docs/build.md#update-the-source-inventory).
+5. Add new public source/docs to `tools/sources.txt` and regenerate the checked-in
+   checksum inventory using [this recipe](../docs/build.md#update-the-source-inventory)
 6. Inspect the staged diff and open a pull request describing the problem,
    resulting behavior, validation, and remaining limits. Verify CI on its final
    commit before merging. A source merge does not publish an app release.
@@ -28,11 +28,11 @@ the complete local build. Use a descriptive branch; do not use `Codex/*` or
 ## Checks
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 minecraft.py source check
+cargo test --locked
+./minecraft source check
 shasum -a 256 -c tools/SOURCE-SHA256.txt
-python3 minecraft.py source verify  # after fetching the pinned sources
-python3 minecraft.py build launcher                 # macOS with Command Line Tools
+./minecraft source verify  # after fetching the pinned sources
+./minecraft build launcher                 # macOS with Command Line Tools
 ```
 
 Use [the testing guide](../docs/test.md) for which checks a change needs, exact
@@ -45,7 +45,7 @@ Minecraft and let its helper stop, copy/build the current standalone example, an
 run its credential-cache and URL-policy tests:
 
 ```sh
-python3 src/standalone-setup.py --build-helper
+./minecraft setup helper
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 ```

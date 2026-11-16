@@ -4,6 +4,7 @@
 /logs/
 /bottles/
 /build/
+/target/
 /game/
 /exports/
 /work/

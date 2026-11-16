@@ -3,7 +3,58 @@
 Run checks from the repository root. Prefer tests that reproduce a failure at
 its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
-Test counts below describe the October 20, 2026 source snapshot
+Dated sections below retain evidence for their named builds; they do not describe the current worker language
+
+## Rust and seeded expeditions in build 31
+
+October 20, 2026, Apple M3 Pro with 36 GB RAM and macOS 27.0.1
+All 18 Rust unit tests and four CLI/export integration tests pass, as do rustfmt and Clippy with warnings denied
+The GameInput port also verified the four pinned payload hashes against the installed MSI without installing or changing it
+Project-owned source, scripts and exported tests contain no Python files or embedded Python programs
+
+The optimised native suite passes camera continuity, species attention, forward movement, bounded nearest-chunk batching, chain clearance, invalid map coordinates and continuously sampled cave/stronghold routes
+Its installed-art sweep passes 86 species, heroes, 43 areas and three legacy passages in 10,091 ms, excluding preceding regressions
+Every chunk of both new portal plans also builds with the installed original assets
+That is suite execution time, not launcher startup or FPS
+
+The isolated Rust generator produced 100 real Overworld chunks around seed 0's village at 232, 696
+The generator is the pinned official Bedrock 1.26.52.3 server, running in its separate loopback-only scenery prefix
+No account helper, player world or game save was used for generation
+Private offscreen probes render the real village and both underground plans with original textures
+The real-village approaches and every following cave/stronghold segment pass continuous collision sampling
+The approach planner reads the completed cave edits, so its flight cannot use the space now occupied by a new roof
+Look around can interrupt either native expedition without changing the current world or camera
+
+The rendering probe builds 25 neighbouring chunks per scene and records ten 1280 × 900, 4× MSAA SceneKit snapshots after three warm-ups
+Compilers, Minecraft and the launcher were stopped for this measurement; other desktop applications were left running
+
+| Scene | Mesh construction | Snapshot wall median / p95 | 1,000 short collision sweeps | 128 × 128 minimap |
+| --- | --- | --- | --- | --- |
+| Real village | 1.388 s | 7.93 / 16.19 ms | 0.368 ms | 26.53 ms |
+| Buried Nether-route city | 1.414 s | 8.06 / 15.76 ms | 0.440 ms | 65.60 ms |
+| Stronghold portal hall | 1.350 s | 8.45 / 12.41 ms | 0.440 ms | 60.38 ms |
+
+The ten-sample nearest-rank p95 is the largest recorded value
+This short offscreen process peaked at 339,869,696 resident bytes and a 702,219,320-byte memory footprint according to macOS `time -l`
+Those are probe-process measurements, not whole-launcher memory, sustained FPS, maximum-distance rendering, battery or thermal results
+Minimap work runs off the interaction thread and is cancelled when superseded
+
+Three read-only installed-status processes measured 150, 90 and 90 ms with the previous Python worker, versus 60, 60 and 60 ms with the Rust release worker
+These are process wall times from the same installed data, not game-startup or rendering speedups
+The separate seven-process empty-installation benchmark has a 4.19 ms median; its 3.74–5.62 ms range does not access an account or Keychain
+The native network fixture confirms IPv4 and IPv6 wildcard bindings become loopback, and a non-loopback binding fails with EACCES
+
+The final app passes strict deep signatures, all 1,583 resource digests and internal-link containment, with a measured macOS minimum of 27.0
+Its worker is ARM64 and its resources contain no `.py` or libpython files
+The authorised helper remains byte-identical with SHA-256 `706bba4f8cb08d90b080b0949dfd133e0a47f1122ee90693a54b058a05a280d6`
+After normal-quit confirmation, the installed app passes the same inventory and signature checks, matches the candidate executable and reports build 31
+The original build 30 app is preserved as recovery
+The DMG checksum passes, and its read-only mounted copy passes payload/signature checks and matches the candidate executable and resource inventory
+The image was detached after verification
+
+Computer Use's automatic approval review rejected opening the isolated preview with “Computer Use was not approved to use Minecraft Launcher Preview”
+No alternate UI automation was used to bypass that rejection
+Normal/fullscreen interaction, live WASD movement, VoiceOver, the Play handoff and sustained thermal/frame-rate behaviour remain unverified for build 31
 
 ## Terrain and controls in 0.17
 
@@ -594,86 +645,53 @@ remain separate release checks
 
 | Change | Validation |
 | --- | --- |
-| Worker/session behavior | Python suite; targeted cancellation/helper-lifetime regression; local app check when UI behavior changes |
-| Helper/account/download behavior | Python orchestration suite and Rust helper tests; deliberate live check only when required |
+| Worker/session behavior | Rust suite; targeted cancellation/helper-lifetime regression; local app check when UI behavior changes |
+| Helper/account/download behavior | Rust worker and helper tests; deliberate live check only when required |
 | Swift launcher | Native build plus visible local checks for affected states |
 | Wine account/Realms patches | Pinned-source checks, rebuilt runtime, XUser tests, and relevant probe/game test |
 | Graphics/runtime assembly | Build and overlay verification, graphics probe, game launch on the target Mac |
-| Packaging | Python packaging tests, signature/resource/DMG verification, Applications launch with existing data |
+| Packaging | Rust validation checks, signature/resource/DMG verification, Applications launch with existing data |
 | Documentation/export list | Relative links and examples, source-export tests/check, regenerated source inventory |
 
 ## Offline source checks
 
-These checks do not use the user's account, Keychain, or game data:
+These checks do not read an account, Keychain entry or installed game
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 minecraft.py source check
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+./minecraft source check
 shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 107 tests. Coverage includes source isolation,
-one helper across download/preparation/launch, safe account error messages,
-process cancellation, setup-marker corruption, runtime relinking, reduced
-download verification, and packaged minimum OS detection. The count is a dated
-snapshot, not a requirement to keep it fixed.
+The Rust tests cover request validation, safe export, simulated-worker isolation, setup receipts and locks, account-socket ownership/recovery, owned-process cancellation/timeouts, GameInput validation, bounded transfers and monitoring thresholds
+The export integration checks a real reviewed export, stale-inventory rejection, refresh and preservation of an existing destination
+Counts are dated evidence, not a target to preserve
 
-After fetching upstream sources, verify their pinned patched state:
-
-```sh
-python3 minecraft.py source verify
-```
-
-That check is offline; the initial `tools/source.py` fetch is not. If an
-exported source file changed, first regenerate `tools/SOURCE-SHA256.txt` following
-[Source releases](build.md#update-the-source-inventory).
+`./minecraft source verify` checks already fetched upstream revisions and patches without changing them
+`source fetch` uses the network
+Refresh changed reviewed files with `./minecraft source inventory` before checking their inventory
 
 ## Native app and helper
 
-Compile the interface on a Mac with Command Line Tools:
-
 ```sh
-python3 minecraft.py build launcher
-xcrun swiftc -O -assert-config Debug -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Music.swift src/launcher/Input.swift src/launcher/Skin.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
-build/launcher-checks
-```
-
-The native checks cover progress bounds, stage transitions, all six motion stop
-conditions, release filtering, bounded selection and passage cancellation
-Original synthetic fixtures exercise archive bounds and empty stubs, numeric
-pack precedence, gzip/NBT decoding, UV orientation, legacy bind transforms,
-case-insensitive parents, cycles, malformed model vectors, queued cancellation
-and failure delivery on the main thread. CI needs no game art
-The Python fixture checks the approved poster fallback, isolated preview identity,
-simulated status output and cancellation
-
-To check the art from your own installation as well:
-
-```sh
+./minecraft build launcher
+./minecraft build test
 BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
 ```
 
-This read-only integration constructs all 86 resident types, the dragon, 43
-independent habitats and three passages. It checks distinct Blaze rods, Breeze
-wind layers, mirrored dragon bounds, mob placement away from void, node/triangle
-budgets, sampled camera ground/headroom, swimming placement, original fluid atlas
-frames, reconstructed window panes, camera-action replacement and portal endpoints. It does not launch Minecraft
+The native builder includes the pinned LevelDB bridge and every current launcher source
+Tests use the same optimisation as the app, with debug assertions enabled
+Synthetic checks cover archive/NBT bounds, model transforms, key bindings, cancellation, motion gates and continuously swept portal-route clearance
+The optional installed-art suite builds all original resident types and authored habitats, plus every chunk of the new cave/stronghold plans
+It verifies their real materials and geometry without launching Minecraft
 
-Use `python3 minecraft.py build preview` to inspect first-run, progress,
-cancellation, retry and running-game states without touching a real account
-Its fixtures stay in ignored build output. A fixture proves UI behavior only. The worker
-protocol and ownership model are in [Architecture](architecture.md).
-
-For the redesigned window, also check narrow and wide sizes, long errors,
-Return/Escape, visible keyboard focus, scene selection, pause/resume,
-Reduced Motion, Reduce Transparency and Low Power Mode
-with the [accessibility checklist](accessibility.md#manual-checks-still-needed)
-The October 19 interface build compiled locally, but Computer Use denied access
-to its disposable preview, so these visible checks remain unverified
-
-The scenery renderer is capped at 20 fps, with no per-frame SwiftUI timeline
+`./minecraft build preview` creates an isolated simulated Rust-worker app for first-run, progress, cancellation and completion checks
+The preview rejects scenery/setup commands and never launches Wine or accesses an account
+Use the [accessibility checklist](accessibility.md#manual-checks-still-needed) for visible focus, smaller/larger windows, keyboard capture, long text, Reduced Motion and Low Power Mode
+The primary chunk renderer targets 60 Hz; the dated measurements below also include the earlier custom scenery renderer
 
 ### Material, hover and input fidelity in 0.10.1
 
@@ -969,7 +987,7 @@ Minecraft and letting its helper stop. The builder rejects any active
 `standalone_helper`, including one in a packaged app:
 
 ```sh
-python3 src/standalone-setup.py --build-helper
+./minecraft setup helper
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 ```
@@ -999,7 +1017,7 @@ the standalone game prefix; it is not a pure source test:
 
 ```sh
 ./tools/build/probes.sh
-python3 minecraft.py runtime probe graphics
+./minecraft runtime probe graphics
 ```
 
 Expected graphics evidence includes successful HRESULTs and
@@ -1008,34 +1026,15 @@ Microsoft. Never run those under the assumption that all probes are offline.
 
 ## Verify a packaged artifact
 
-`minecraft.py build app` verifies the final bundle signature and records hashes of
-regular resource files in `Contents/Resources/payload-sha256.json`.
-`minecraft.py build dmg` verifies the DMG. To check an existing default artifact:
-
 ```sh
-codesign --verify --deep --strict 'build/packaged/Minecraft for MacOS.app'
-hdiutil verify 'build/Minecraft-for-MacOS-preview.dmg'
-shasum -a 256 'build/Minecraft-for-MacOS-preview.dmg'
-python3 - <<'PY'
-from pathlib import Path
-import hashlib, json, plistlib
-app = Path('build/packaged/Minecraft for MacOS.app')
-resources = app / 'Contents/Resources'
-inventory = json.loads((resources / 'payload-sha256.json').read_text())
-for name, expected in inventory.items():
-    actual = hashlib.sha256((resources / name).read_bytes()).hexdigest()
-    if actual != expected:
-        raise SystemExit('Resource differs: ' + name)
-with (app / 'Contents/Info.plist').open('rb') as file:
-    print('Minimum macOS:', plistlib.load(file)['LSMinimumSystemVersion'])
-print('Verified resource files:', len(inventory))
-PY
+./minecraft build verify --app 'build/packaged/Minecraft Launcher.app'
+hdiutil verify 'build/Minecraft-Launcher-preview.dmg'
+shasum -a 256 'build/Minecraft-Launcher-preview.dmg'
 ```
 
-Adjust paths for a separately named build. These checks detect changes relative
-to the recorded artifact; they do not authenticate game downloads or establish
-notarization. Opening an app assembled on the developer's Mac does not reproduce
-Gatekeeper's handling of a downloaded app on another Mac.
+The Rust verifier checks the complete signature, exact resource inventory, internal symlink boundaries and measured minimum macOS version
+The app builder runs it before publishing a new candidate directory
+These checks establish consistency with the locally recorded artifact, not notarisation or a clean-Mac installation
 
 ## Manual test record
 
@@ -1064,18 +1063,17 @@ results in [Release status](status.md), including failures and untested cases.
 
 ## Continuous integration
 
-[`.github/workflows/checks.yml`](../.github/workflows/checks.yml) runs Python
-3.12/3.14 source tests, allowlist and inventory checks on Linux, plus the Python suite, native
-Swift build/policy checks, and pinned Rust helper tests on macOS 15. Native process metrics
-and exclusive-rename tests run on macOS and are skipped on Linux. Actions and the Rust
+[`.github/workflows/checks.yml`](../.github/workflows/checks.yml) runs Rust
+formatting, Clippy, regression tests, allowlist and inventory checks on Linux, plus native
+Swift checks and pinned Rust helper tests on macOS 15. Actions and the Rust
 toolchain are pinned. CI does not package Wine, run Minecraft, access Keychain,
 or certify that the full app supports macOS 15. Confirm checks belong to the
 exact PR commit before merging.
 
-The [security workflow](../.github/workflows/security.yml) analyses Python with
+The [security workflow](../.github/workflows/security.yml) analyses Rust with
 CodeQL on pushes, pull requests and weekly. Native Swift compilation is covered
 above; Swift CodeQL tracing did not complete during validation and remains
-unverified. CodeQL does not analyse Rust or upstream native sources
+unverified. CodeQL does not analyse upstream native sources
 
 The [source-release workflow](../.github/workflows/release.yml) reuses all source
 checks at the same commit before creating the allowlisted archive. A manual run exercises

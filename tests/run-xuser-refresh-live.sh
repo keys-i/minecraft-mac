@@ -31,17 +31,7 @@ mv "$CANDIDATE/lib/wine/x86_64-windows/xgameruntime.dll.next" \
 
 # Generate the layout from exactly the source used for this candidate. The
 # probe expires only its own caches; it does not synthesize tokens or claims.
-python3 - "$BUILD" "$PROBES" <<'PY'
-from pathlib import Path
-import sys
-build, probes = map(Path, sys.argv[1:])
-text = (build / 'source/dlls/xgameruntime/GDKComponent/System/XUser.c').read_text()
-start = text.index('struct XUser\n{')
-end = text.index('    HRESULT xboxPolicyRefreshError;', start) + len('    HRESULT xboxPolicyRefreshError;')
-layout = text[start:end].replace('struct XUser\n', 'struct XUserTestState\n', 1)
-layout = layout.replace('    IUser IUser_iface;', '    void *IUser_iface;')
-(probes / 'XUserTestState.h').write_text(layout + '\n};\n')
-PY
+"$ROOT/minecraft" wine layout "$BUILD" "$PROBES"
 cd "$BUILD"
 ./tools/winegcc/winegcc -o "$PROBES/xuser-refresh-live.exe" --wine-objdir . \
     --cc-cmd="$PE_CC -D__STDC__" -b x86_64-windows \

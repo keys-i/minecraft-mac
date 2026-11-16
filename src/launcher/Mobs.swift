@@ -1,4 +1,6 @@
 import AppKit
+import CoreText
+import ImageIO
 import SceneKit
 
 enum Species: String, CaseIterable {
@@ -109,21 +111,52 @@ final class Mobs {
             [bodyBounds.min.z,bodyBounds.max.z].map { z in body.convertPosition(.init(x,y,z),to:pig) }
         } }
         let left = corners.map(\.x).min()!, right = corners.map(\.x).max()!, top = corners.map(\.y).max()!
-        let rear = corners.map(\.z).max()!, capeWidth = (right-left)*0.9, capeHeight = min(0.85,top*0.8)
+        let back = corners.map(\.z).min()!, front = corners.map(\.z).max()!
+        let forward = head.convertPosition(.init(0,0,0),to:pig).z >= (back+front)/2 ? 1.0 : -1.0
+        let capeWidth = (right-left)*0.95, capeHeight = (front-back)*1.05
         let cape = SCNNode(); cape.name = "technoblade-cape"
-        cape.position = .init((left+right)/2,top-0.025,rear+0.035); cape.eulerAngles.x = -0.15
+        cape.position = .init((left+right)/2,top+0.025,forward>0 ? front-0.05 : back+0.05)
+        cape.eulerAngles.x = forward * .pi/2
         pig.addChildNode(cape)
         let cloth = try assets.texture("textures/blocks/wool_colored_red")
         var parent = cape
+        var folds: [SCNNode] = []
         for index in 0..<3 {
             var mesh = Voxels()
             mesh.cube(.init(capeWidth,capeHeight/3,1.0/64),at:.init(0,-capeHeight/6,0),material:cloth)
             let fold = mesh.node("cape-fold-\(index)"); fold.categoryBitMask = 1
             if index>0 { fold.position.y = -capeHeight/3 }
             parent.addChildNode(fold)
-            VoxelAdventure.sway(fold,x:0.035,z:0.012,period:2.8,phase:Double(index)*0.6)
+            folds.append(fold)
             parent = fold
         }
+        let logo = assets.data.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("scenery/Technoblade.png")
+        if let size = try? logo.resourceValues(forKeys:[.fileSizeKey]).fileSize, size<=1024*1024,
+           let source = CGImageSourceCreateWithURL(logo as CFURL,nil), CGImageSourceGetCount(source) == 1,
+           let image = CGImageSourceCreateImageAtIndex(source,0,nil), image.width<=1024, image.height<=1024 {
+            let material = SCNMaterial(); material.diffuse.contents = image; material.lightingModel = .lambert
+            material.diffuse.magnificationFilter = .nearest; material.diffuse.minificationFilter = .nearest
+            material.blendMode = .alpha; material.writesToDepthBuffer = false
+            let face = SCNPlane(width:capeWidth*0.85,height:capeWidth*0.85*Double(image.height)/Double(image.width))
+            face.firstMaterial = material
+            let emblem = SCNNode(geometry:face); emblem.name = "technoblade-emblem"; emblem.categoryBitMask = 1
+            emblem.position = .init(0,-capeHeight/6,-forward*0.011)
+            emblem.eulerAngles.y = forward>0 ? .pi : 0; folds[1].addChildNode(emblem)
+        }
+        var previous = pig.presentation.worldPosition, last = 0.0, phase = 0.0
+        cape.runAction(.repeatForever(.customAction(duration:60) { [weak pig] _,time in
+            guard let pig else { return }
+            let now = Double(time), dt = max(0.001,now>=last ? now-last : now)
+            let point = pig.presentation.worldPosition
+            let distance = hypot(point.x-previous.x,point.z-previous.z)
+            previous = point; last = now; phase += distance*10
+            let speed = min(3,distance/dt)
+            for (index,fold) in folds.enumerated() {
+                let droop = index == 2 ? -forward*0.22 : 0
+                fold.eulerAngles.x = droop+(0.01+speed*0.035)*sin(phase-Double(index)*0.7+now*1.4)
+                fold.eulerAngles.z = sin(now*1.8-Double(index)*0.6)*0.015
+            }
+        }),forKey:"walking-cloth")
     }
 
     func jockey() throws -> SCNNode {
@@ -247,15 +280,33 @@ final class Mobs {
 
     private func named(_ model: SCNNode, species: Species, baby: Bool, name: String?) throws -> SCNNode {
         if species == .sheep && name == "jeb_" { try fleece(model,baby:baby,colours:Self.dyes) }
+        var result = model
         if name == "Dinnerbone" || name == "Grumm" {
             let bounds = model.boundingBox, wrapper = SCNNode()
             wrapper.name = model.name
             model.position.y += (bounds.min.y+bounds.max.y)*model.scale.y+0.1
             model.eulerAngles.z += Double.pi
             wrapper.addChildNode(model)
-            return wrapper
+            result = wrapper
         }
-        return model
+        if let name {
+            let font = NSFont(name:"Mojangles",size:16) ?? NSFont(name:"Monocraft",size:16) ?? NSFont.monospacedSystemFont(ofSize:16,weight:.regular)
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string:name,attributes:[.font:font,.foregroundColor:NSColor.white]))
+            let width = Int(ceil(CTLineGetTypographicBounds(line,nil,nil,nil)))+8
+            guard width<=512, let context = CGContext(data:nil,width:width,height:24,bitsPerComponent:8,bytesPerRow:width*4,
+                space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
+            context.setFillColor(NSColor.black.withAlphaComponent(0.45).cgColor)
+            context.fill(CGRect(x:0,y:0,width:width,height:24)); context.setShouldAntialias(false)
+            context.textPosition = .init(x:4,y:5); CTLineDraw(line,context)
+            let material = SCNMaterial(); material.diffuse.contents = context.makeImage(); material.lightingModel = .constant
+            material.diffuse.magnificationFilter = .nearest; material.diffuse.minificationFilter = .nearest
+            material.blendMode = .alpha; material.writesToDepthBuffer = false; material.isDoubleSided = true
+            let plane = SCNPlane(width:Double(width)*0.022,height:0.528); plane.firstMaterial = material
+            let tag = SCNNode(geometry:plane); tag.name = "nametag-"+name; tag.categoryBitMask = 1
+            tag.position.y = result.boundingBox.max.y+0.35
+            tag.constraints = [SCNBillboardConstraint()]; result.addChildNode(tag)
+        }
+        return result
     }
 
     private static let dyes: [UInt32] = [0xFFFFFF,0xF9801D,0xC74EBD,0x3AB3DA,0xFED83D,0x80C71F,0xF38BAA,0x474F52,
@@ -348,7 +399,7 @@ final class Mobs {
         model.name = "mob-"+(label ?? name)
         let weapons = ["skeleton":"bow_standby","stray":"bow_standby","bogged":"bow_standby","parched":"bow_standby",
             "wither_skeleton":"stone_sword","piglin":"crossbow_standby","piglin_brute":"gold_axe",
-            "zombie_pigman":"gold_sword","pillager":"crossbow_standby"]
+            "zombie_pigman":"crossbow_standby","pillager":"crossbow_standby"]
         if let weapon = weapons[name], let hand = model.childNode(withName:"rightItem",recursively:true) {
             let item = try assets.item(weapon)
             if weapon == "bow_standby" {

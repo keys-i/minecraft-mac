@@ -34,11 +34,11 @@ if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
   /usr/bin/xcode-select --install || true
   read -r -p 'When installation finishes, press Return to continue.' answer
 fi
-/usr/bin/xcrun --find python3 >/dev/null
+command -v cargo >/dev/null || { printf "Rust is required; run tools/build/install.sh\n" >&2; exit 1; }
 if [ "$read_only" -eq 0 ] && ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
   printf 'Installing Rosetta. Follow Apple’s license prompt below.\n'
   /usr/sbin/softwareupdate --install-rosetta
 fi
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/bison/bin:$PATH"
 export STANDALONE_JOBS="${STANDALONE_JOBS:-2}"
-/usr/bin/python3 "$ROOT/minecraft.py" play "$@"
+"$ROOT/minecraft" play "$@"

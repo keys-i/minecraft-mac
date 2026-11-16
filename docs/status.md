@@ -12,7 +12,38 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
-The current local preview is **0.17.0/build 30**
+### Build 31 candidate
+
+Build 31 replaces every project-owned Python runtime, tool and test with Rust
+The native Swift interface remains native Swift, and upstream projects keep their own build systems
+The biome heading is 1.25 times the developer-credit text, uses automatic overflow scrolling and has no middle-dot separators
+Realm changes use coloured fades and portal animation, with cancellable camera travel
+
+Real Bedrock 1.26.52.3 seed-generated chunks now feed the renderer, collision, minimap and resident placement
+The Nether and End expeditions add persistent, explorable scenery edits to that private generated world
+The Nether route passes through a cave, broken mine, dungeon, buried city and redstone/lava-pool portal
+The End route includes a reachable house chest where available, eyes of Ender, ravine, abandoned mine, dungeon, lush/dripstone cavern, ruined stronghold, prisons, kitchens, white-eyed shrine, sleeping rooms, aqueduct and hidden portal hall
+Residents use species-based 10–40% attention checks and turn their heads without walking backwards
+These residents remain a bounded scenery simulation rather than the complete Minecraft AI
+
+Rust formatting, Clippy and 22 Rust tests pass locally, alongside the native synthetic and installed-art suites
+The installed-art checks cover 86 species, 43 authored areas, three retained passages and both new underground plans
+Offscreen real-chunk renders exposed and corrected waxed-copper/iron-chain names and residents appearing before their ground was drawn
+The minimap cancels obsolete work and reuses neighbouring height samples
+The final candidate passes strict signatures and all 1,583 resource hashes, with the authorised helper byte-identical and no Python runtime
+Its measured minimum is macOS 27.0 because of the reused Wine runtime
+See [build 31 evidence](test.md#rust-and-seeded-expeditions-in-build-31) for measurements and unchecked workflows
+
+Build 31 is installed locally after the user's normal-quit confirmation
+The exact installed build 30 is preserved in the build 31 output's recovery directory
+No game files, worlds, accounts or Keychain entries were replaced; the authorised helper remains byte-identical
+Live preview interaction was blocked by automatic Computer Use approval review
+The live Play handoff and sustained movement/frame rate have not been revalidated
+The Windows game still uses Rosetta and its own native window
+
+### Installed build 30
+
+The preceding installed local preview is **0.17.0/build 30**
 Shared model transforms and mirrored texture faces correct equine ears, spider
 legs, villager hats and dragon wings using the installed original models
 Torches attach to their supports; chests have textured bodies, lids and latches
@@ -755,7 +786,7 @@ is made.
 
 ## Before publishing a binary preview
 
-- Inventory the bundled Python/PyInstaller, Rust, Wine dependency, and graphics
+- Inventory the bundled Rust, Wine dependency, and graphics
   components. Include their notices and matching source/build materials.
   The existing Wine dependency archive has not had a complete redistribution
   inventory; see [THIRD_PARTY.md](../vendor/README.md).
@@ -767,8 +798,8 @@ is made.
   fresh owner sign-in, declined Keychain access, cancellation, retry, successful
   launch, world save/reopen, sign-out, and replacement with an updated app.
 - Record the actual minimum macOS version of **all** bundled Mach-O binaries.
-  Current locally built Wine/Python components require macOS 27. Changing the
-  front end's deployment target or just swapping Python is insufficient
+  Current locally built Wine components require macOS 27. Changing the
+  front end's deployment target is insufficient
 - Verify quit/reopen and upgrade Keychain behavior. Ad-hoc rebuilds can change the
   helper's signing identity; no zero-prompt update claim is made.
 - Include checksums and tested limitations in release notes. Use a GitHub
@@ -782,18 +813,18 @@ the game/helper before rebuilding source components. After bootstrap and
 preparing the current helper example, the core checks are:
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 minecraft.py source verify
-python3 minecraft.py source check
-python3 minecraft.py build launcher
+cargo test --locked
+./minecraft source verify
+./minecraft source check
+./minecraft build launcher
 cargo +1.98.0 test --release --locked --manifest-path sources/xodus/Cargo.toml \
   -p xodus-cli --example standalone_helper
 bash tests/run-xuser-tests.sh
 ```
 
-`tools/build.py app` verifies the final bundle signature and records SHA-256
-hashes of bundled resource files. `tools/build.py dmg` verifies the image after creating
-it. These integrity checks do not replace notarization or gameplay testing.
+`./minecraft build app` verifies the final bundle signature and records SHA-256
+hashes of bundled resource files. `./minecraft build dmg` verifies the image after creating
+it. These integrity checks do not replace notarisation or gameplay testing
 
 ---
 
@@ -870,17 +901,17 @@ fully explained, and a disconnect/rejoin cycle remains unverified.
 The monitor runs only when explicitly started; it does not upload diagnostics:
 
 ```sh
-python3 minecraft.py monitor --help
-python3 minecraft.py runtime launch --network-diagnostics
+./minecraft monitor --help
+./minecraft runtime launch --network-diagnostics
 ```
 
 The second command launches the game and enables HTTP host/status diagnostics;
 it is not an offline test. Do not start it alongside a running game/helper.
-Use `python3 minecraft.py monitor mark` and `python3 minecraft.py monitor stop` for an existing monitor
+Use `./minecraft monitor mark` and `./minecraft monitor stop` for an existing monitor
 session. Raw captures stay private in `logs/standalone/monitor/` and are excluded
 from source exports. Review excerpts before sharing them.
 
-`tools/bootstrap.sh` and `tools/setup.py` retain the older source-building setup path for
+`tools/bootstrap.sh` and `./minecraft setup` retain the source-building setup path for
 development. They reuse a completed installation, but do not update an installed
 game or runtime. The native app remains the documented player entry point.
 
@@ -923,17 +954,15 @@ account socket, avoiding repeated external process discovery. It checks every
 50 ms rather than every 250 ms. Adopting an existing helper still verifies its
 PID and executable; socket type, ownership and permissions remain mandatory
 
-Reproduce the comparison from this repository, which retains upstream history
+These are historical Python-fixture measurements from build 27, not Rust-worker measurements
+The current read-only Rust status benchmark runs with
 
 ```sh
-mkdir -p work
-git show 99fc9aa:src/standalone.py > work/before.py
-python3 -B tests/benchmark.py work/before.py
-python3 -B tests/benchmark.py
+./minecraft benchmark
 ```
 
-The fixture removes its child, socket and temporary directory after each run
-Run variants in sequence without compiling or profiling concurrently
+The current benchmark removes its private fixture directory after each run
+Run comparisons in sequence without compiling or profiling concurrently
 
 ### Included runtime
 

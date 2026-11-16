@@ -5,8 +5,13 @@ struct NBT {
     private let data: Data
     private var offset = 0
     private var items = 0
+    private let littleEndian: Bool
 
-    static func read(_ source: Data) throws -> [String: Any] {
+    private init(data: Data, offset: Int = 0, littleEndian: Bool = false) {
+        self.data = data; self.offset = offset; self.littleEndian = littleEndian
+    }
+
+    static func read(_ source: Data, littleEndian: Bool = false) throws -> [String: Any] {
         var data = source
         if data.starts(with:[0x1F,0x8B]) {
             guard data.count >= 18, data.count <= 16*1024*1024 else { throw AssetError.model }
@@ -30,10 +35,20 @@ struct NBT {
             data = output
         }
         guard data.count <= 32*1024*1024 else { throw AssetError.model }
-        var reader = NBT(data:data)
+        var offset = 0
+        let result = try decode(data,offset:&offset,littleEndian:littleEndian)
+        guard offset == data.count else { throw AssetError.model }
+        return result
+    }
+
+    // Bedrock subchunk palettes contain consecutive little-endian root compounds
+    static func decode(_ data: Data, offset: inout Int, littleEndian: Bool) throws -> [String:Any] {
+        guard data.count<=32*1024*1024, offset>=0, offset<data.count else { throw AssetError.model }
+        var reader = NBT(data:data,offset:offset,littleEndian:littleEndian)
         guard try reader.integer(1) == 10 else { throw AssetError.model }
         _ = try reader.string()
-        guard let result = try reader.value(10,depth:0) as? [String: Any], reader.offset == data.count else { throw AssetError.model }
+        guard let result = try reader.value(10,depth:0) as? [String: Any] else { throw AssetError.model }
+        offset = reader.offset
         return result
     }
 
@@ -44,7 +59,9 @@ struct NBT {
     }
 
     private mutating func integer(_ count: Int) throws -> UInt64 {
-        try bytes(count).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+        let data = try bytes(count)
+        if littleEndian { return data.enumerated().reduce(UInt64(0)) { $0 | UInt64($1.element)<<($1.offset*8) } }
+        return data.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
     }
 
     private mutating func length() throws -> Int {

@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 38db5fb..8c373b8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -43,7 +43,8 @@ include(CheckLibraryExists)
+ check_library_exists(crc32c crc32c_value "" HAVE_CRC32C)
+ check_library_exists(snappy snappy_compress "" HAVE_SNAPPY)
+ check_library_exists(zstd zstd_compress "" HAVE_ZSTD)
+-check_library_exists(zlib deflate "" HAVE_ZLIB)
++find_package(ZLIB REQUIRED)
++set(HAVE_ZLIB TRUE)
+ check_library_exists(tcmalloc malloc "" HAVE_TCMALLOC)
+ 
+ include(CheckCXXSymbolExists)
+@@ -291,7 +292,7 @@ if(HAVE_ZSTD)
+   target_link_libraries(leveldb zstd)
+ endif(HAVE_ZSTD)
+ if(HAVE_ZLIB)
+-  target_link_libraries(leveldb zlib)
++  target_link_libraries(leveldb ZLIB::ZLIB)
+ endif(HAVE_ZLIB)
+ if(HAVE_TCMALLOC)
+   target_link_libraries(leveldb tcmalloc)

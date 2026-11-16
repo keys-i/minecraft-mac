@@ -395,9 +395,16 @@ extension Structures {
         let panel = name.hasSuffix("_door") || name.hasSuffix("trapdoor") || name == "ladder"
         let chest = ["chest","trapped_chest","ender_chest"].contains(name)
         let bed = name.hasSuffix("_bed")
-        guard torch || crop || banner || panel || chest || bed || name == "iron_bars" || name == "brewing_stand" || name == "bell" || name == "lantern" || name == "soul_lantern" else { return false }
+        guard torch || crop || banner || panel || chest || bed || name == "end_portal_frame" || name == "iron_bars" || name == "brewing_stand" || name == "bell" || name == "lantern" || name == "soul_lantern" else { return false }
         let first = mesh.vertices.count
-        if torch {
+        if name == "end_portal_frame" {
+            let tiles = try assets.tiles(name,states:states)
+            mesh.cube(.init(1,0.8125,1),at:.init(p.x+0.5,p.y+0.40625,p.z+0.5),material:tiles[0],faceMaterials:tiles)
+            if states["eye"] == "true" {
+                let eye = try assets.texture("textures/blocks/endframe_eye")
+                mesh.cube(.init(0.5,0.1875,0.5),at:.init(p.x+0.5,p.y+0.90625,p.z+0.5),material:eye,textureUV:Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6))
+            }
+        } else if torch {
             let path = name.contains("soul") ? "soul_torch" : name.contains("redstone") ? "redstone_torch_on" : name.contains("copper") ? "copper_torch" : "torch_on"
             let material = try assets.texture("textures/blocks/"+path)
             var uv = Array(repeating:CGRect(x:7.0/16,y:1,width:2.0/16,height:-10.0/16),count:6)
@@ -579,8 +586,13 @@ extension Structures {
     }
 
     static func template(_ name: String, assets: Assets, cutaway: Bool = false) throws -> SCNNode {
-        let source = try assets.template(name)
-        guard let size = source["size"] as? [Int], size.count == 3, size.allSatisfy({ $0 > 0 && $0 <= 128 }),
+        try volume(name,source:assets.template(name),assets:assets,cutaway:cutaway)
+    }
+
+    static func volume(_ name: String, source: [String:Any], assets: Assets, cutaway: Bool = false,
+                       interior: Bool = false) throws -> SCNNode {
+        guard let size = source["size"] as? [Int], size.count == 3,
+              size[0]>0, size[0]<=128, size[1]>0, size[1]<=384, size[2]>0, size[2]<=128,
               let originalPalette = source["palette"] as? [[String: Any]], originalPalette.count < 4096,
               let list = source["blocks"] as? [[String: Any]], list.count <= 250_000 else { throw AssetError.model }
         var palette = originalPalette
@@ -599,7 +611,7 @@ extension Structures {
         let names = palette.map { ($0["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"") }
         func hidden(_ name: String) -> Bool { ["air","cave_air","void_air","jigsaw","structure_block","structure_void"].contains(name) }
         func partial(_ name: String) -> Bool {
-            ["stairs","slab","door","pane","fence","wall","torch","bed","plate","flower","glass","leaves","water","lava","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","grass","fern","sapling","mushroom","vine","ladder","composter","chest"].contains { name.contains($0) }
+            Block.plant(name) || name.hasSuffix("_bed") || ["portal","stairs","slab","door","pane","fence","wall","torch","plate","flower","glass","leaves","water","lava","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","vine","ladder","composter","chest","chain"].contains { name.contains($0) }
         }
         let visible = names.map { !hidden($0) }, opaque = names.map { !partial($0) }
         func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
@@ -614,6 +626,7 @@ extension Structures {
         }
         var mesh = Voxels(), liquid = Voxels(), surfaces: [Int: [SCNMaterial]] = [:]
         var fluids: [String:[SCNMaterial]] = [:], doors: [Door] = []
+        var portals: [String:SCNMaterial] = [:]
         var sites: [SCNNode] = [], beds = Set<Int>()
         func lookup(_ p: [Int]) -> Int? {
             (0..<3).allSatisfy { (0..<size[$0]).contains(p[$0]) } ? blocks[key(p)] : nil
@@ -653,6 +666,7 @@ extension Structures {
         let fullUV = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
         for block in list {
             let p = block["pos"] as! [Int]
+            if interior && (p[0] == 0 || p[0] == size[0]-1 || p[2] == 0 || p[2] == size[2]-1) { continue }
             guard let state = blocks[key(p)] else { continue }
             let name = names[state]
             let properties = palette[state]["Properties"] as? [String: String] ?? [:]
@@ -671,7 +685,12 @@ extension Structures {
                 var shape = Voxels()
                 for cell in cells {
                     let index = lookup(cell)!, states = palette[index]["Properties"] as? [String:String] ?? [:]
-                    try fixture(name,states:states,at:.init(Double(cell[0]),Double(cell[1]),Double(cell[2])),assets:assets,mesh:&shape)
+                    if name == "straw_bed" {
+                        let bed = try assets.straw(head:states["part"] == "head")
+                        bed.position = marker.convertPosition(.init(Double(cell[0])+0.5,Double(cell[1]),Double(cell[2])+0.5),from:nil)
+                        bed.eulerAngles.y = -marker.eulerAngles.y
+                        marker.addChildNode(bed)
+                    } else { try fixture(name,states:states,at:.init(Double(cell[0]),Double(cell[1]),Double(cell[2])),assets:assets,mesh:&shape) }
                 }
                 shape.vertices = shape.vertices.map { marker.convertPosition($0,from:nil) }
                 shape.normals = shape.normals.map { marker.convertVector($0,from:nil) }
@@ -716,6 +735,19 @@ extension Structures {
                 for (edge,dx,dz) in [("north",0,-1),("south",0,1),("west",-1,0),("east",1,0)] {
                     if let other = lookup([p[0]+dx,p[1],p[2]+dz]), opaque[other] || names[other] == name { resolved[edge] = "true" }
                 }
+            }
+            if ["portal","nether_portal","end_portal"].contains(name) {
+                let material: SCNMaterial
+                if let cached = portals[name] {material = cached}
+                else {
+                    material = try assets.texture(name == "end_portal" ? "textures/entity/end_portal" : "textures/blocks/portal",animated:true).copy() as! SCNMaterial
+                    material.lightingModel = .constant; material.writesToDepthBuffer = false; portals[name] = material
+                }
+                let horizontal = name == "end_portal", across = properties["axis"] != "z"
+                liquid.cube(horizontal ? .init(1,0,1) : across ? .init(1,1,0) : .init(0,1,1),
+                    at:.init(Double(p[0])+0.5,Double(p[1])+(horizontal ? 0.75 : 0.5),Double(p[2])+0.5),material:material,
+                    faces:horizontal ? 16 : across ? 1 : 2,textureUV:Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6))
+                continue
             }
             if try fixture(name,states:resolved,data:block["nbt"] as? [String:Any] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
             var faces = 63
@@ -836,12 +868,21 @@ extension Structures {
                         cube(x == 0 ? .init(0.125,0.125,0.5) : .init(0.5,0.125,0.125),.init(0.5+x,y,0.5+z))
                     }
                 }
-            } else if ["flower","sapling","grass","fern","mushroom"].contains(where:name.contains) {
+            } else if Block.plant(name) {
                 cube(.init(1,1,0),.init(0.5,0.5,0.5),mask:1,sprite:true)
                 cube(.init(0,1,1),.init(0.5,0.5,0.5),mask:2,sprite:true)
             } else if name.contains("carpet") || name == "redstone_wire" {
                 cube(.init(1,0.0625,1),.init(0.5,0.03125,0.5))
-            } else if name == "end_rod" || name == "chain" {
+            } else if name == "chain" {
+                let first = mesh.vertices.count, centre = SCNVector3(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5)
+                cube(.init(1,1,0),.init(0.5,0.5,0.5),mask:1,sprite:true)
+                cube(.init(0,1,1),.init(0.5,0.5,0.5),mask:2,sprite:true)
+                if let axis = properties["axis"], axis != "y" {
+                    let turn = SCNNode(); turn.position = centre
+                    turn.eulerAngles = axis == "x" ? .init(0,0,Double.pi/2) : .init(Double.pi/2,0,0)
+                    mesh.transform(from:first,origin:centre,by:turn)
+                }
+            } else if name == "end_rod" {
                 cube(.init(0.125,1,0.125),.init(0.5,0.5,0.5))
             } else if name.contains("candle") || name.contains("lantern") {
                 cube(.init(0.375,0.625,0.375),.init(0.5,0.3125,0.5),sprite:true)
@@ -886,6 +927,14 @@ extension Structures {
         if !liquid.vertices.isEmpty {
             let node = liquid.node("template-fluids"); node.categoryBitMask = 1; root.addChildNode(node)
             for materials in fluids.values { for index in [0,4] { Landscape.animate(node,material:materials[index]) } }
+            for (name,material) in portals {
+                if name == "end_portal" {
+                    node.runAction(.repeatForever(.customAction(duration:96) { _,time in
+                        var transform = SCNMatrix4MakeScale(4,4,1); transform.m41 = time/96; transform.m42 = time/128
+                        material.diffuse.contentsTransform = transform
+                    }))
+                } else {Landscape.animate(node,material:material)}
+            }
         }
         root.position = .init(-Double(size[0]/2)-0.5,0,-Double(size[2]/2)-0.5)
         return root

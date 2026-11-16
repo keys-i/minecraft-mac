@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   codeql:
-    name: CodeQL (Python)
+    name: CodeQL (Rust)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -21,13 +21,10 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
       - uses: github/codeql-action/init@f051dc808ef3645eb0d08647ec751634ec2304ac # v4.39.0
         with:
-          languages: python
+          languages: rust
           build-mode: none
       - uses: github/codeql-action/analyze@f051dc808ef3645eb0d08647ec751634ec2304ac # v4.39.0
         with:
-          category: /language:python
+          category: /language:rust
