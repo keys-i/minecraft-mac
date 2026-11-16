@@ -353,10 +353,10 @@ struct Expedition: NSViewRepresentable {
             data.chunks = data.chunks.filter { retained($0.key) }
             meshFailures = meshFailures.filter { retained($0.key) }
             horizon = visibleDistance(at:point); fog(at:point)
-            let missing = wanted.union(halo).filter { self.missing($0) }
-            if !missing.isEmpty {
-                let first = initial ? missing.intersection(entryHalo) : []
-                let ordered = (first.isEmpty ? missing : first).sorted {
+            let missingChunks = wanted.union(halo).filter { self.missing($0) }
+            if !missingChunks.isEmpty {
+                let first = initial ? missingChunks.intersection(entryHalo) : []
+                let ordered = (first.isEmpty ? missingChunks : first).sorted {
                     hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z))
                 }
                 generate(ordered)

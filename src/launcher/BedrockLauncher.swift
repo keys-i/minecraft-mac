@@ -1176,9 +1176,10 @@ struct LauncherView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let scale = Self.scale(in:geometry.size,extra:(detail.isEmpty ? 0 : 48)+(fresh ? 24 : 0))
-            let footer = 24+20*scale
-            let sideHint = geometry.size.width-GameTitle.width(in:geometry.size) >= 560
+            let extra: CGFloat = (detail.isEmpty ? 0 : 48)+(fresh ? 24 : 0)
+            let scale: CGFloat = Self.scale(in:geometry.size,extra:extra)
+            let footer: CGFloat = 24+20*scale
+            let sideHint: Bool = geometry.size.width-GameTitle.width(in:geometry.size) >= 560
             ZStack {
                 if launcher.loading {
                     Loading(status:launcher.status,frames:launcher.frames,font:launcher.gameFont,stone:launcher.stone,

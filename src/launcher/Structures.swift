@@ -432,19 +432,19 @@ extension Structures {
             let material = try assets.texture("textures/entity/"+path)
             func part(_ size: SCNVector3, _ centre: SCNVector3, _ u: Double, _ v: Double) {
                 let w = size.x, h = size.y, d = size.z
-                let uv = [CGRect(x:u+d+w+d,y:v+d,width:w,height:h),CGRect(x:u,y:v+d,width:d,height:h),
-                          CGRect(x:u+d,y:v+d,width:w,height:h),CGRect(x:u+d+w,y:v+d,width:d,height:h),
-                          CGRect(x:u+d,y:v,width:w,height:d),CGRect(x:u+d+w,y:v,width:w,height:d)]
-                    .map { CGRect(x:$0.minX/64,y:$0.maxY/64,width:$0.width/64,height:-$0.height/64) }
+                let faces: [CGRect] = [CGRect(x:u+d+w+d,y:v+d,width:w,height:h),CGRect(x:u,y:v+d,width:d,height:h),
+                                       CGRect(x:u+d,y:v+d,width:w,height:h),CGRect(x:u+d+w,y:v+d,width:d,height:h),
+                                       CGRect(x:u+d,y:v,width:w,height:d),CGRect(x:u+d+w,y:v,width:w,height:d)]
+                let uv = faces.map { CGRect(x:$0.minX/64,y:$0.maxY/64,width:$0.width/64,height:-$0.height/64) }
                 mesh.cube(.init(w/16,h/16,d/16),at:.init(p.x+centre.x/16,p.y+centre.y/16,p.z+centre.z/16),material:material,textureUV:uv)
             }
             if bed {
                 let head = states["part"] == "head"
                 let v = head ? 0.0 : 16
-                let uv = [CGRect(x:22,y:0,width:16,height:6),CGRect(x:0,y:v+6,width:6,height:16),
-                          CGRect(x:6,y:0,width:16,height:6),CGRect(x:22,y:v+6,width:6,height:16),
-                          CGRect(x:6,y:v+6,width:16,height:16),CGRect(x:28,y:v+6,width:16,height:16)]
-                    .map { CGRect(x:$0.minX/64,y:$0.maxY/64,width:$0.width/64,height:-$0.height/64) }
+                let faces: [CGRect] = [CGRect(x:22,y:0,width:16,height:6),CGRect(x:0,y:v+6,width:6,height:16),
+                                       CGRect(x:6,y:0,width:16,height:6),CGRect(x:22,y:v+6,width:6,height:16),
+                                       CGRect(x:6,y:v+6,width:16,height:16),CGRect(x:28,y:v+6,width:16,height:16)]
+                let uv = faces.map { CGRect(x:$0.minX/64,y:$0.maxY/64,width:$0.width/64,height:-$0.height/64) }
                 let first = mesh.uv.count
                 mesh.cube(.init(1,0.375,1),at:.init(p.x+0.5,p.y+0.375,p.z+0.5),material:material,textureUV:uv)
                 // Bedrock unwraps one 16 × 32 panel, split here at the two source cells
@@ -546,10 +546,10 @@ extension Structures {
             let gold = try assets.texture("textures/entity/bell/bell")
             func bell(_ width: Double, _ height: Double, _ y: Double, _ v: Double) {
                 let d = width
-                let uv = [CGRect(x:d+width+d,y:v+d,width:width,height:height),CGRect(x:0,y:v+d,width:d,height:height),
-                          CGRect(x:d,y:v+d,width:width,height:height),CGRect(x:d+width,y:v+d,width:d,height:height),
-                          CGRect(x:d,y:v,width:width,height:d),CGRect(x:d+width,y:v,width:width,height:d)]
-                    .map { CGRect(x:$0.minX/32,y:$0.maxY/32,width:$0.width/32,height:-$0.height/32) }
+                let faces: [CGRect] = [CGRect(x:d+width+d,y:v+d,width:width,height:height),CGRect(x:0,y:v+d,width:d,height:height),
+                                       CGRect(x:d,y:v+d,width:width,height:height),CGRect(x:d+width,y:v+d,width:d,height:height),
+                                       CGRect(x:d,y:v,width:width,height:d),CGRect(x:d+width,y:v,width:width,height:d)]
+                let uv = faces.map { CGRect(x:$0.minX/32,y:$0.maxY/32,width:$0.width/32,height:-$0.height/32) }
                 mesh.cube(.init(width/16,height/16,width/16),at:.init(p.x+0.5,p.y+y/16,p.z+0.5),material:gold,textureUV:uv)
             }
             bell(6,7,6.5,0)

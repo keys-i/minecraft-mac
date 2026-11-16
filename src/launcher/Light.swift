@@ -77,7 +77,10 @@ struct Light {
             let value = levels(x:Int(floor(p.x)),y:Int(floor(p.y)),z:Int(floor(p.z)))
             sky += Self.curve[Int(value.sky)]; block += Self.curve[Int(value.block)]
         } }
-        let shade = Float(0.6*abs(n.x)+0.8*abs(n.z)+(n.y>=0 ? 1.0 : 0.5)*abs(n.y))
+        let xShade = Float(abs(n.x))*0.6
+        let zShade = Float(abs(n.z))*0.8
+        let yShade = Float(abs(n.y))*(n.y>=0 ? 1.0 : 0.5)
+        let shade = xShade+zShade+yShade
         return .init(sky*0.25,block*0.25,min(1,max(0.5,shade)),ambient)
     }
 

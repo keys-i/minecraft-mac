@@ -472,30 +472,31 @@ final class Mobs {
         if name == "spider" || name == "cave_spider" { try spider(model) }
         let equine = ["horse_v3","skeleton_horse_v3","zombie_horse_v3","donkey_v3","mule_v3"].contains(name)
         var index = 0
-        model.enumerateChildNodes { node,_ in
-            let name = node.name?.lowercased() ?? ""
-            if name.contains("tentacle") {
+        func animate(_ node: SCNNode) {
+            let part = node.name?.lowercased() ?? ""
+            if part.contains("tentacle") {
                 VoxelAdventure.sway(node,x:0.15,z:0.1,period:4,phase:Double(index)*0.7)
                 index += 1
-            } else if name.contains("wing") && key != "ender_dragon-default" && key != "bat-default" && key != "phantom-default" {
+            } else if part.contains("wing") && key != "ender_dragon-default" && key != "bat-default" && key != "phantom-default" {
                 if key.hasPrefix("parrot-") {
                     // shortcut: a bounded ambient clock substitutes the game's unpublished wing_flap queries
-                    let sign = name == "wing0" ? 1.0 : -1.0
+                    let sign = part == "wing0" ? 1.0 : -1.0
                     node.eulerAngles.z += sign*(5*Double.pi/180+0.5)
                     VoxelAdventure.sway(node,z:sign*0.5,period:1.0/3)
                 } else {VoxelAdventure.sway(node,z:0.4,period:key.hasPrefix("bee-") ? 0.3 : 1.2)}
-            } else if name.contains("tail") && key != "ender_dragon-default" && key != "phantom-default" && !key.hasPrefix("rabbit-") {
+            } else if part.contains("tail") && key != "ender_dragon-default" && key != "phantom-default" && !key.hasPrefix("rabbit-") {
                 if key.hasPrefix("parrot-") {
                     node.eulerAngles.x = -Double.pi/3
                     VoxelAdventure.sway(node,x:-17*Double.pi/180,period:360/38.17,phase:Double.pi/2)
                 } else {VoxelAdventure.sway(node,y:0.13,period:2.8)}
-            } else if name == "body" && key.hasPrefix("parrot-") {
+            } else if part == "body" && key.hasPrefix("parrot-") {
                 let base = node.position
                 node.runAction(.repeatForever(.customAction(duration:1.0/3) { node,time in
                     node.position.y = base.y+(sin(Double(time)*6*Double.pi)+1)*0.5*0.3/16
                 }))
             }
         }
+        model.enumerateChildNodes { node,_ in animate(node) }
         if let gaze, name != "bat", !equine {VoxelAdventure.sway(gaze,y:0.07,period:7)}
         models[key] = model
         return model.clone()
