@@ -5,6 +5,29 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Scenery loading correction in build 32
+
+October 20, 2026, on the same M3 Pro and macOS 27.0.1
+Live inspection of installed build 31 found a stale generator-lock error followed by large chunk batches that queued repeated console probes and failed to commit their manifest
+Only the first nine chunks of each visited dimension were available, leaving exposed scenery edges
+Computer Use could inspect the installed launcher; the preceding rejection applied to the separate isolated Preview app
+
+The corrected worker completes a 330-new-chunk request against the isolated official Bedrock generator in 50.27 seconds, exits successfully and emits `world_ready` after the manifest is committed
+That command ran alongside native compilation and the open launcher; it is a completion check, not a controlled speed comparison
+The generator log ends with `Quit correctly` and its owned server exits
+Regression checks cover bounded console batches, duplicate replies, unfinished-chunk retry, lock handover and cancellation
+All 20 Rust unit tests and four integration tests pass, along with rustfmt and Clippy with warnings denied
+
+The loading/error message now sits in a centred, responsive Minecraft-style panel
+Common flowers use crossed cutouts and their original matching textures instead of solid cubes
+The final native installed-art suite passes flower cutout geometry, all matching flower textures, nearest-chunk batching and a real first-world installation at 232.5, 64.62, 696.5
+Its 86-species, 43-area and three-passage artwork sweep takes 12,137 ms; this is test execution time, not rendering FPS
+Unfinished mesh boundaries limit the fog horizon and captured movement until neighbouring terrain is drawn
+The first-frame fixture checks a nine-chunk scene inside a requested 289-chunk area with animation stopped; its screenshot was inspected
+The build 32 candidate passes strict deep signatures and all 1,583 resource digests
+Its authorised helper is byte-identical to build 31, with SHA-256 `706bba4f8cb08d90b080b0949dfd133e0a47f1122ee90693a54b058a05a280d6`
+Installation and live visual verification are awaiting the required normal quit
+
 ## Rust and seeded expeditions in build 31
 
 October 20, 2026, Apple M3 Pro with 36 GB RAM and macOS 27.0.1

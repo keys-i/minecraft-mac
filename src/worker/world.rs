@@ -333,6 +333,63 @@ impl Drop for Engine {
     }
 }
 
+#[derive(Default)]
+struct Checks {
+    done: BTreeSet<usize>,
+    pending: BTreeSet<usize>,
+}
+
+impl Checks {
+    fn commands(&mut self, edits: &[Vec<String>]) -> Vec<String> {
+        if !self.pending.is_empty() {
+            return Vec::new();
+        }
+        self.pending = (0..edits.len())
+            .filter(|index| !self.done.contains(index))
+            .take(16)
+            .collect();
+        if self.pending.is_empty() {
+            return Vec::new();
+        }
+        self.pending
+            .iter()
+            .flat_map(|&index| edits[index].iter().cloned())
+            .chain(["list".into()])
+            .collect()
+    }
+
+    fn found(&mut self, index: usize) -> bool {
+        self.pending.contains(&index) && self.done.insert(index)
+    }
+
+    fn finish(&mut self, text: &str) {
+        // The pinned server's list reply follows every check in this batch
+        if text.contains("There are ") && text.contains(" players online:") {
+            self.pending.clear();
+        }
+    }
+}
+
+fn acquire(lock: &File, cancelled: &AtomicBool) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        ensure!(
+            !cancelled.load(Ordering::Relaxed),
+            "World generation was cancelled"
+        );
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => {
+                return Err(error)
+                    .context("Another scenery world is still being prepared; try again shortly");
+            }
+        }
+    }
+}
+
 fn generate(
     paths: &Paths,
     root: &Path,
@@ -383,7 +440,6 @@ fn generate(
     };
     let mut positions = BTreeMap::new();
     let mut edits = Vec::new();
-    let mut probes = Vec::new();
     for (index, &[x, z]) in chunks.iter().enumerate() {
         positions.insert((x * 16, y, z * 16), index);
         let position = format!("{} {y} {}", x * 16, z * 16);
@@ -398,10 +454,6 @@ fn generate(
                 "{prefix}execute if block {position} barrier run setblock {position} {original}"
             ),
             format!("{prefix}testforblock {position} {original}"),
-        ]);
-        probes.push(vec![
-            format!("{prefix}testforblock {position} {original}"),
-            format!("{prefix}testforblock {position} barrier"),
         ]);
     }
     let mut child = command(Path::new("/usr/bin/nice"), root, &paths.network)
@@ -441,9 +493,8 @@ fn generate(
         events: libc::POLLIN,
         revents: 0,
     };
-    let (mut buffer, mut block, mut done, mut destinations) =
-        (Vec::new(), [0_u8; 65536], BTreeSet::new(), Vec::new());
-    let mut editing = BTreeSet::new();
+    let (mut buffer, mut block, mut destinations) = (Vec::new(), [0_u8; 65536], Vec::new());
+    let mut checks = Checks::default();
     let loaded = Regex::new(r"Successfully found the block at (-?\d+),\s*(-?\d+),\s*(-?\d+)")?;
     let nearest = Regex::new(
         r"The nearest (minecraft:[a-z_0-9]+) is at block (-?\d+), (\(y\?\)|-?\d+), (-?\d+)",
@@ -503,16 +554,15 @@ fn generate(
                         capture[2].parse()?,
                         capture[3].parse()?,
                     );
-                    if let Some(&index) = positions.get(&position) {
-                        if editing.insert(index) {
-                            engine.send(&edits[index])?;
-                        } else if done.insert(index) {
-                            event(
-                                json!({"state":"progress", "detail":format!("{} / {} chunks", done.len(), chunks.len()), "progress":done.len() as f64 / chunks.len() as f64}),
-                            );
-                        }
+                    if let Some(&index) = positions.get(&position)
+                        && checks.found(index)
+                    {
+                        event(
+                            json!({"state":"progress", "detail":format!("{} / {} chunks", checks.done.len(), chunks.len()), "progress":checks.done.len() as f64 / chunks.len() as f64}),
+                        );
                     }
                 }
+                checks.finish(&text);
                 if let Some(capture) = nearest.captures(&text) {
                     destinations.push(Destination {
                         id: capture[1].into(),
@@ -533,14 +583,11 @@ fn generate(
             configured = true;
         }
         if configured && polled.elapsed() >= Duration::from_secs(1) && !stopping {
-            for (index, lines) in probes.iter().enumerate() {
-                if !editing.contains(&index) {
-                    engine.send(lines)?;
-                }
-            }
+            engine.send(&checks.commands(&edits))?;
             polled = Instant::now();
         }
-        if configured && done.len() == chunks.len() && !stopping {
+        if configured && checks.done.len() == chunks.len() && !stopping {
+            event(json!({"state":"progress", "detail":"Saving your world"}));
             engine.send(&["stop".into()])?;
             stopping = true;
         }
@@ -549,7 +596,7 @@ fn generate(
         }
     }
     ensure!(
-        engine.child.wait()?.success() && done.len() == chunks.len(),
+        engine.child.wait()?.success() && checks.done.len() == chunks.len(),
         "World generation stopped before all chunks were saved; try Generate again"
     );
     Ok(destinations)
@@ -577,8 +624,8 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(generator.join("lock"))?;
-    lock.try_lock()
-        .context("Another scenery world is being prepared; try again shortly")?;
+    event(json!({"state":"progress", "detail":"Opening your scenery world"}));
+    acquire(&lock, &cancelled)?;
     let payload = server(&generator)?;
     let identifier = hex(&Sha256::digest(format!("{VERSION}\0{}", request.seed)))[..24].to_owned();
     let worlds = root.join("worlds");
@@ -685,6 +732,51 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_wait_for_console_drain_and_retry_only_unfinished_chunks() {
+        let edits = vec![vec!["edit".into(); 4]; 330];
+        let mut checks = Checks::default();
+        assert_eq!(checks.commands(&edits).len(), 65);
+        for _ in 0..100 {
+            assert!(checks.commands(&edits).is_empty());
+        }
+        assert!(!checks.found(16));
+        for index in 0..15 {
+            assert!(checks.found(index));
+            assert!(!checks.found(index));
+        }
+        checks.finish("[INFO] There are 0/1 players online:");
+        assert_eq!(checks.commands(&edits).len(), 65);
+        assert!(checks.pending.contains(&15));
+        while checks.done.len() < edits.len() {
+            for index in checks.pending.clone() {
+                assert!(checks.found(index));
+            }
+            checks.finish("[INFO] There are 0/1 players online:");
+            assert!(checks.commands(&edits).len() <= 65);
+        }
+        assert!(checks.commands(&edits).is_empty());
+    }
+
+    #[test]
+    fn waits_for_owned_generator_cleanup_and_allows_cancellation() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let held = File::open(file.path()).unwrap();
+        let waiting = File::open(file.path()).unwrap();
+        held.try_lock().unwrap();
+        assert!(matches!(
+            waiting.try_lock(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ));
+        assert!(acquire(&waiting, &AtomicBool::new(true)).is_err());
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            drop(held);
+        });
+        acquire(&waiting, &AtomicBool::new(false)).unwrap();
+        release.join().unwrap();
+    }
 
     #[test]
     fn validates_and_deduplicates_requests() {

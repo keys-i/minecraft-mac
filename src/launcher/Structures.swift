@@ -869,8 +869,17 @@ extension Structures {
                     }
                 }
             } else if Block.plant(name) {
+                let first = mesh.vertices.count, turn = SCNNode()
+                turn.position = .init(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5); turn.eulerAngles.y = .pi/4
                 cube(.init(1,1,0),.init(0.5,0.5,0.5),mask:1,sprite:true)
                 cube(.init(0,1,1),.init(0.5,0.5,0.5),mask:2,sprite:true)
+                mesh.transform(from:first,origin:turn.position,by:turn)
+                if name == "sunflower", properties["half"] == "upper" {
+                    let first = mesh.vertices.count, front = try assets.texture("textures/blocks/double_plant_sunflower_front")
+                    let back = try assets.texture("textures/blocks/double_plant_sunflower_back")
+                    mesh.cube(.init(1,1,0),at:turn.position,material:front,faces:5,textureUV:fullUV,faceMaterials:[front,front,back,back,front,back])
+                    turn.eulerAngles = .init(-Double.pi/4,0,0); mesh.transform(from:first,origin:turn.position,by:turn)
+                }
             } else if name.contains("carpet") || name == "redstone_wire" {
                 cube(.init(1,0.0625,1),.init(0.5,0.03125,0.5))
             } else if name == "chain" {

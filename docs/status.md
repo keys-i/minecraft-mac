@@ -12,7 +12,17 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
-### Build 31 candidate
+### Build 32 scenery correction
+
+Build 32 fixes duplicate world-generation probes and waits through brief generator-lock contention
+The launcher loads nearby chunks in bounded batches and centres its scenery progress/error message
+Common flowers are rendered as cutouts with their original textures
+The isolated official generator completes and saves a 330-new-chunk regression request successfully
+The candidate app passes strict signatures and all 1,583 resource checks with the authorised helper unchanged
+Build 31 remains installed while the required normal quit is pending
+See [build 32 evidence](test.md#scenery-loading-correction-in-build-32) for actual checks and outstanding verification
+
+### Build 31
 
 Build 31 replaces every project-owned Python runtime, tool and test with Rust
 The native Swift interface remains native Swift, and upstream projects keep their own build systems

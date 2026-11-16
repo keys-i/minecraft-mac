@@ -125,6 +125,11 @@ struct Block: Hashable, Codable {
     }
 
     var model: String {
+        if name == "yellow_flower" { return "dandelion" }
+        if name == "red_flower" { return states["flower_type"] ?? "poppy" }
+        if name == "double_plant" {
+            return ["sunflower":"sunflower","syringa":"lilac","grass":"tall_grass","fern":"large_fern","rose":"rose_bush","paeonia":"peony"][states["double_plant_type"] ?? "sunflower"] ?? name
+        }
         if ["torch","soul_torch","redstone_torch","copper_torch"].contains(name), let facing = properties["facing"], facing != "up" {
             return name == "torch" ? "wall_torch" : name.replacingOccurrences(of:"_torch",with:"_wall_torch")
         }
@@ -140,7 +145,9 @@ struct Block: Hashable, Codable {
     }
 
     static func plant(_ name: String) -> Bool {
-        ["short_grass","tall_grass","tallgrass","fern","large_fern","dead_bush","deadbush","brown_mushroom","red_mushroom","cobweb","web"].contains(name)
+        ["short_grass","tall_grass","tallgrass","fern","large_fern","dead_bush","deadbush","brown_mushroom","red_mushroom","cobweb","web",
+         "dandelion","poppy","blue_orchid","allium","azure_bluet","oxeye_daisy","cornflower","lily_of_the_valley","wither_rose",
+         "sunflower","lilac","rose_bush","peony","torchflower","pitcher_plant","open_eyeblossom","closed_eyeblossom"].contains(name)
             || name.hasSuffix("_flower") || name.hasSuffix("_sapling") || name.hasSuffix("_tulip")
     }
 

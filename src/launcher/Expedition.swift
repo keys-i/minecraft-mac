@@ -90,6 +90,7 @@ struct Expedition: NSViewRepresentable {
         var lamps: [SCNNode] = []
         var torches: [SCNVector3] = []
         var environmentFog: NSColor = .black
+        var horizon = 16.0
         var doorGroups: [Chunk:[Door]] = [:]
         var continuation: (World,Int)?
         let identity = UUID()
@@ -232,7 +233,17 @@ struct Expedition: NSViewRepresentable {
                 let a = hypot(Double($0.x)-Double(centre.x),Double($0.z)-Double(centre.z))
                 let b = hypot(Double($1.x)-Double(centre.x),Double($1.z)-Double(centre.z))
                 return a == b ? ($0.x == $1.x ? $0.z<$1.z : $0.x<$1.x) : a<b
-            }.prefix(1089))
+            }.prefix(81))
+        }
+
+        func visibleDistance(at eye: SCNVector3) -> Double {
+            var distance = Double(radius*16)-8
+            for key in wanted where nodes[key] == nil {
+                let dx = max(0,Double(key.x*16)-eye.x,eye.x-Double((key.x+1)*16))
+                let dz = max(0,Double(key.z*16)-eye.z,eye.z-Double((key.z+1)*16))
+                distance = min(distance,hypot(dx,dz))
+            }
+            return max(4,distance-1)
         }
 
         func generate(_ chunks: [Chunk], locators: [[String:String]] = []) {
@@ -241,6 +252,7 @@ struct Expedition: NSViewRepresentable {
             let chunks = Self.batch(Set(chunks),near:region ?? .init(x:0,z:0))
             let token = request
             var ready: [String:Any]?
+            chart.error = nil
             chart.message = locators.isEmpty ? "Preparing the next chunks" : "Finding your destination"
             chart.progress = nil
             let operation = Generation(root:root,request:["seed":seed,"dimension":data.dimension,
@@ -348,6 +360,9 @@ struct Expedition: NSViewRepresentable {
             guard let key = wanted.filter({ nodes[$0] == nil && data.chunks[$0] != nil }).min(by:{
                 hypot(Double($0.x-centre.x),Double($0.z-centre.z)) < hypot(Double($1.x-centre.x),Double($1.z-centre.z))
             }) else {
+                if initial && !installing && !nodes.isEmpty && generation == nil && !reading {
+                    chart.error = "No safe place was found here; choose another biome"
+                }
                 if generation == nil { chart.message = nil; chart.progress = nil }
                 if generation == nil && !reading && pending == nil { activity(false) }
                 return
@@ -366,7 +381,10 @@ struct Expedition: NSViewRepresentable {
                     case .success(let node):
                         if self.wanted.contains(key) {
                             self.nodes[key] = node
-                            if !self.initial { view.scene?.rootNode.addChildNode(node) }
+                            if !self.initial {
+                                view.scene?.rootNode.addChildNode(node)
+                                if let eye = view.pointOfView?.position { self.horizon = self.visibleDistance(at:eye); self.fog(at:eye) }
+                            }
                             self.doorGroups[key] = Door.collect(node); self.doors = self.doorGroups.values.flatMap {$0}
                             if self.initial, self.nodes.count>=min(9,self.wanted.count), let feet = self.spawn(near:self.home) { self.install(at:feet) }
                         }
@@ -421,11 +439,13 @@ struct Expedition: NSViewRepresentable {
                 view.present(scene,with:.fade(with:colour,duration:1.25),incomingPointOfView:camera,completionHandler:nil)
             } else { view.scene = scene; view.pointOfView = camera }
             view.install(camera,area:area)
+            environmentFog = Landscape.colour(area.sky); horizon = visibleDistance(at:camera.position); fog(at:camera.position)
             view.sweep = { [weak self] start,end in
                 guard let self else { return start }
                 self.target = nil; self.speed = 0
                 if self.pending != nil {self.interrupt()}
-                return self.data.move(from:start,to:end)
+                let next = self.data.move(from:start,to:end)
+                return self.nodes[WorldData.key(Int(floor(next.x)),Int(floor(next.z)))] == nil ? start : next
             }
             initial = false; home = camera.position
             doors = Door.collect(scene.rootNode)
@@ -593,7 +613,8 @@ struct Expedition: NSViewRepresentable {
                     eye = .init(moved.x,moved.y+1.62,moved.z)
                     camera.look(at:.init(eye.x+idleAim.x,eye.y+idleAim.y,eye.z+idleAim.z))
                 }
-                camera.position = eye
+                if nodes[WorldData.key(Int(floor(eye.x)),Int(floor(eye.z)))] != nil { camera.position = eye }
+                else { eye = camera.position; speed = 0 }
             }
             updateRegion(at:eye)
             if hypot(hypot(eye.x-populated.x,eye.z-populated.z),eye.y-populated.y)>64 { populate(at:eye) }
@@ -607,6 +628,7 @@ struct Expedition: NSViewRepresentable {
             }
             if Int(elapsed) != lighting {
                 lighting = Int(elapsed)
+                horizon = visibleDistance(at:eye)
                 if let scene = view.scene, data.dimension == 0 { Daylight.apply(scene,area:data.biome(eye),seconds:elapsed,eye:eye) }
                 if let scene = view.scene {
                     scene.rootNode.childNode(withName:"cloud-layer",recursively:false)?.position = .init((eye.x/512).rounded()*512,0,(eye.z/512).rounded()*512)
@@ -626,17 +648,18 @@ struct Expedition: NSViewRepresentable {
                     }
                 }
             }
-            if let scene = view.scene {
-                let x = Int(floor(eye.x)), y = Int(floor(eye.y)), z = Int(floor(eye.z))
-                let primary = data.block(x,y,z), medium = primary?.fluid == true ? primary : data.block(x,y,z,layer:1)
-                let fluid = medium?.name.replacingOccurrences(of:"flowing_",with:"")
-                scene.fogStartDistance = fluid == "lava" ? 0 : fluid == "water" ? 2 : Double(radius*16)*0.55
-                scene.fogEndDistance = fluid == "lava" ? 3 : fluid == "water" ? 35 : Double(radius*16)-8
-                if fluid == "lava" { scene.fogColor = Landscape.colour(0xC84009) }
-                else if fluid == "water" { scene.fogColor = Landscape.colour(0x245A92) }
-                else {scene.fogColor = environmentFog}
-                camera.camera?.zFar = Double(radius*16+32)
-            }
+            fog(at:eye)
+        }
+
+        private func fog(at eye: SCNVector3) {
+            guard let scene = view?.scene else { return }
+            let x = Int(floor(eye.x)), y = Int(floor(eye.y)), z = Int(floor(eye.z))
+            let primary = data.block(x,y,z), medium = primary?.fluid == true ? primary : data.block(x,y,z,layer:1)
+            let fluid = medium?.name.replacingOccurrences(of:"flowing_",with:"")
+            scene.fogStartDistance = fluid == "lava" ? 0 : fluid == "water" ? 2 : horizon*0.55
+            scene.fogEndDistance = fluid == "lava" ? 3 : fluid == "water" ? min(35,horizon) : horizon
+            scene.fogColor = fluid == "lava" ? Landscape.colour(0xC84009) : fluid == "water" ? Landscape.colour(0x245A92) : environmentFog
+            view?.pointOfView?.camera?.zFar = Double(radius*16+32)
         }
 
         func interrupt() {

@@ -35,6 +35,9 @@ struct LauncherChecks {
         precondition(!Block(name:"grass_block").passable && Block(name:"short_grass").passable)
         precondition(!Block(name:"mangrove_roots").passable && !Block(name:"brown_mushroom_block").passable)
         precondition(!Block(name:"end_portal_frame").passable && Block(name:"end_portal").passable)
+        for name in ["dandelion","poppy","blue_orchid","allium","azure_bluet","red_tulip","oxeye_daisy","cornflower","lily_of_the_valley","wither_rose","sunflower","lilac","rose_bush","peony"] {
+            precondition(Block(name:name).passable && !Block(name:name).opaque,"Flowers must never become solid floating cubes: \(name)")
+        }
         precondition(Crowd.attention(.villager) == 0.4 && Crowd.attention(.cow) == 0.1)
         func status(_ progress: Double?, state: String = "busy") -> Status {
             Status(state: state, title: "Fixture", detail: "", progress: progress)
@@ -672,6 +675,36 @@ struct LauncherChecks {
             return
         }
         let assets = try Assets(data:URL(fileURLWithPath:data)), factory = Mobs(assets:try Assets(data:URL(fileURLWithPath:data)))
+        for name in ["dandelion","poppy","blue_orchid","allium","azure_bluet","red_tulip","oxeye_daisy","sunflower","lilac","rose_bush","peony"] {
+            for half in ["lower","upper"] {
+                let flower = try Structures.volume("flower",source:["size":[1,1,1],"palette":[["Name":"minecraft:"+name,"Properties":["half":half]]],"blocks":[["pos":[0,0,0],"state":0]]],assets:assets)
+                precondition(flower.geometry?.sources(for:.vertex).first?.vectorCount == (name == "sunflower" && half == "upper" ? 16 : 8),"Flowers use crossed cutouts, never a cube: \(name)")
+            }
+        }
+        if let path = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_WORLD"] {
+            let database = try Database(URL(fileURLWithPath:path)), chart = Chart(), view = FlightView(frame:NSRect(x:0,y:0,width:1040,height:760))
+            let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
+            coordinator.view = view; coordinator.world = .overworld
+            coordinator.home = .init(232.5,320,696.5); coordinator.region = .init(x:14,z:43)
+            coordinator.wanted = Set((6...22).flatMap {x in (35...51).map {Chunk(x:x,z:$0)}})
+            for x in 13...15 {for z in 42...44 {
+                let key = Chunk(x:x,z:z)
+                coordinator.data.chunks[key] = try database.chunk(key,dimension:0)!
+                coordinator.wanted.insert(key)
+            } }
+            coordinator.pump()
+            let deadline = Date().addingTimeInterval(20)
+            while coordinator.initial && chart.error == nil && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+            precondition(!coordinator.initial && view.scene != nil && view.pointOfView!.position.y>50,"The actual first nine generated chunks must install a visible world")
+            precondition(view.scene!.fogEndDistance>view.scene!.fogStartDistance && view.scene!.fogEndDistance<=24,"The first static frame must hide unfinished scenery edges")
+            if let output = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_CAPTURE"] {
+                let image = view.snapshot(), bitmap = NSBitmapImageRep(data:image.tiffRepresentation!)!
+                try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:output))
+            }
+            print("Real first-world installation passed at",view.pointOfView!.position)
+            coordinator.dispose()
+            assets.queue.waitUntilAllOperationsAreFinished()
+        }
         do {
             let chart = Chart(), view = FlightView(frame:.zero), scene = SCNScene(), camera = SCNNode()
             camera.name = "camera"; camera.camera = SCNCamera(); scene.rootNode.addChildNode(camera)
@@ -684,6 +717,11 @@ struct LauncherChecks {
                 coordinator.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil); coordinator.wanted.insert(key)
             } }
             coordinator.region = centre; camera.position = .init(520.5,22.62,520.5); camera.eulerAngles = .init(-0.2,0.8,0)
+            for key in coordinator.wanted {coordinator.nodes[key] = SCNNode()}
+            let border = Chunk(x:33,z:32)
+            coordinator.nodes.removeValue(forKey:border)
+            precondition(abs(coordinator.visibleDistance(at:camera.position)-6.5)<0.001,"Unfinished terrain must fade before its exposed boundary")
+            coordinator.nodes[border] = SCNNode()
             coordinator.populated = camera.position; coordinator.home = .init(10,4,10)
             var returned: World?
             coordinator.arrived = {returned = $0}; coordinator.pending = (.end,0)
@@ -729,10 +767,15 @@ struct LauncherChecks {
         let region = Set((-16...16).flatMap { x in (-16...16).map {Chunk(x:x,z:$0)} })
         let extra = Set((17...25).flatMap {x in (-2...2).map {Chunk(x:x,z:$0)} })
         let requested = region.union(extra), batch = Expedition.Coordinator.batch(requested,near:.init(x:0,z:0))
-        precondition(batch.count == 1089 && batch.first == Chunk(x:0,z:0))
+        precondition(batch.count == 81 && batch.first == Chunk(x:0,z:0))
         let remainder = requested.subtracting(batch)
         precondition(!remainder.isEmpty && Set(batch).union(remainder) == requested)
-        precondition(Expedition.Coordinator.batch(remainder,near:.init(x:0,z:0)).count == remainder.count)
+        var unprepared = remainder
+        while !unprepared.isEmpty {
+            let next = Expedition.Coordinator.batch(unprepared,near:.init(x:0,z:0))
+            precondition(!next.isEmpty && next.count<=81)
+            unprepared.subtract(next)
+        }
         for kind in ["nether","end"] {
             let trail = Trail(.init(kind:kind,x:0,y:70,z:0,seed:42))
             var terrain = WorldData(dimension:0)

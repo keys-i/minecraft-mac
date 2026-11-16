@@ -59,11 +59,15 @@ The isolated generator uses a separate prefix, two server threads, low CPU prior
 It never opens the player's worlds or account helper
 One serial generation queue prevents concurrent server writes and LevelDB reads
 A seed/version hash chooses the private scenery database; its manifest records completed dimension/chunk coordinates and located destinations
+Console checks run in batches of at most 16, waiting for the server's ordered reply before sending another batch
+The launcher requests the nearest 81 chunks at a time after its initial nine, so completed scenery can become visible without waiting for the whole render distance
+Brief generator-lock contention waits for owned cleanup, with a 30-second deadline and cancellation
 
 Immutable `WorldData` snapshots feed rendering, movement, resident clearance and the minimap
 The native decoder validates little-endian NBT palettes, packed storage, dimension heights and biome sections
 Meshes omit buried faces and share original materials from the installed game
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
+The fog horizon follows the nearest unfinished mesh boundary, including the initial static frame; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
 Chunk radius is 4–16, and visible chunk data/graphs leave as the camera travels
 

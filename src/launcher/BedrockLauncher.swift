@@ -537,7 +537,6 @@ private struct Scenery: View {
                         if launcher.journey.world != world { launcher.journey.select(world,animated:false) }
                         launcher.journey.skip()
                     })
-                    .overlay(alignment:.bottomLeading) { GenerationStatus(chart:launcher.chart).padding(24) }
             } else { Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
                 travel:travel,arrived:{ launcher.journey.area($0) },finish:finish,
                 renderDistance:renderDistance,seed:Seed.number(seed),farLands:farLands,location:location,activity:activity,report:report,
@@ -546,15 +545,23 @@ private struct Scenery: View {
     }
 }
 
-private struct GenerationStatus: View {
+struct GenerationStatus: View {
     @ObservedObject var chart: Chart
     var body: some View {
         if let text = chart.error ?? chart.message {
-            VStack(alignment:.leading,spacing:8) {
-                Text(text).font(Blocks.type(16)).foregroundStyle(Blocks.ink).lineLimit(3)
-                if chart.error != nil { Button("Try again") {chart.retry?()}.buttonStyle(BlockButton()) }
-                if chart.error == nil, let progress = chart.progress { ProgressView(value:min(1,max(0,progress))).tint(.green) }
-            }.padding(12).frame(maxWidth:300,alignment:.leading).background(Blocks.stone).border(.black,width:2)
+            GeometryReader { geometry in
+                let scale = min(1.5,max(1,geometry.size.width/1040))
+                VStack(spacing:16*scale) {
+                    Text(chart.error == nil ? "Loading scenery" : "Scenery couldn’t load")
+                        .font(Blocks.type(24*scale)).foregroundStyle(Blocks.ink)
+                    Text(text).font(Blocks.type(18*scale)).foregroundStyle(Blocks.ink)
+                        .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
+                    if chart.error != nil { Button("Try again") {chart.retry?()}.buttonStyle(BlockButton()).font(Blocks.type(18*scale)) }
+                    if chart.error == nil, let progress = chart.progress { ProgressView(value:min(1,max(0,progress))).tint(.green) }
+                }.padding(24*scale).frame(width:min(520*scale,geometry.size.width-48))
+                    .background(Blocks.stone).border(.black,width:2)
+                    .frame(maxWidth:.infinity,maxHeight:.infinity)
+            }.allowsHitTesting(chart.error != nil)
         }
     }
 }
@@ -1152,6 +1159,7 @@ struct LauncherView: View {
                         }.padding(.trailing,28).padding(.top,104)
                             .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
                     }
+                    GenerationStatus(chart:launcher.chart)
                 }
                 }
             }.animation(reduceMotion ? nil : .easeOut(duration:0.18),value:launcher.loading)
@@ -1205,6 +1213,7 @@ struct LauncherView: View {
         .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onDisappear { music.stop() }
+        .onReceive(launcher.chart.$error) { if $0 != nil { explore(false) } }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
             focused = (notification.object as? NSWindow)?.title == launcherName
         }

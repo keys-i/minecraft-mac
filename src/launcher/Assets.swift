@@ -879,6 +879,16 @@ extension Assets {
 
     private func resolve(_ name: String, states: [String: String]) throws -> [SCNMaterial] {
         var name = name.replacingOccurrences(of:"minecraft:",with:"")
+        let flowers = ["dandelion":"flower_dandelion","poppy":"flower_rose","blue_orchid":"flower_blue_orchid","allium":"flower_allium",
+            "azure_bluet":"flower_houstonia","red_tulip":"flower_tulip_red","orange_tulip":"flower_tulip_orange",
+            "white_tulip":"flower_tulip_white","pink_tulip":"flower_tulip_pink","oxeye_daisy":"flower_oxeye_daisy"]
+        let tallFlowers = ["sunflower":"sunflower","lilac":"syringa","rose_bush":"rose","peony":"paeonia"]
+        if let flower = flowers[name] {
+            return Array(repeating:try texture("textures/blocks/"+flower),count:6)
+        }
+        if let flower = tallFlowers[name] {
+            return Array(repeating:try texture("textures/blocks/double_plant_"+flower+(states["half"] == "upper" ? "_top" : "_bottom")),count:6)
+        }
         if ["wheat","carrots","potatoes","beetroots"].contains(name) {
             let age = min(7,max(0,Int(states["age"] ?? "7") ?? 7))
             let stage = name == "wheat" ? age : name == "beetroots" ? min(3,age) : min(3,age == 7 ? 3 : age/2)
