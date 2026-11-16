@@ -69,9 +69,10 @@ The native decoder validates little-endian NBT palettes, packed storage, dimensi
 Meshes omit buried faces and share original materials from the installed game
 Palette solidity is resolved once; opaque and translucent partitions retain only their own vertex buffers
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
-The previous scene or installed panorama stays visible while nearby meshes prepare; Look around becomes available after the core scene is ready
+The previous scene or installed panorama stays visible while the nearest 25 meshes and their 49-chunk lighting and collision halo prepare; Look around then becomes available while the selected horizon keeps streaming
 The normal horizon stays at the prepared chunk distance instead of collapsing into nearby fog; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
+Crossing a chunk retains an in-flight distant page unless that page intersects the changed near boundary or falls outside the new radius
 Menu scenery targets 30 FPS and active Look around/journeys target 60 FPS, with a 30 FPS low-power limit
 The native display link drives input; measured submitted-frame intervals adapt only the 3D viewport between 75% and 100% resolution
 Menus and text retain native resolution, with bounded private frame diagnostics in `logs/scenery/frames.json`
@@ -89,8 +90,9 @@ The authored Sift and historical Far Lands retain their earlier bounded renderer
 The chunk-completion index is split into 32 × 32 region files rather than repeatedly parsing one growing manifest
 Old completion records migrate before their header is rewritten, and the native reader can invalidate and retry a missing saved chunk twice
 
-The left pixel-circle minimap rasterises 128 × 128 samples from the same blocks
-It appears in Look around and toggles with M
+The left pixel-circle minimap rasterises 128 × 128 samples from the same blocks and overlays loaded residents plus distinctive structure blocks
+It appears in Look around and toggles with M; F3 toggles a non-interactive debug panel with coordinates, direction, biome, chunk counts, light, FPS, render scale and Metal device
+Dark covered areas and deep night enable a Look around-only neutral light floor while preserving the original block textures and world data
 Physical key bindings, camera capture and master volume remain in the native Minecraft-style settings
 The biome title is 1.25 times the corner-credit type size and automatically scrolls when it overflows
 Reduced Motion removes animated transitions and marquee motion
@@ -103,7 +105,9 @@ The End path follows a reachable house chest where available, then a ravine/mine
 Routes share collision/meshing/map data and remain explorable; manual movement cancels the cinematic while retaining its structures
 Tours target 165 seconds of movement; Space and Skip journey share the coordinator-owned portal handoff
 
-Residents use original installed geometry and textures, swept support/medium checks, displacement-based facing/gait and independent head glances
+Residents use original installed geometry and textures, swept support/medium checks, home-bounded targets, occupied-target rejection, displacement-based facing/gait and independent head glances
+Different hostile residents can occasionally approach and visibly spar without scenery health, drops or permanent deaths
+Held tools reuse the extruded installed-item mesh on the left-hand attachment, and Bedrock's singular beetroot block resolves its plural stage texture as cutout crop geometry
 Streamed and authored models share leg phases and the installed bat timing profile
 Native rabbit adult/baby tracks own crouching, takeoff and landing, with collision checked across each hop
 Declared geometry identifiers, calm visibility and native rest transforms are resolved before shared rigs and attention pivots are attached

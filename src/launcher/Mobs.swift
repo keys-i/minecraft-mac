@@ -19,6 +19,12 @@ enum Species: String, CaseIterable {
     var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus, .tadpole].contains(self) }
     var amphibious: Bool { [.axolotl,.turtle,.drowned,.frog].contains(self) }
     var cube: Bool { [.slime,.magma,.sulfurCube].contains(self) }
+    var hostile: Bool {
+        [.creeper,.zombie,.warden,.spider,.caveSpider,.slime,.creaking,.piglin,.hoglin,.blaze,.skeleton,.ghast,
+         .magma,.enderman,.endermite,.shulker,.illager,.vindicator,.evoker,.vex,.witch,.guardian,.elderGuardian,
+         .drowned,.breeze,.bogged,.witherSkeleton,.piglinBrute,.zombifiedPiglin,.husk,.ravager,.silverfish,
+         .phantom,.wither,.zoglin,.zombieVillager,.camelHusk,.parched,.zombieNautilus,.stray,.sulfurCube].contains(self)
+    }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -435,7 +441,7 @@ final class Mobs {
         let weapons = ["skeleton":"bow_standby","stray":"bow_standby","bogged":"bow_standby","parched":"bow_standby",
             "wither_skeleton":"stone_sword","piglin":"crossbow_standby","piglin_brute":"gold_axe",
             "zombie_pigman":"crossbow_standby","pillager":"crossbow_standby"]
-        if let weapon = weapons[name], let hand = model.childNode(withName:"rightItem",recursively:true) {
+        if let weapon = weapons[name], let hand = model.childNode(withName:"leftItem",recursively:true) {
             let item = try assets.item(weapon)
             if weapon == "bow_standby" {
                 item.eulerAngles.y = .pi/2

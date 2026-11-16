@@ -136,22 +136,35 @@ struct Light {
         out.minecraftLight = half4(_geometry.color);
         _geometry.color = float4(1.0);
         """)
-        modifiers[.surface] = merge(modifiers[.surface],declarations:"#pragma arguments\nfloat minecraftDay;",body:"""
+        modifiers[.surface] = merge(modifiers[.surface],declarations:"#pragma arguments\nfloat minecraftDay;\nfloat minecraftVision;",body:"""
         float minecraftSun = clamp(minecraftDay, 0.0, 1.0);
         float3 minecraftSky = float(in.minecraftLight.r) * (0.06 + 0.94 * minecraftSun)
             * mix(float3(0.58, 0.67, 1.0), float3(1.0, 0.98, 0.94), minecraftSun);
         float3 minecraftLamp = float(in.minecraftLight.g) * float3(1.0, 0.85, 0.65);
-        _surface.diffuse.rgb *= max(float3(in.minecraftLight.a), max(minecraftSky, minecraftLamp)) * float(in.minecraftLight.b);
+        float3 minecraftLighting = max(float3(in.minecraftLight.a), max(minecraftSky, minecraftLamp)) * float(in.minecraftLight.b);
+        _surface.diffuse.rgb *= mix(minecraftLighting, max(minecraftLighting, float3(0.82)), clamp(minecraftVision, 0.0, 1.0));
         """)
         material.lightingModel = .constant
         material.shaderModifiers = modifiers
         material.setValue(NSNumber(value:1.0),forKey:"minecraftDay")
+        material.setValue(NSNumber(value:0.0),forKey:"minecraftVision")
     }
 
     // The caller keeps this small material list, so day changes never walk the scene
-    static func illuminate(materials: [SCNMaterial], daylight: Double) {
+    static func illuminate(materials: [SCNMaterial], daylight: Double, nightVision: Bool = false) {
         let value = NSNumber(value:daylight.isFinite ? min(1,max(0,daylight)) : 1)
-        for material in materials { material.setValue(value,forKey:"minecraftDay") }
+        let vision = NSNumber(value:nightVision ? 1.0 : 0.0)
+        for material in materials {
+            material.setValue(value,forKey:"minecraftDay")
+            material.setValue(vision,forKey:"minecraftVision")
+        }
+    }
+
+    static func dark(data: WorldData, at point: SCNVector3, daylight: Double) -> Bool {
+        guard point.x.isFinite, point.y.isFinite, point.z.isFinite else {return false}
+        let x = Int(floor(point.x)), z = Int(floor(point.z))
+        let covered = data.surface(x,z).map {Double($0)>point.y+6} ?? false
+        return covered || data.dimension == 0 && daylight.isFinite && daylight<0.08
     }
 
     private static func merge(_ original: String?, declarations: String, body: String) -> String {

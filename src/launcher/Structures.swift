@@ -385,7 +385,7 @@ extension Structures {
     static func fixture(_ name: String, states: [String:String] = [:], data: [String:Any] = [:], at p: SCNVector3,
                         assets: Assets, mesh: inout Voxels) throws -> Bool {
         let torch = ["torch","wall_torch","soul_torch","soul_wall_torch","redstone_torch","redstone_wall_torch","copper_torch","copper_wall_torch"].contains(name)
-        let crop = ["wheat","carrots","potatoes","beetroots"].contains(name)
+        let crop = ["wheat","carrots","potatoes","beetroot"].contains(name)
         let banner = name == "wall_banner" || name == "standing_banner" || name.hasSuffix("_banner")
         let panel = name.hasSuffix("_door") || name.hasSuffix("trapdoor") || name == "ladder"
         let chest = ["chest","trapped_chest","ender_chest"].contains(name)
@@ -659,7 +659,7 @@ extension Structures {
             func free(_ p: [Int]) -> Bool {
                 guard let state = lookup(p) else { return true }
                 let name = names[state]
-                return name.hasSuffix("_door") && name != "iron_door" || ["torch","carpet","flower","grass","rail","wheat","carrots","potatoes","beetroots"].contains(where:name.contains)
+                return name.hasSuffix("_door") && name != "iron_door" || ["torch","carpet","flower","grass","rail","wheat","carrots","potatoes","beetroot"].contains(where:name.contains)
             }
             for y in [cell[1],cell[1]-1,cell[1]+1,cell[1]-2] where y>=0 && y<size[1] {
                 guard free([cell[0],y,cell[2]]), free([cell[0],y+1,cell[2]]) else { continue }

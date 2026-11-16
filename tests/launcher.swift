@@ -145,6 +145,7 @@ struct LauncherChecks {
             precondition(Block(name:name).passable && !Block(name:name).opaque)
         }
         precondition(Crowd.attention(.villager) == 0.4 && Crowd.attention(.cow) == 0.1)
+        precondition(Species.zombie.hostile && Species.skeleton.hostile && !Species.cow.hostile)
         func status(_ progress: Double?, state: String = "busy") -> Status {
             Status(state: state, title: "Fixture", detail: "", progress: progress)
         }
@@ -180,6 +181,16 @@ struct LauncherChecks {
         precondition(Minimap.image(data:emptyMap,at:.init(0,Double.greatestFiniteMagnitude,0)) == nil)
         precondition(Minimap.image(data:emptyMap,at:.init(0,70,0))?.width == 128)
         precondition(Minimap.image(world:.overworld,at:.init(30_000_001,0,0)) == nil)
+        var markedMap = WorldData(dimension:0)
+        markedMap.chunks[.init(x:0,z:0)] = try VoxelChunk(key:.init(x:0,z:0),dimension:0,sections:[:],biomeData:nil)
+        markedMap.apply([Cell(x:0,y:4,z:0):Block(name:"bell")])
+        precondition(Minimap.render(data:markedMap,at:.init(0.5,8,0.5))?.structures == [MapMarker(x:0.5,z:0.5,kind:.structure)])
+        let f3 = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,
+            context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:99)!
+        precondition(Controls.Key.debug(f3))
+        let repeatedF3 = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,
+            context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:true,keyCode:99)!
+        precondition(!Controls.Key.debug(repeatedF3))
         let coloured = GameTitle.formatted("§1C§2o§3l§4o§5r§6m§7a§8t§9i§ac!")
         precondition(String(coloured.characters) == "Colormatic!" && coloured.runs.count == 10)
         precondition(GameTitle.formatted("§6Gold").runs.first?.foregroundColor == Color(red:1,green:170.0/255,blue:0))
@@ -832,23 +843,39 @@ struct LauncherChecks {
         field.radius = 512; field.world = .overworld
         field.updateRegion(at:.init(0,100,0))
         precondition(field.radius == 512 && field.wanted.count == 33*33+17*8,"A 512-chunk target must keep its working queue bounded without changing the requested radius")
+        let retainedPage = BlockOperation()
+        field.horizonMap.operation = retainedPage; field.horizonMap.pending = .init(x:8,z:8)
+        field.updateRegion(at:.init(16.5,100,0.5))
+        precondition(!retainedPage.isCancelled,"Crossing one chunk must retain unrelated distant-page work")
+        let boundaryPage = BlockOperation()
+        field.horizonMap.operation = boundaryPage; field.horizonMap.pending = .init(x:1,z:0)
+        field.updateRegion(at:.init(32.5,100,0.5))
+        precondition(boundaryPage.isCancelled,"A changed near boundary must cancel its stale distant page")
+        precondition(field.entry.count == 25 && field.entryHalo.count == 49,"Look around readiness keeps a bounded rendered core and data halo")
+        precondition(!field.entryReady,"Look around must wait for its playable core")
+        for key in field.entryHalo {field.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}
+        precondition(!field.entryReady,"Raw collision data alone must not enable Look around")
+        for key in field.entry {field.nodes[key] = SCNNode()}
+        precondition(field.entryReady,"Look around enables after the playable core and collision halo are ready")
         field.dispose()
         if let path = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_WORLD"] {
             let database = try Database(URL(fileURLWithPath:path)), chart = Chart(), view = FlightView(frame:NSRect(x:0,y:0,width:1040,height:760))
             let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
             coordinator.view = view; coordinator.world = .overworld
-            coordinator.home = .init(232.5,320,696.5); coordinator.region = .init(x:14,z:43)
-            coordinator.wanted = Set((-2...30).flatMap {x in (27...59).map {Chunk(x:x,z:$0)}})
-            coordinator.halo = Set((-3...31).flatMap {x in (26...60).map {Chunk(x:x,z:$0)}})
-            for key in coordinator.halo {
-                coordinator.data.chunks[key] = try database.chunk(key,dimension:0)!
+            let centre = Chunk(x:13,z:12)
+            coordinator.home = .init(216.5,320,200.5); coordinator.region = centre
+            coordinator.wanted = Set((-16...16).flatMap {dx in (-16...16).map {Chunk(x:centre.x+dx,z:centre.z+$0)}})
+            coordinator.halo = Set((-17...17).flatMap {dx in (-17...17).map {Chunk(x:centre.x+dx,z:centre.z+$0)}})
+            for key in coordinator.entryHalo {
+                guard let chunk = try database.chunk(key,dimension:0) else {fatalError("Entry halo chunk \(key) is missing from the saved world")}
+                coordinator.data.chunks[key] = chunk
             }
             coordinator.pump()
             let deadline = Date().addingTimeInterval(600)
             while coordinator.initial && chart.error == nil && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
             precondition(!coordinator.initial && chart.visible && view.scene != nil && view.pointOfView!.position.y>50,"A prepared sixteen-chunk scene must install a visible world")
-            precondition(coordinator.wanted.allSatisfy {coordinator.nodes[$0] != nil},"All core meshes must be ready before Look around is enabled")
-            precondition(coordinator.nodes.count == 33*33,"The lighting halo holds data without duplicate full and distant meshes")
+            precondition(coordinator.entry.allSatisfy {coordinator.nodes[$0] != nil},"The nearest 25 meshes must be ready before Look around is enabled")
+            precondition(coordinator.entryHalo.allSatisfy {coordinator.data.chunks[$0] != nil},"The entry lighting and collision halo must be loaded before Look around is enabled")
             precondition(view.scene!.fogStartDistance>=256 && view.scene!.fogEndDistance>view.scene!.fogStartDistance,"The first frame must retain the sixteen-chunk horizon")
             if let output = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_CAPTURE"] {
                 let image = view.snapshot(), bitmap = NSBitmapImageRep(data:image.tiffRepresentation!)!
@@ -1088,9 +1115,10 @@ struct LauncherChecks {
         precondition(herobrine.childNode(withName:"custom-white-eyes",recursively:true) != nil)
         let jockey = try factory.jockey(); precondition(jockey.childNode(withName:"jockey-rider",recursively:true) != nil)
         for species in [Species.skeleton,.witherSkeleton,.illager] {
-            var weapons = 0
-            try factory.make(species).enumerateChildNodes { node,_ in if node.name?.hasPrefix("held-") == true { weapons += 1 } }
-            precondition(weapons == 1)
+            var weapons = [SCNNode]()
+            try factory.make(species).enumerateChildNodes { node,_ in if node.name?.hasPrefix("held-") == true { weapons.append(node) } }
+            precondition(weapons.count == 1 && weapons[0].parent?.name?.lowercased() == "leftitem")
+            precondition(weapons[0].boundingBox.max.z-weapons[0].boundingBox.min.z>0,"Held tools keep their extruded depth")
         }
         var calmWeapons = 0
         try factory.make(.vindicator).enumerateChildNodes { node,_ in if node.name?.hasPrefix("held-") == true { calmWeapons += 1 } }
@@ -1315,11 +1343,12 @@ struct LauncherChecks {
             precondition(abs(motion.width-width)<0.001 && abs(motion.height-height)<0.001 && abs(motion.speed-speed)<0.001)
         }
         var fixtures = Voxels()
-        for fixture in ["torch","wall_torch","bell","wheat","lantern","brewing_stand","illager_captain_wall_banner","oak_door","spruce_trapdoor","ladder"] {
+        for fixture in ["torch","wall_torch","bell","wheat","beetroot","lantern","brewing_stand","illager_captain_wall_banner","oak_door","spruce_trapdoor","ladder"] {
             let handled = try Structures.fixture(fixture,states:["facing":"west","age":"7"],at:.init(0,0,0),assets:assets,mesh:&fixtures)
             precondition(handled)
         }
         precondition(!fixtures.vertices.isEmpty && fixtures.materials.contains { $0.name?.contains("wheat_stage_7") == true })
+        precondition(fixtures.materials.contains { $0.name?.contains("beetroots_stage_3") == true })
         func placed(_ name: String, _ states: [String:String]) throws -> SCNNode {
             var mesh = Voxels()
             let handled = try Structures.fixture(name,states:states,at:.init(0,0,0),assets:assets,mesh:&mesh)

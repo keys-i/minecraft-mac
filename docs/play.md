@@ -96,7 +96,7 @@ Settings controls **Render distance** in 16 × 16-block chunks, from 8 to 512
 New installations and Reset defaults use 16 chunks; existing choices are preserved
 Nearby terrain keeps full block detail; distant detail is sampled progressively from the same generated chunks
 Large distances need substantial first-time generation and disk space; preparations stay in the background
-The previous scene or installed panorama stays visible until nearby terrain is ready for Look around
+The previous scene or installed panorama stays visible until the nearest safe terrain is ready for Look around; the selected horizon continues streaming afterwards
 Choose **Far Lands** in the Overworld picker to visit a historical recreation;
 choose another area to return. It is not a current Bedrock biome
 The Overworld village includes pigs, horses, baby animals and a crowned

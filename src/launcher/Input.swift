@@ -82,6 +82,11 @@ struct Controls: Codable, Equatable {
                 && (event.keyCode == 12 || event.charactersIgnoringModifiers?.lowercased() == "q")
         }
 
+        static func debug(_ event: NSEvent) -> Bool {
+            event.type == .keyDown && event.keyCode == 99 && !event.isARepeat
+                && event.modifierFlags.intersection(mask).isEmpty
+        }
+
         var label: String {
             let prefix = [(NSEvent.ModifierFlags.control,"⌃"),(.option,"⌥"),(.shift,"⇧"),(.command,"⌘")]
                 .filter { flags.contains($0.0) }.map(\.1).joined()

@@ -3,6 +3,25 @@ import SceneKit
 import SpriteKit
 import SwiftUI
 
+struct MapMarker: Equatable {
+    enum Kind: Equatable { case mob, structure }
+    let x: Double
+    let z: Double
+    let kind: Kind
+}
+
+struct DebugSnapshot: Equatable {
+    var biome = "Unknown"
+    var loaded = 0
+    var rendered = 0
+    var distance = 0
+    var daylight = 0
+    var nightVision = false
+    var fps = 0.0
+    var scale = 1.0
+    var device = "Metal"
+}
+
 @MainActor
 final class Chart: ObservableObject {
     var data = WorldData(dimension:0)
@@ -12,6 +31,8 @@ final class Chart: ObservableObject {
     @Published var progress: Double?
     @Published var visible = false
     @Published var arrival: String?
+    @Published var mobs: [MapMarker] = []
+    @Published var debug = DebugSnapshot()
     var retry: (() -> Void)?
     var skip: (() -> Void)?
     var owner = UUID()
@@ -74,6 +95,7 @@ struct Expedition: NSViewRepresentable {
         var elapsed = 0.0
         var reported = 0.0
         var lighting = -1
+        var nightVision = false
         var home = SCNVector3Zero
         var initial = true
         var disposed = false
@@ -135,6 +157,17 @@ struct Expedition: NSViewRepresentable {
             }
         }
         var near: Int { min(16,radius) }
+        var entry: Set<Chunk> {
+            guard let region else {return []}
+            return Set((-2...2).flatMap {dx in (-2...2).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+        }
+        var entryHalo: Set<Chunk> {
+            guard let region else {return []}
+            return Set((-3...3).flatMap {dx in (-3...3).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+        }
+        var entryReady: Bool {
+            !entry.isEmpty && entry.allSatisfy {nodes[$0] != nil} && entryHalo.allSatisfy {data.chunks[$0] != nil}
+        }
         func nearby(_ key: Chunk) -> Bool { region.map {Horizon.within(key,of:$0,radius:near)} ?? true }
         func retained(_ key: Chunk) -> Bool {prefetch.contains(key) || (region.map {Horizon.within(key,of:$0,radius:near+1)} ?? true)}
         func missing(_ key: Chunk) -> Bool {
@@ -172,7 +205,7 @@ struct Expedition: NSViewRepresentable {
             request += 1; generation?.cancel(); generation = nil; mesh?.cancel(); mesh = nil
             reader?.cancel(); reader = nil
             horizonMap.clear(); coverage = 0
-            halo = []; dirty = []; litMaterials = [:]; blocked = 0; reroutes = 0
+            halo = []; dirty = []; litMaterials = [:]; blocked = 0; reroutes = 0; nightVision = false
             continuation = nil; doorGroups = [:]; repairs = [:]
             dragon = nil; healing = nil; crystals = []; greeting = false
             wasExploring = false; idleAim = .init(12,1,-22)
@@ -182,7 +215,7 @@ struct Expedition: NSViewRepresentable {
             self.world = world; self.seed = seed; self.biome = biome
             data = WorldData(dimension:world.dimension!); nodes = [:]; wanted = []; region = nil
             database = nil; destinations = []; initial = true; installing = false; target = nil; landing = nil; speed = 0
-            chart.error = nil; chart.visible = false
+            chart.error = nil; chart.visible = false; chart.mobs = []; chart.debug = DebugSnapshot()
             visit()
         }
 
@@ -288,13 +321,19 @@ struct Expedition: NSViewRepresentable {
             let moved = next != region || coverage != radius
             let previous = region
             let resized = coverage != radius
+            let oldNear = min(16,coverage)
             region = next
             coverage = radius
             if moved {
                 horizonMap.ring = near+1
-                horizonMap.cancel()
-                if let previous {horizonMap.dirty.formUnion(Horizon.boundary(previous,radius:near))}
-                horizonMap.dirty.formUnion(Horizon.boundary(next,radius:near))
+                var affected = Horizon.boundary(next,radius:near)
+                if let previous {affected.formUnion(Horizon.boundary(previous,radius:oldNear))}
+                if let pending = horizonMap.pending {
+                    let dx = max(pending.x*16-next.x,next.x-(pending.x*16+15),0)
+                    let dz = max(pending.z*16-next.z,next.z-(pending.z*16+15),0)
+                    if oldNear != near || affected.contains(pending) || max(dx,dz)>radius {horizonMap.cancel()}
+                }
+                horizonMap.dirty.formUnion(affected)
                 if previous.map(Horizon.page) != Horizon.page(next) || resized {horizonMap.prune(near:next,radius:radius)}
             }
             wanted = Set((-near...near).flatMap { dx in (-near...near).map { Chunk(x:next.x+dx,z:next.z+$0) } })
@@ -311,7 +350,10 @@ struct Expedition: NSViewRepresentable {
             data.chunks = data.chunks.filter { retained($0.key) }
             let missing = wanted.union(halo).filter { self.missing($0) }
             if !missing.isEmpty {
-                let ordered = missing.sorted { hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z)) }
+                let first = initial ? missing.intersection(entryHalo) : []
+                let ordered = (first.isEmpty ? missing : first).sorted {
+                    hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z))
+                }
                 generate(ordered)
             }
             pump()
@@ -473,8 +515,7 @@ struct Expedition: NSViewRepresentable {
             guard let key = wanted.filter({nearby($0) && (nodes[$0] == nil || dirty.contains($0)) && data.chunks[$0] != nil}).min(by:{
                 hypot(Double($0.x-centre.x),Double($0.z-centre.z)) < hypot(Double($1.x-centre.x),Double($1.z-centre.z))
             }) else {
-                if initial && !installing && wanted.filter({nearby($0)}).allSatisfy({nodes[$0] != nil})
-                   && halo.allSatisfy({data.chunks[$0] != nil}) && generation == nil && !reading {
+                if initial && !installing && entryReady {
                     if let feet = spawn(near:home) {install(at:feet)}
                     else {chart.error = "No safe place was found here; choose another biome"}
                 }
@@ -501,7 +542,8 @@ struct Expedition: NSViewRepresentable {
                     case .success(let (node,bindings)):
                             if self.retained(key) {
                             for material in bindings {self.litMaterials[ObjectIdentifier(material)] = material}
-                            Light.illuminate(materials:bindings,daylight:self.data.dimension == 0 ? Daylight.light(at:self.elapsed) : 1)
+                            Light.illuminate(materials:bindings,daylight:self.data.dimension == 0 ? Daylight.light(at:self.elapsed) : 1,
+                                nightVision:self.nightVision)
                             self.nodes.removeValue(forKey:key)?.removeFromParentNode()
                             self.nodes[key] = node; self.dirty.remove(key)
                             if !self.initial {
@@ -509,8 +551,7 @@ struct Expedition: NSViewRepresentable {
                                 if let eye = view.pointOfView?.position { self.horizon = self.visibleDistance(at:eye); self.fog(at:eye) }
                             }
                             self.doorGroups[key] = Door.collect(node); self.doors = self.doorGroups.values.flatMap {$0}
-                            if self.initial, self.wanted.filter({self.nearby($0)}).allSatisfy({self.nodes[$0] != nil}),
-                               self.halo.allSatisfy({self.data.chunks[$0] != nil}), let feet = self.spawn(near:self.home) {self.install(at:feet)}
+                            if self.initial, self.entryReady, let feet = self.spawn(near:self.home) {self.install(at:feet)}
                         }
                     }
                     self.pump()
@@ -786,8 +827,8 @@ struct Expedition: NSViewRepresentable {
                 reported = elapsed
                 let x = Int(floor(eye.x)), z = Int(floor(eye.z)), key = WorldData.key(x,z)
                 let id = data.chunks[key]?.biome(x-key.x*16,Int(floor(eye.y)),z-key.z*16)
+                let title = Biome.identifiers[id ?? -1]?.replacingOccurrences(of:"_",with:" ").capitalized ?? world.title
                 if route.isEmpty {
-                    let title = Biome.identifiers[id ?? -1]?.replacingOccurrences(of:"_",with:" ").capitalized ?? world.title
                     location(title)
                     if let id {
                         let identity = "\(data.dimension):\(id)"
@@ -795,21 +836,35 @@ struct Expedition: NSViewRepresentable {
                     }
                 }
                 report?(eye,Double(camera.eulerAngles.y))
+                if chart.owner == identity {
+                    let diagnostics = view.diagnostics
+                    chart.mobs = crowd?.residents.filter {!$0.actor.isHidden}.map {
+                        MapMarker(x:$0.actor.position.x,z:$0.actor.position.z,kind:.mob)
+                    } ?? []
+                    chart.debug = DebugSnapshot(biome:title,loaded:data.chunks.count,rendered:nodes.count,distance:radius,
+                        daylight:Int(round((data.dimension == 0 ? Daylight.light(at:elapsed) : 1)*15)),nightVision:nightVision,
+                        fps:diagnostics.fps,scale:diagnostics.scale,device:diagnostics.device)
+                }
                 for door in doors { door.approach(eye) }
             }
-            if Int(elapsed) != lighting {
+            let daylight = data.dimension == 0 ? Daylight.light(at:elapsed) : 1
+            let vision = view.exploring && Light.dark(data:data,at:eye,daylight:daylight)
+            if Int(elapsed) != lighting || vision != nightVision {
                 lighting = Int(elapsed)
-                Light.illuminate(materials:Array(litMaterials.values),daylight:data.dimension == 0 ? Daylight.light(at:elapsed) : 1)
+                nightVision = vision
+                Light.illuminate(materials:Array(litMaterials.values),daylight:daylight,nightVision:nightVision)
                 horizon = visibleDistance(at:eye)
                 if let scene = view.scene, data.dimension == 0 { Daylight.apply(scene,area:data.biome(eye),seconds:elapsed,eye:eye) }
                 if let scene = view.scene {
                     scene.rootNode.childNode(withName:"cloud-layer",recursively:false)?.position = .init((eye.x/512).rounded()*512,0,(eye.z/512).rounded()*512)
                     let buried = data.dimension == 0 && (data.surface(Int(floor(eye.x)),Int(floor(eye.z))).map {Double($0)>eye.y+6} ?? false)
                     scene.rootNode.childNode(withName:"sunlight",recursively:false)?.isHidden = buried
-                    if buried {
+                    if nightVision {
+                        scene.rootNode.childNode(withName:"skylight",recursively:false)?.light?.intensity = 520
+                    } else if buried {
                         scene.rootNode.childNode(withName:"skylight",recursively:false)?.light?.intensity = 90
                         scene.background.contents = Landscape.colour(0x0C1117); scene.fogColor = Landscape.colour(0x0C1117)
-                    }
+                    } else if data.dimension != 0 {scene.rootNode.childNode(withName:"skylight",recursively:false)?.light?.intensity = 400}
                     environmentFog = scene.fogColor as? NSColor ?? Landscape.colour(data.biome(eye).sky)
                 }
             }
@@ -892,7 +947,9 @@ struct Expedition: NSViewRepresentable {
             horizonMap.clear()
             generation?.cancel(); mesh?.cancel(); population?.cancel(); passage?.cancel(); generation = nil; mesh = nil; population = nil; passage = nil; crowd = nil; guide = nil; doors = []
             view?.scene = nil; view?.pointOfView = nil; view?.dispose(); nodes = [:]; data = WorldData(dimension:0); report = nil; onReady = nil; litMaterials = [:]; veil = nil; doorGroups = [:]; continuation = nil
-            if chart.owner == identity {chart.retry = nil; chart.skip = nil; chart.visible = false; chart.install(data)}
+            if chart.owner == identity {
+                chart.retry = nil; chart.skip = nil; chart.visible = false; chart.mobs = []; chart.debug = DebugSnapshot(); chart.install(data)
+            }
             dragon = nil; healing = nil; crystals = []
         }
     }

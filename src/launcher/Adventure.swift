@@ -84,6 +84,10 @@ final class FlightView: SCNView {
         }
     }
 
+    var diagnostics: (fps:Double,scale:Double,device:String) {
+        (frames.rate,budget.scale,device?.name ?? "Metal")
+    }
+
     override var acceptsFirstResponder: Bool { exploring }
 
     override func viewDidMoveToWindow() {

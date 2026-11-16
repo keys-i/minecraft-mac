@@ -221,7 +221,7 @@ pub fn run(args: Vec<OsString>, cancelled: &AtomicBool) -> Result<()> {
     }
     validate(&context, cancelled)?;
     ensure!(
-        !game.exists() || game_valid(&game)?,
+        !game.is_symlink() && (!game.exists() || game_valid(&game)?),
         "The existing game installation is incomplete; your files were kept, see Minecraft Launcher Help for recovery steps"
     );
     status(
@@ -238,7 +238,7 @@ pub fn run(args: Vec<OsString>, cancelled: &AtomicBool) -> Result<()> {
         },
         Some(0.2),
     );
-    let _account = Account::start(&context, &game, !game.exists(), "CA", cancelled)?;
+    let _account = Account::start(&context, &game, true, "CA", cancelled)?;
     if !ready {
         ensure!(
             game_valid(&game)?,

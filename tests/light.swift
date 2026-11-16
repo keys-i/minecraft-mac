@@ -41,13 +41,22 @@ enum LightChecks {
         precondition(material.lightingModel == .constant && material.shaderModifiers?[.fragment] == cutout)
         precondition(material.shaderModifiers?[.geometry]?.contains("_geometry.color = float4(1.0)") == true)
         precondition(material.shaderModifiers?[.surface]?.contains("in.minecraftLight") == true)
+        precondition(material.shaderModifiers?[.surface]?.contains("minecraftVision") == true)
         let before = material.shaderModifiers
         Light.configure(material:material)
         precondition(material.shaderModifiers == before,"Configuring a cached lit material must be idempotent")
-        Light.illuminate(materials:[material],daylight:0)
+        Light.illuminate(materials:[material],daylight:0,nightVision:true)
         precondition((material.value(forKey:"minecraftDay") as? NSNumber)?.doubleValue == 0)
+        precondition((material.value(forKey:"minecraftVision") as? NSNumber)?.doubleValue == 1)
         Light.illuminate(materials:[material],daylight:1)
         precondition((material.value(forKey:"minecraftDay") as? NSNumber)?.doubleValue == 1)
+        precondition((material.value(forKey:"minecraftVision") as? NSNumber)?.doubleValue == 0)
+        var darkness = WorldData(dimension:0)
+        darkness.chunks[.init(x:0,z:0)] = try VoxelChunk(key:.init(x:0,z:0),dimension:0,sections:[:],biomeData:nil)
+        darkness.apply([Cell(x:0,y:12,z:0):Block(name:"stone")])
+        precondition(Light.dark(data:darkness,at:.init(0.5,5,0.5),daylight:1))
+        precondition(!Light.dark(data:darkness,at:.init(1.5,13,1.5),daylight:1))
+        precondition(Light.dark(data:darkness,at:.init(1.5,13,1.5),daylight:0))
 
         // Interleaved Float vertices verify native decoding, child transforms and source retention
         let positions: [Float] = [0,1,2,77, 1,1,2,77, 0,2,2,77]

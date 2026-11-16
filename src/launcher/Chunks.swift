@@ -163,7 +163,8 @@ struct Block: Hashable, Codable {
         let name = model
         if fluid { return .fluid }
         if name.contains("glass") || ["ice","frosted_ice","slime","slime_block","honey_block","portal","nether_portal","end_portal","end_gateway"].contains(name) { return .blend }
-        if Self.plant(name) || ["leaves","azalea","scaffolding","chain","vine","rail","torch","door","ladder","bars","lantern","candle"].contains(where:name.contains)
+        if Self.plant(name) || ["wheat","carrots","potatoes","beetroot"].contains(name)
+            || ["leaves","azalea","scaffolding","chain","vine","rail","torch","door","ladder","bars","lantern","candle"].contains(where:name.contains)
             || ["mangrove_roots","hanging_roots","pointed_dripstone","waterlily","lily_pad","redstone_wire"].contains(name) { return .cutout }
         return .opaque
     }

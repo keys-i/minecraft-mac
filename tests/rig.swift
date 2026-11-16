@@ -26,6 +26,12 @@ enum RigChecks {
             return (points.map {$0.y}.min()!,points.map {$0.y}.max()!)
         }
         let factory = Mobs(assets:assets), radians = Double.pi/180
+        let skeleton = try factory.make(.skeleton), weaponArm = bone(skeleton,"leftarm")
+        let weaponRest = weaponArm.eulerAngles
+        let fighter = try factory.rig(skeleton,species:.skeleton)
+        fighter.strike(0.5)
+        precondition(weaponArm.eulerAngles.x<weaponRest.x-1,"Ambient sparring must visibly swing a held tool")
+        fighter.idle(); close(weaponArm.eulerAngles.x,weaponRest.x)
         let polar = try factory.make(.polarBear), cub = try factory.make(.polarBear,baby:true)
         close(bone(polar,"body").eulerAngles.x,-Double.pi/2,"Adult polar torso retains its native bind")
         close(bone(cub,"body").eulerAngles.x,0,"Cub torso is already horizontal")

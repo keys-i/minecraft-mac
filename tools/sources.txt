@@ -80,6 +80,7 @@ vendor/patches/standalone-dxmt-handoff.patch
 vendor/patches/standalone-wine-storage-linkage.patch
 vendor/patches/standalone-wine-idl-list.patch
 vendor/patches/standalone-wine-ipv6.patch
+vendor/patches/standalone-wine-raw-mouse.patch
 vendor/patches/standalone-wine-user-privileges.patch
 vendor/patches/standalone-wine-xuser-realms.patch
 vendor/patches/standalone-wine-xuser-token-refresh.patch

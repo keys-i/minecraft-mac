@@ -188,9 +188,24 @@ fn promote_installation(from: &Path, to: &Path) -> Outcome<()> {
     // Darwin's exclusive rename atomically enforces our no-overwrite guarantee.
     #[cfg(target_os = "macos")]
     let result = unsafe { nix::libc::renamex_np(from.as_ptr(), to.as_ptr(), nix::libc::RENAME_EXCL) };
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    let result = unsafe { nix::libc::renameat2(nix::libc::AT_FDCWD, from.as_ptr(), nix::libc::AT_FDCWD, to.as_ptr(), nix::libc::RENAME_NOREPLACE) };
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     let result = -1;
     if result != 0 { return Err("The completed download could not be moved into place without replacing an existing path.".into()); }
+    Ok(())
+}
+
+fn replace_installation(from: &Path, to: &Path) -> Outcome<()> {
+    let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+    let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+    #[cfg(target_os = "macos")]
+    let result = unsafe { nix::libc::renamex_np(from.as_ptr(), to.as_ptr(), nix::libc::RENAME_SWAP) };
+    #[cfg(target_os = "linux")]
+    let result = unsafe { nix::libc::renameat2(nix::libc::AT_FDCWD, from.as_ptr(), nix::libc::AT_FDCWD, to.as_ptr(), nix::libc::RENAME_EXCHANGE) };
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let result = -1;
+    if result != 0 { return Err("The verified update could not replace the installed game".into()); }
     Ok(())
 }
 
@@ -235,9 +250,15 @@ async fn authorize_game(client: &reqwest::Client, tokens: &TokenManager, directo
 }
 
 async fn download(client: &reqwest::Client, tokens: &TokenManager, directory: &Path, market: &str, check_only: bool) -> Outcome<()> {
-    if directory.symlink_metadata().is_ok() {
-        return Err("The download destination must not exist; existing games are never overwritten.".into());
-    }
+    let installed = match directory.symlink_metadata() {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() { return Err("The game directory must not be a symbolic link".into()); }
+            check_game(directory).await?;
+            Some((metadata.dev(), metadata.ino()))
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
     let parent = directory.parent().ok_or("A destination parent directory is required.")?;
     std::fs::create_dir_all(parent)?;
     let staging = tempfile::Builder::new().prefix(".bedrock-download-").tempdir_in(parent)?;
@@ -282,6 +303,22 @@ async fn download(client: &reqwest::Client, tokens: &TokenManager, directory: &P
     let mut metadata = streaming::PrefixCacheFile::new(http, package.file_size as u64, out.join(".xodus-streaming.msixvc")).await
         .map_err(|_| failure("package_cache"))?;
     let xvd = XvdFile::parse(&mut metadata).await.map_err(|_| failure("package_format"))?;
+    let package_content_id = xvd.content_id().to_string();
+    let package_version = xvd.package_version();
+    let (device_key, owned_license) = license::get_license(client, tokens, package_content_id.clone(), market.into()).await
+        .map_err(|_| failure("content_license"))?;
+    if owned_license.content_keys.len() != 1 { return Err("Microsoft returned an unsupported content license.".into()); }
+    let content_key = owned_license.content_keys.into_values().next().ok_or("Content key missing.")?;
+    let key = content_key.unpack(&device_key).map_err(|_| "Could not open the owner's content license.")?;
+    if installed.is_some() {
+        let mut current = File::open(directory.join(".xodus-streaming.msixvc")).await?;
+        let current = XvdFile::parse(&mut current).await?;
+        if current.content_id().to_string() == package_content_id
+            && current.package_version() == package_version {
+            eprintln!("Minecraft {} is current", details.version);
+            return Ok(());
+        }
+    }
     let mut files: HashMap<String, SegmentFile> = HashMap::new();
     for (name, segment) in xvd.parse_user_package_files(&mut metadata).await.map_err(|_| failure("package_files"))? {
         if name == "SegmentMetadata.bin" { files.extend(xvd.parse_segment_metadata(&mut metadata, &segment).await.map_err(|_| failure("package_segments"))?); }
@@ -308,13 +345,8 @@ async fn download(client: &reqwest::Client, tokens: &TokenManager, directory: &P
         }
     }
     if fs2::available_space(out)? < required { return Err("There is not enough free space to download and prepare Minecraft.".into()); }
-    let (device_key, owned_license) = license::get_license(client, tokens, xvd.content_id().to_string(), market.into()).await
-        .map_err(|_| failure("content_license"))?;
-    if owned_license.content_keys.len() != 1 { return Err("Microsoft returned an unsupported content license.".into()); }
-    let content_key = owned_license.content_keys.into_values().next().ok_or("Content key missing.")?;
-    let key = content_key.unpack(&device_key).map_err(|_| "Could not open the owner's content license.")?;
     if check_only {
-        eprintln!("Minecraft download checks passed.");
+        eprintln!("Minecraft {} download checks passed", details.version);
         return Ok(());
     }
     eprintln!("Downloading Minecraft {} ({} files).", details.version, files.len());
@@ -364,9 +396,18 @@ async fn download(client: &reqwest::Client, tokens: &TokenManager, directory: &P
     }).buffer_unordered(4).try_collect::<Vec<_>>().await?;
     drop(metadata);
     check_game(out).await?;
-    if directory.symlink_metadata().is_ok() { return Err("The destination appeared during download; refusing to replace it.".into()); }
-    promote_installation(out, directory)?;
-    eprintln!("Minecraft is downloaded and prepared using the owner's Microsoft license.");
+    if let Some(identity) = installed {
+        let current = directory.symlink_metadata()?;
+        if current.file_type().is_symlink() || (current.dev(), current.ino()) != identity {
+            return Err("The installed game changed during download; the verified update was kept separate".into());
+        }
+        replace_installation(out, directory)?;
+        eprintln!("Minecraft {} is updated and prepared using the owner's Microsoft license", details.version);
+    } else {
+        if directory.symlink_metadata().is_ok() { return Err("The destination appeared during download; refusing to replace it.".into()); }
+        promote_installation(out, directory)?;
+        eprintln!("Minecraft is downloaded and prepared using the owner's Microsoft license.");
+    }
     Ok(())
 }
 
@@ -435,7 +476,7 @@ async fn run() -> Outcome<()> {
     if market.len() != 2 || !market.bytes().all(|b| b.is_ascii_uppercase()) { return Err("Market must be a two-letter uppercase country code.".into()); }
     check_socket(Path::new("/tmp/xodus.sock"))?;
     if mode == "--serve" { check_game(&directory).await?; }
-    else if mode != "--sign-out" && directory.symlink_metadata().is_ok() { return Err("Download destination already exists; choose a new directory.".into()); }
+    else if mode != "--sign-out" && directory.is_symlink() { return Err("The game directory must not be a symbolic link".into()); }
     // A download does not create the IPC socket yet, so also serialize account access.
     let support = PathBuf::from(std::env::var_os("HOME").ok_or("Home directory is unavailable.")?)
         .join("Library/Application Support/Minecraft Bedrock Standalone");
@@ -715,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn completed_download_cannot_replace_a_racing_destination() {
         let temporary = tempfile::tempdir().unwrap();
         let source = temporary.path().join("stage");
@@ -730,6 +771,21 @@ mod tests {
         promote_installation(&source, &destination).unwrap();
         assert!(!source.exists());
         assert_eq!(std::fs::read(destination.join("fixture")).unwrap(), b"complete");
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn verified_update_swaps_complete_directories() {
+        let temporary = tempfile::tempdir().unwrap();
+        let update = temporary.path().join("update");
+        let installed = temporary.path().join("game");
+        std::fs::create_dir(&update).unwrap();
+        std::fs::create_dir(&installed).unwrap();
+        std::fs::write(update.join("version"), b"new").unwrap();
+        std::fs::write(installed.join("version"), b"old").unwrap();
+        replace_installation(&update, &installed).unwrap();
+        assert_eq!(std::fs::read(installed.join("version")).unwrap(), b"new");
+        assert_eq!(std::fs::read(update.join("version")).unwrap(), b"old");
     }
 
     #[tokio::test]

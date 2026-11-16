@@ -87,8 +87,9 @@ The area and realm controls are unavailable until installed game art is ready
 An unsupported scenery format falls back to the approved poster without blocking
 the setup controls
 
-The minimap has a stepped circular edge, a north marker and text coordinates
+The minimap has a stepped circular edge, a north marker, text coordinates and high-contrast mob and structure markers
 M toggles it while exploring; Settings → Keyboard & Mouse can change that shortcut
+F3 toggles a monospaced debug summary in Look around; it ignores pointer input and exposes one combined accessibility label
 The input recorder cancels on Escape, focus loss and closing the settings
 It reserves Command-Q and names any swapped control after a conflict
 Help uses an in-window menu with the same pixel font, close button and Escape

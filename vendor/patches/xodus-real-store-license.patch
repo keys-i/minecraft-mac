@@ -819,3 +819,151 @@ index 0000000..bae0fca
 +        ));
 +    }
 +}
+
+
+diff --git a/crates/xodus-cli/src/package.rs b/crates/xodus-cli/src/package.rs
+index b2cbecf..a3c9450 100644
+--- a/crates/xodus-cli/src/package.rs
++++ b/crates/xodus-cli/src/package.rs
+@@ -2,7 +2,6 @@ use inquire::Select;
+ use xodus::XBOX_LIVE_PACKAGES_PC;
+ use xodus::api::displaycatalog::find_products_by_id;
+ use xodus::models::packagespc::{PackageDetails, PackageResponse};
+-use xodus::models::secrets::Token;
+ use xodus::tokens::TokenManager;
+ 
+ pub async fn get_content_id(
+@@ -79,27 +78,23 @@ pub async fn get_packages(
+     tokens: &TokenManager,
+     content_id: String,
+ ) -> Result<PackageDetails, Box<dyn std::error::Error>> {
+-    let dev_token = tokens.get_device_sts_token().unwrap();
+-    let Token::Legacy(dev_token) = dev_token else {
+-        return Err(Box::new(std::io::Error::other("Invalid STS token")));
+-    };
+-    let user_token = tokens.get_user_sts_token().unwrap();
+-    let Token::Legacy(legacy) = user_token else {
+-        return Err(Box::new(std::io::Error::other("Unsupported user token")));
+-    };
+-
+-    let xsts_token =
+-        xodus::api::xbox::run(client, dev_token, legacy, "http://update.xboxlive.com").await;
++    let (mut auth, response, device_token) =
++        xodus::auth::do_sisu(client, tokens, "0000000040159362", 896_928_775).await?;
++    let xsts_token = auth
++        .get_xsts_token(
++            Some(&device_token),
++            Some(&response.title_token),
++            Some(&response.user_token),
++            "http://update.xboxlive.com",
++        )
++        .await?;
+ 
+     let response = client
+         .get(format!(
+             "{XBOX_LIVE_PACKAGES_PC}/GetBasePackage/{content_id}"
+         ))
+         .header("x-xbl-contract-version", "3")
+-        .header(
+-            "Authorization",
+-            xodus::api::xbox::get_xsts_auth_header(xsts_token),
+-        )
++        .header("Authorization", xsts_token.authorization_header_value())
+         .send()
+         .await
+         .unwrap();
+diff --git a/crates/xodus/src/api/xbox/mod.rs b/crates/xodus/src/api/xbox/mod.rs
+index 9adadb4..cd9c8c3 100644
+--- a/crates/xodus/src/api/xbox/mod.rs
++++ b/crates/xodus/src/api/xbox/mod.rs
+@@ -1,59 +1,3 @@
+-use crate::models::live::ExchangeUserTokenOutcome;
+-use crate::models::secrets::{LegacyToken, Token};
+-use crate::models::soap;
+-use crate::models::xbox::XstsResponse;
+-
+ pub mod auth;
+ pub mod title;
+ pub use auth::{authenticate_xbox_user, get_xsts_auth_header, request_xsts_token};
+-
+-pub async fn run(
+-    client: &reqwest::Client,
+-    dev_token: LegacyToken,
+-    legacy: LegacyToken,
+-    relying_party: &str,
+-) -> XstsResponse {
+-    let user_token = crate::api::live::exchange_user_token(
+-        client,
+-        legacy,
+-        "USERNAME".to_string(),
+-        dev_token,
+-        None,
+-        Some("Silent".to_string()),
+-        "{d6d5a677-0872-4ab0-9442-bb792fce85c5}".to_string(),
+-        &[(
+-            "user.auth.xboxlive.com".to_owned(),
+-            Some(soap::PolicyReference::mbi_ssl()),
+-        )],
+-    )
+-    .await
+-    .expect("Failed to get ms user token");
+-
+-    let user_token: Token = match user_token {
+-        ExchangeUserTokenOutcome::Fault(_) => {
+-            eprintln!("Failed to get exchange MS token");
+-            panic!("TODO");
+-        }
+-        ExchangeUserTokenOutcome::Issued(
+-            soap::BodyContent::RequestSecurityTokenResponseCollection(mut collection),
+-        ) => {
+-            let token = collection.security_tokens.remove(0);
+-            token.into()
+-        }
+-        ExchangeUserTokenOutcome::Issued(soap::BodyContent::RequestSecurityTokenResponse(
+-            token,
+-        )) => (*token).into(),
+-        _ => unreachable!("Only responses are handled"),
+-    };
+-    let Token::Compact(user_token) = user_token else {
+-        eprintln!("Unsupported token");
+-        panic!("TODO");
+-    };
+-    let resp = authenticate_xbox_user(client, user_token)
+-        .await
+-        .expect("Failed to authenticate Xbox user");
+-
+-    request_xsts_token(client, resp.token, relying_party)
+-        .await
+-        .expect("Failed to authenticate Xbox user")
+-}
+diff --git a/crates/msixvc/src/xvd.rs b/crates/msixvc/src/xvd.rs
+index b74a7ae..1bbbafb 100644
+--- a/crates/msixvc/src/xvd.rs
++++ b/crates/msixvc/src/xvd.rs
+@@ -7,6 +7,7 @@ use aes::cipher::KeyInit;
+ use aes::{Aes128Dec, Aes128Enc};
+ use futures_util::StreamExt;
++use msixvc_common::parse::structs::Version;
+ use msixvc_common::parse::{BinaryParse, BinaryTryParse};
+ use reqwest::header::RANGE;
+ use tokio::fs::OpenOptions;
+ use tokio::io::{
+@@ -308,6 +309,10 @@ impl XvdFile {
+         self.header.vduid
+     }
+ 
++    pub fn package_version(&self) -> Version {
++        self.header.package_version
++    }
++
+     fn non_encrypted_prefix_len(&self, start: u64, len: u64) -> u64 {
+         let end = start.saturating_add(len);
+         let mut prefix_len = len;
+@@ -578,6 +583,7 @@ impl XvdFile {
+                 file.offset >= section.section_offset
+                     && file.offset < section.section_offset + section.section_length
+             }) else {
++                file.keep_encrypted = false;
+                 continue;
+             };
+ 

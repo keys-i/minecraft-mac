@@ -25,6 +25,8 @@ final class Crowd {
         let head: SCNNode?
         var watching = false
         var glance = -1
+        weak var opponent: Resident?
+        var fightTime = 0.0
 
         init(actor: SCNNode, model: SCNNode, species: Species, motion: Mobs.Motion, rig: Rig, seed: Int) {
             self.actor = actor; self.model = model; self.species = species; swimming = species.swimming
@@ -205,12 +207,38 @@ final class Crowd {
                 continue
             }
             resident.airborne = false
+            if let opponent = resident.opponent {
+                let dx = opponent.actor.position.x-actor.position.x, dz = opponent.actor.position.z-actor.position.z
+                let distance = hypot(dx,dz)
+                if opponent.actor.parent == nil || !opponent.species.hostile || distance>14 {
+                    resident.opponent = nil; resident.fightTime = 0; resident.target = nil; resident.rig.idle()
+                } else if distance<=max(1.35,(resident.width+opponent.width)/2+0.45) {
+                    resident.target = nil; resident.velocity = SCNVector3Zero; Rig.face(actor,x:dx,z:dz)
+                    resident.fightTime += dt; resident.rig.strike(resident.fightTime/0.45)
+                    if resident.fightTime>=0.45 {
+                        resident.opponent = nil; resident.fightTime = 0
+                        resident.wait = 2+Terrain.random(resident.seed,resident.choice,seed:440)*4
+                        resident.rig.idle()
+                    }
+                    continue
+                } else {resident.target = opponent.actor.position}
+            }
             if resident.target == nil && resident.wait<=0 {
+                resident.choice += 1
+                if species.hostile, Terrain.random(resident.seed,resident.choice,seed:439)<0.12,
+                   let opponent = residents.filter({$0 !== resident && $0.species.hostile && $0.species != species})
+                    .min(by:{hypot($0.actor.position.x-actor.position.x,$0.actor.position.z-actor.position.z)
+                        < hypot($1.actor.position.x-actor.position.x,$1.actor.position.z-actor.position.z)}),
+                   hypot(opponent.actor.position.x-actor.position.x,opponent.actor.position.z-actor.position.z)<12 {
+                    resident.opponent = opponent; resident.target = opponent.actor.position
+                    resident.nextChoice = elapsed+6
+                }
                 for _ in 0..<8 {
+                    if resident.target != nil {break}
                     resident.choice += 1
                     let choice = resident.choice, angle = Terrain.random(resident.seed,choice,seed:431)*Double.pi*2
                     let distance = 2+Terrain.random(resident.seed,choice,seed:432)*(species.flying ? resident.motion.horizontal : 10)
-                    let x = actor.position.x+cos(angle)*distance, z = actor.position.z+sin(angle)*distance
+                    let x = resident.home.x+cos(angle)*distance, z = resident.home.z+sin(angle)*distance
                     var target = SCNVector3(x,actor.position.y,z)
                     if species.flying {
                         target.y += resident.motion.offset+(Terrain.random(resident.seed,choice,seed:433)-0.5)*resident.motion.vertical*2
@@ -230,6 +258,10 @@ final class Crowd {
                         guard let floor = data.standing(at:target,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious) else {continue}
                         target = floor
                     }
+                    guard residents.allSatisfy({ other in
+                        if other === resident || abs(other.actor.position.y-target.y)>=max(resident.height,other.height) {return true}
+                        return hypot(other.actor.position.x-target.x,other.actor.position.z-target.z)>(resident.width+other.width)/2+0.35
+                    }) else {continue}
                     resident.nextChoice = elapsed+resident.motion.interval.lowerBound+Terrain.random(resident.seed,choice,seed:435)*(resident.motion.interval.upperBound-resident.motion.interval.lowerBound)
                     resident.target = target; break
                 }
@@ -283,7 +315,7 @@ final class Crowd {
             let mx = moved.x-start.x, my = moved.y-start.y, mz = moved.z-start.z, travelled = hypot(mx,mz)
             let requested = hypot(hypot(next.x-start.x,next.z-start.z),next.y-start.y)
             if hypot(travelled,my)<max(0.000001,requested*0.1) {
-                resident.target = nil; resident.velocity = SCNVector3Zero; resident.wait = species.flying ? 0 : 0.3
+                resident.target = nil; resident.opponent = nil; resident.velocity = SCNVector3Zero; resident.wait = species.flying ? 0 : 0.3
                 resident.rig.idle()
                 continue
             }

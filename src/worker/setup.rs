@@ -176,11 +176,8 @@ pub fn download(
     market: &str,
     cancelled: &AtomicBool,
 ) -> Result<()> {
-    if launcher::game_valid(game)? {
-        return Ok(());
-    }
     ensure!(
-        !game.exists() && !game.is_symlink(),
+        !game.is_symlink() && (!game.exists() || launcher::game_valid(game)?),
         "The incomplete game directory was preserved; choose a new --game-dir"
     );
     ensure!(

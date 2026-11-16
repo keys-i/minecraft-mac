@@ -759,7 +759,12 @@ impl<'a> Account<'a> {
                     Some(0.2),
                 );
             } else if bytes.starts_with(b"Finding the Windows package") {
-                status("busy", "Checking your Minecraft purchase", "", Some(0.3));
+                status(
+                    "busy",
+                    "Checking for Minecraft updates",
+                    "Your worlds stay on this Mac",
+                    Some(0.3),
+                );
             } else if bytes.starts_with(b"Downloading Minecraft ") {
                 status(
                     "busy",
@@ -835,6 +840,9 @@ fn account_error(code: &str) -> &'static str {
         "package_size" | "package_cache" | "package_format" | "package_files"
         | "package_segments" | "package_filesystem" => {
             "Minecraft’s download could not be verified; existing files were kept"
+        }
+        "download_failed" => {
+            "Minecraft’s update could not be prepared; the installed game was kept"
         }
         _ => "Microsoft sign-in did not finish; open the setup log for details and try again",
     }
@@ -926,6 +934,7 @@ mod tests {
             assert!(!account_error(code).contains(code));
         }
         assert!(account_error("content_license").contains("licence"));
+        assert!(account_error("download_failed").contains("installed game was kept"));
         let command = clean("/usr/bin/true");
         assert!(command.get_envs().all(|(name, _)| {
             !["WINE", "DYLD_", "CX_"]

@@ -593,6 +593,7 @@ private struct Input: NSViewRepresentable {
     let changed: (Int) -> Void
     var action: (Controls.Action) -> Void = { _ in }
     var skip: (() -> Void)? = nil
+    var debug: (() -> Void)? = nil
 
     final class Coordinator {
         weak var view: NSView?
@@ -603,6 +604,7 @@ private struct Input: NSViewRepresentable {
         var scrolling = Scrolling()
         var monitor: Any?
         var skip: (() -> Void)?
+        var debug: (() -> Void)?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -613,6 +615,7 @@ private struct Input: NSViewRepresentable {
                   event.window === window, window.isKeyWindow else { return event }
             if event.type == .keyDown || event.type == .flagsChanged {
                 if Controls.Key.quit(event) { return event }
+                if Controls.Key.debug(event), let debug = coordinator.debug {debug(); return nil}
                 if event.type == .keyDown, event.keyCode == 49,
                    event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty,
                    let skip = coordinator.skip {
@@ -646,11 +649,11 @@ private struct Input: NSViewRepresentable {
         if context.coordinator.enabled != enabled { context.coordinator.scrolling = Scrolling() }
         context.coordinator.enabled = enabled; context.coordinator.changed = changed
         context.coordinator.controls = controls; context.coordinator.action = action
-        context.coordinator.skip = skip
+        context.coordinator.skip = skip; context.coordinator.debug = debug
     }
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
         if let monitor = coordinator.monitor { NSEvent.removeMonitor(monitor) }
-        coordinator.monitor = nil; coordinator.changed = nil; coordinator.action = nil; coordinator.skip = nil; coordinator.view = nil
+        coordinator.monitor = nil; coordinator.changed = nil; coordinator.action = nil; coordinator.skip = nil; coordinator.debug = nil; coordinator.view = nil
     }
 }
 
@@ -695,6 +698,11 @@ private struct ToastFrame: Shape {
 }
 
 struct Minimap: View {
+    struct Render {
+        let image: CGImage
+        let structures: [MapMarker]
+    }
+
     let world: World
     @ObservedObject var position: Position
     @ObservedObject var chart: Chart
@@ -702,6 +710,7 @@ struct Minimap: View {
     var size: CGFloat = 160
     var shortcut = "M"
     @State private var image: CGImage?
+    @State private var structures: [MapMarker] = []
 
     private var point: SCNVector3 { position.sample.point }
     private var yaw: Double { position.sample.yaw }
@@ -710,12 +719,29 @@ struct Minimap: View {
     private var historical: Bool { Region.at(point)?.historical(world) == true }
     private var key: String { "\(world.rawValue):\(seed):\(x):\(z):\(Int(floor((point.y+16)/32))):\(chart.revision)" }
 
-    nonisolated static func image(data: WorldData, at point: SCNVector3) -> CGImage? {
+    nonisolated static func render(data: WorldData, at point: SCNVector3) -> Render? {
         guard point.x.isFinite, point.y.isFinite, point.z.isFinite, [point.x,point.y,point.z].allSatisfy({abs($0)<30_000_000}) else { return nil }
         let covered = data.surface(Int(floor(point.x)),Int(floor(point.z))).map {Double($0)>point.y+6} ?? false
         let ceiling = data.dimension == 1 || covered ? Int(floor(point.y)) : 320
         let side = 128, cx = Int(floor(point.x/8))*8, cz = Int(floor(point.z/8))*8
         var pixels = [UInt8](); pixels.reserveCapacity(side*side*4)
+        var structures: [MapMarker] = [], marked = Set<Chunk>()
+        func mark(_ x: Int, _ z: Int) {
+            guard abs(x-cx)<=side/2, abs(z-cz)<=side/2 else {return}
+            let bucket = Chunk(x:Int(floor(Double(x)/8)),z:Int(floor(Double(z)/8)))
+            if marked.insert(bucket).inserted {structures.append(.init(x:Double(x)+0.5,z:Double(z)+0.5,kind:.structure))}
+        }
+        for chunk in data.chunks.values where abs(chunk.key.x*16+8-cx)<=side/2+8 && abs(chunk.key.z*16+8-cz)<=side/2+8 {
+            if Task.isCancelled {return nil}
+            for section in chunk.sections.values {
+                for layer in section.layers where layer.blocks.contains(where:{Self.structure($0.name)}) {
+                    for x in 0..<16 {for z in 0..<16 {for y in 0..<16 where Self.structure(layer.block(x,y,z).name) {
+                        mark(chunk.key.x*16+x,chunk.key.z*16+z)
+                    }}}
+                }
+            }
+        }
+        for edits in data.edits.values {for (cell,block) in edits where Self.structure(block.name) {mark(cell.x,cell.z)}}
         var previous = (0..<side).map {data.surface(cx+$0-side/2,cz-side/2-1,below:ceiling)}
         for row in 0..<side {
             guard !Task.isCancelled else {return nil}
@@ -746,9 +772,19 @@ struct Minimap: View {
             pixels += [UInt8(min(255,Double((colour>>16)&255)*shade)),UInt8(min(255,Double((colour>>8)&255)*shade)),UInt8(min(255,Double(colour&255)*shade)),255]
         } }
         guard let provider = CGDataProvider(data:Data(pixels) as CFData) else { return nil }
-        return CGImage(width:side,height:side,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:side*4,
+        guard let image = CGImage(width:side,height:side,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:side*4,
             space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent)
+            provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent) else {return nil}
+        return Render(image:image,structures:structures)
+    }
+
+    nonisolated static func image(data: WorldData, at point: SCNVector3) -> CGImage? {
+        render(data:data,at:point)?.image
+    }
+
+    nonisolated static func structure(_ name: String) -> Bool {
+        name == "bell" || name.contains("chest") || name.contains("spawner") || name == "end_portal_frame"
+            || ["lodestone","reinforced_deepslate","vault","beacon","conduit"].contains(name)
     }
 
     nonisolated static func image(world: World, at point: SCNVector3, seed: Int = 0) -> CGImage? {
@@ -794,6 +830,18 @@ struct Minimap: View {
                 if historical {
                     Text("Far Lands\nHistorical terrain\nMap unavailable").font(Blocks.type(12)).multilineTextAlignment(.center).foregroundStyle(.white)
                 }
+                ForEach(Array((chart.mobs+structures).indices),id:\.self) { index in
+                    let marker = (chart.mobs+structures)[index]
+                    let dx = marker.x-Double(x*8), dz = marker.z-Double(z*8)
+                    if abs(dx)<=64 && abs(dz)<=64 {
+                        Group {
+                            if marker.kind == .mob {Circle().fill(.red).frame(width:5,height:5)}
+                            else {Rectangle().fill(Blocks.gold).frame(width:6,height:6).rotationEffect(.degrees(45))}
+                        }
+                        .shadow(color:.black,radius:0,x:1,y:1)
+                        .offset(x:CGFloat(dx)*size/128,y:CGFloat(dz)*size/128)
+                    }
+                }
                 Path { path in
                     path.move(to:.init(x:8,y:0)); path.addLine(to:.init(x:13,y:14))
                     path.addLine(to:.init(x:8,y:11)); path.addLine(to:.init(x:3,y:14)); path.closeSubpath()
@@ -811,14 +859,49 @@ struct Minimap: View {
         }
             .task(id:key) {
                 let data = chart.data, point = point, world = world, seed = seed
-                let worker = Task.detached(priority:.utility) {
-                    world.dimension == nil ? Self.image(world:world,at:point,seed:seed) : Self.image(data:data,at:point)
+                let worker = Task.detached(priority:.utility) { () -> Render? in
+                    if world.dimension == nil, let image = Self.image(world:world,at:point,seed:seed) {
+                        return Render(image:image,structures:[])
+                    }
+                    return Self.render(data:data,at:point)
                 }
                 let result = await withTaskCancellationHandler(operation:{await worker.value},onCancel:{worker.cancel()})
-                if !Task.isCancelled { image = result }
+                if !Task.isCancelled {image = result?.image; structures = result?.structures ?? []}
             }
             .accessibilityElement(children:.ignore)
-            .accessibilityLabel("Minimap, north up, position \(Int(point.x)), \(Int(point.y)), \(Int(point.z))")
+            .accessibilityLabel("Minimap, north up, position \(Int(point.x)), \(Int(point.y)), \(Int(point.z)), \(chart.mobs.count) mobs, \(structures.count) structures")
+    }
+}
+
+private struct DebugOverlay: View {
+    @ObservedObject var position: Position
+    @ObservedObject var chart: Chart
+
+    private var text: String {
+        let point = position.sample.point, yaw = position.sample.yaw, debug = chart.debug
+        let x = Int(floor(point.x)), y = Int(floor(point.y)), z = Int(floor(point.z))
+        let chunk = WorldData.key(x,z)
+        let dx = sin(yaw), dz = -cos(yaw)
+        let facing = abs(dx)>abs(dz) ? (dx>0 ? "east" : "west") : (dz>0 ? "south" : "north")
+        let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.17.0"
+        let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "38"
+        return """
+        Minecraft Launcher \(version) (\(build))
+        XYZ \(String(format:"%.2f",point.x)) / \(String(format:"%.2f",point.y)) / \(String(format:"%.2f",point.z))
+        Block \(x) \(y) \(z) · Chunk \(chunk.x) \(chunk.z)
+        Facing \(facing) · \(Int((yaw*180/Double.pi).rounded()))°
+        Biome \(debug.biome)
+        Chunks \(debug.rendered) rendered / \(debug.loaded) loaded · distance \(debug.distance)
+        Light \(debug.daylight) sky · night vision \(debug.nightVision ? "on" : "off")
+        \(Int(debug.fps.rounded())) FPS · \(Int((debug.scale*100).rounded()))% scale · \(debug.device)
+        """
+    }
+
+    var body: some View {
+        Text(text).font(.system(size:12,weight:.medium,design:.monospaced)).lineSpacing(3)
+            .foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1)
+            .padding(10).background(.black.opacity(0.68)).overlay {Rectangle().stroke(.white.opacity(0.28),lineWidth:1)}
+            .accessibilityElement(children:.ignore).accessibilityLabel(text)
     }
 }
 
@@ -1042,6 +1125,7 @@ struct LauncherView: View {
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var exploring = false
     @State private var mapVisible = true
+    @State private var debugVisible = false
     @State private var navigating = false
     @State private var sceneryReady = false
     @State private var avatarError = ""
@@ -1117,6 +1201,10 @@ struct LauncherView: View {
                         }.foregroundStyle(.white.opacity(0.7)).shadow(color:.black,radius:1)
                             .allowsHitTesting(false).accessibilityHidden(true)
                     }
+                    if exploring && debugVisible {
+                        VStack {HStack {DebugOverlay(position:position,chart:launcher.chart); Spacer()}; Spacer()}
+                            .padding(.leading,28).padding(.top,108).allowsHitTesting(false)
+                    }
                     VStack(spacing:0) {
                         header(in:geometry.size).padding(.horizontal,28).padding(.top,28)
                         if hintAvailable && hint.showing && !map && !sideHint {
@@ -1131,7 +1219,7 @@ struct LauncherView: View {
                     }
                     if exploring && mapVisible {
                         VStack { HStack { Minimap(world:launcher.journey.world,position:position,chart:launcher.chart,seed:Seed.number(worldSeed),size:min(160,max(128,geometry.size.width*0.11)),shortcut:controls.label(.map)); Spacer() }; Spacer() }
-                            .padding(.leading,28).padding(.top,108).allowsHitTesting(false)
+                            .padding(.leading,28).padding(.top,debugVisible ? 312 : 108).allowsHitTesting(false)
                     }
                     if exploring, let assets = launcher.assets, !skinPath.isEmpty {
                         VStack { HStack { Spacer();
@@ -1194,7 +1282,7 @@ struct LauncherView: View {
             }
         },skip:launcher.journey.passage != nil && !exploring ? {
             if let skip = launcher.chart.skip {skip()} else {launcher.journey.skip()}
-        } : nil))
+        } : nil,debug:exploring ? {debugVisible.toggle()} : nil))
         .overlay {
             if map || launcher.settings || launcher.help {
                 GeometryReader { geometry in
@@ -1353,6 +1441,7 @@ struct LauncherView: View {
     private func explore(_ enabled: Bool) {
         if enabled && (!canExplore || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage == .rift) { return }
         exploring = enabled
+        if !enabled {debugVisible = false}
     }
 
     private var achievement: some View {
@@ -1809,7 +1898,7 @@ struct Preferences: View {
             rule
             toggle("Invert camera Y-axis",detail:"Reverse up and down when looking around",value:$invertLook,scale:scale)
             rule
-            Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\n\(controls.label(.map)) · Map\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
+            Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\n\(controls.label(.map)) · Map\nF3 · Debug screen\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
                 .font(Blocks.type(14*scale)).lineSpacing(10*scale).padding(22*scale)
             rule
             Keymap(data:$controlData,stone:launcher.stone).font(Blocks.type(15*scale)).padding(22*scale)
@@ -1892,7 +1981,7 @@ struct Help: View {
             ScrollView {
                 VStack(alignment:.leading,spacing:20) {
                     guide("Start your game", "Choose Install & play, then sign in with the Microsoft account that owns Minecraft for Windows. Your worlds and account stay on this Mac")
-                    guide("Look around · \(controls.label(.look))", "\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) flies · Mouse looks · \(controls.label(.rise)) rises · \(controls.label(.descend)) descends · \(controls.label(.sprint)) sprints · \(controls.label(.map)) shows the map · Escape returns")
+                    guide("Look around · \(controls.label(.look))", "\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) flies · Mouse looks · \(controls.label(.rise)) rises · \(controls.label(.descend)) descends · \(controls.label(.sprint)) sprints · \(controls.label(.map)) shows the map · F3 shows debug details · Escape returns")
                     guide("Explore another biome", "Choose the biome name in the menu, or fly there. Scroll chooses a realm. \(controls.label(.previous)) and \(controls.label(.next)) start a flight to a neighbouring biome")
                     guide("Your character", "Choose your skin and cape PNGs in Settings → Character. Your paper doll appears in Look around")
                     guide("Music and motion", "Open Settings to change master volume, background animation and automatic travel. macOS Reduced Motion and Low Power Mode also pause the scenery")

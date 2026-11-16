@@ -1,0 +1,358 @@
+diff --git a/dlls/winemac.drv/cocoa_event.h b/dlls/winemac.drv/cocoa_event.h
+index 7a85db4..0eb0dbe 100644
+--- a/dlls/winemac.drv/cocoa_event.h
++++ b/dlls/winemac.drv/cocoa_event.h
+@@ -39,8 +39,11 @@ - (BOOL) wine_commandKeyDown;
+ 
+ @interface WineEventQueue : NSObject
+ {
+-    NSMutableArray* events;
+-    NSLock*         eventsLock;
++    macdrv_event** events;
++    NSUInteger     eventsCapacity;
++    NSUInteger     eventsHead;
++    NSUInteger     eventsCount;
++    NSLock*        eventsLock;
+ 
+     int             fds[2]; /* Pipe signaling when there are events queued. */
+     int             kq; /* kqueue for waiting in OnMainThread(). */
+diff --git a/dlls/winemac.drv/cocoa_event.m b/dlls/winemac.drv/cocoa_event.m
+index d3fc4e8..870ddc3 100644
+--- a/dlls/winemac.drv/cocoa_event.m
++++ b/dlls/winemac.drv/cocoa_event.m
+@@ -31,6 +31,7 @@
+ 
+ 
+ static NSString* const WineEventQueueThreadDictionaryKey = @"WineEventQueueThreadDictionaryKey";
++static const NSUInteger WineEventQueueInitialCapacity = 256;
+ 
+ static NSString* const WineHotKeyMacIDKey       = @"macID";
+ static NSString* const WineHotKeyVkeyKey        = @"vkey";
+@@ -63,37 +64,6 @@ - (BOOL) wine_commandKeyDown
+ @end
+ 
+ 
+-@interface MacDrvEvent : NSObject
+-{
+-@public
+-    macdrv_event* event;
+-}
+-
+-    - (id) initWithEvent:(macdrv_event*)event;
+-
+-@end
+-
+-@implementation MacDrvEvent
+-
+-    - (id) initWithEvent:(macdrv_event*)inEvent
+-    {
+-        self = [super init];
+-        if (self)
+-        {
+-            event = macdrv_retain_event(inEvent);
+-        }
+-        return self;
+-    }
+-
+-    - (void) dealloc
+-    {
+-        if (event) macdrv_release_event(event);
+-        [super dealloc];
+-    }
+-
+-@end
+-
+-
+ @implementation WineEventQueue
+ 
+     - (id) init
+@@ -116,7 +86,8 @@ - (id) initWithEventHandler:(macdrv_event_handler)handler
+             fds[0] = fds[1] = kq = -1;
+ 
+             event_handler = handler;
+-            events = [[NSMutableArray alloc] init];
++            eventsCapacity = WineEventQueueInitialCapacity;
++            events = calloc(eventsCapacity, sizeof(*events));
+             eventsLock = [[NSLock alloc] init];
+ 
+             if (!events || !eventsLock)
+@@ -159,6 +130,7 @@ - (id) initWithEventHandler:(macdrv_event_handler)handler
+     - (void) dealloc
+     {
+         NSNumber* hotKeyMacID;
++        NSUInteger i;
+ 
+         for (hotKeyMacID in hotKeysByMacID)
+         {
+@@ -168,7 +140,9 @@ - (void) dealloc
+         }
+         [hotKeysByMacID release];
+         [hotKeysByWinID release];
+-        [events release];
++        for (i = 0; i < eventsCount; i++)
++            macdrv_release_event(events[(eventsHead + i) & (eventsCapacity - 1)]);
++        free(events);
+         [eventsLock release];
+ 
+         if (kq != -1) close(kq);
+@@ -192,63 +166,83 @@ - (void) signalEventAvailable
+             ERR(@"%@: got error writing to event queue signaling pipe: %s\n", self, strerror(errno));
+     }
+ 
+-    - (void) postEventObject:(MacDrvEvent*)event
++    - (void) growEvents
+     {
+-        NSIndexSet* indexes;
+-        MacDrvEvent* lastEvent;
++        NSUInteger newCapacity = eventsCapacity * 2;
++        macdrv_event** newEvents;
++        NSUInteger i;
++
++        if (newCapacity <= eventsCapacity || !(newEvents = calloc(newCapacity, sizeof(*newEvents))))
++            abort();
++        for (i = 0; i < eventsCount; i++)
++            newEvents[i] = events[(eventsHead + i) & (eventsCapacity - 1)];
++        free(events);
++        events = newEvents;
++        eventsCapacity = newCapacity;
++        eventsHead = 0;
++    }
+ 
+-        [eventsLock lock];
++    - (void) removeEventAtIndex:(NSUInteger)index
++    {
++        NSUInteger i;
+ 
+-        indexes = [events indexesOfObjectsPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop){
+-            return ((MacDrvEvent*)obj)->event->deliver <= 0;
+-        }];
+-        [events removeObjectsAtIndexes:indexes];
+-
+-        if ((event->event->type == MOUSE_MOVED_RELATIVE ||
+-             event->event->type == MOUSE_MOVED_ABSOLUTE) &&
+-            event->event->deliver == INT_MAX &&
+-            (lastEvent = [events lastObject]) &&
+-            (lastEvent->event->type == MOUSE_MOVED_RELATIVE ||
+-             lastEvent->event->type == MOUSE_MOVED_ABSOLUTE) &&
+-            lastEvent->event->deliver == INT_MAX &&
+-            lastEvent->event->window == event->event->window &&
+-            lastEvent->event->mouse_moved.drag == event->event->mouse_moved.drag)
++        if (!index)
+         {
+-            if (event->event->type == MOUSE_MOVED_RELATIVE)
+-            {
+-                lastEvent->event->mouse_moved.x += event->event->mouse_moved.x;
+-                lastEvent->event->mouse_moved.y += event->event->mouse_moved.y;
+-            }
+-            else
+-            {
+-                lastEvent->event->type = MOUSE_MOVED_ABSOLUTE;
+-                lastEvent->event->mouse_moved.x = event->event->mouse_moved.x;
+-                lastEvent->event->mouse_moved.y = event->event->mouse_moved.y;
+-            }
++            events[eventsHead] = NULL;
++            eventsHead = (eventsHead + 1) & (eventsCapacity - 1);
++            if (!--eventsCount) eventsHead = 0;
++            return;
++        }
++        for (i = index; i + 1 < eventsCount; i++)
++            events[(eventsHead + i) & (eventsCapacity - 1)] =
++                events[(eventsHead + i + 1) & (eventsCapacity - 1)];
++        eventsCount--;
++        events[(eventsHead + eventsCount) & (eventsCapacity - 1)] = NULL;
++    }
+ 
+-            lastEvent->event->mouse_moved.time_ms = event->event->mouse_moved.time_ms;
++    - (void) postEvent:(macdrv_event*)event
++    {
++        macdrv_event* lastEvent;
++
++        [eventsLock lock];
++
++        while (eventsCount)
++        {
++            lastEvent = events[(eventsHead + eventsCount - 1) & (eventsCapacity - 1)];
++            if (lastEvent->deliver > 0) break;
++            [self removeEventAtIndex:eventsCount - 1];
++            macdrv_release_event(lastEvent);
++        }
++        lastEvent = eventsCount ? events[(eventsHead + eventsCount - 1) & (eventsCapacity - 1)] : NULL;
++        if (event->type == MOUSE_MOVED_ABSOLUTE &&
++            event->deliver == INT_MAX &&
++            lastEvent &&
++            lastEvent->type == MOUSE_MOVED_ABSOLUTE &&
++            lastEvent->deliver == INT_MAX &&
++            lastEvent->window == event->window &&
++            lastEvent->mouse_moved.drag == event->mouse_moved.drag)
++        {
++            lastEvent->mouse_moved.x = event->mouse_moved.x;
++            lastEvent->mouse_moved.y = event->mouse_moved.y;
++            lastEvent->mouse_moved.time_ms = event->mouse_moved.time_ms;
+         }
+         else
+-            [events addObject:event];
++        {
++            if (eventsCount == eventsCapacity) [self growEvents];
++            events[(eventsHead + eventsCount++) & (eventsCapacity - 1)] = macdrv_retain_event(event);
++        }
+ 
+         [eventsLock unlock];
+ 
+         [self signalEventAvailable];
+     }
+ 
+-    - (void) postEvent:(macdrv_event*)inEvent
+-    {
+-        MacDrvEvent* event = [[MacDrvEvent alloc] initWithEvent:inEvent];
+-        [self postEventObject:event];
+-        [event release];
+-    }
+-
+-    - (MacDrvEvent*) getEventMatchingMask:(macdrv_event_mask)mask
++    - (macdrv_event*) getEventMatchingMask:(macdrv_event_mask)mask
+     {
+         char buf[512];
+         int rc;
+         NSUInteger index;
+-        MacDrvEvent* ret = nil;
++        macdrv_event* ret = NULL;
+ 
+         /* Clear the pipe which signals there are pending events. */
+         do
+@@ -261,26 +255,30 @@ - (MacDrvEvent*) getEventMatchingMask:(macdrv_event_mask)mask
+                 ERR(@"%@: event queue signaling pipe unexpectedly closed\n", self);
+             else
+                 ERR(@"%@: got error reading from event queue signaling pipe: %s\n", self, strerror(errno));
+-            return nil;
++            return NULL;
+         }
+ 
+         [eventsLock lock];
+ 
+         index = 0;
+-        while (index < [events count])
++        while (index < eventsCount)
+         {
+-            MacDrvEvent* event = events[index];
+-            if (event_mask_for_type(event->event->type) & mask)
++            macdrv_event* event = events[(eventsHead + index) & (eventsCapacity - 1)];
++            if (event->deliver <= 0)
+             {
+-                [[event retain] autorelease];
+-                [events removeObjectAtIndex:index];
+-
+-                if (event->event->deliver == INT_MAX ||
+-                    __atomic_sub_fetch(&event->event->deliver, 1, __ATOMIC_RELAXED) >= 0)
++                [self removeEventAtIndex:index];
++                macdrv_release_event(event);
++            }
++            else if (event_mask_for_type(event->type) & mask)
++            {
++                [self removeEventAtIndex:index];
++                if (event->deliver == INT_MAX ||
++                    __atomic_sub_fetch(&event->deliver, 1, __ATOMIC_RELAXED) >= 0)
+                 {
+                     ret = event;
+                     break;
+                 }
++                macdrv_release_event(event);
+             }
+             else
+                 index++;
+@@ -294,16 +292,23 @@ - (void) discardEventsPassingTest:(BOOL (^)(macdrv_event* event))block
+     {
+     @autoreleasepool
+     {
+-        NSIndexSet* indexes;
++        NSUInteger oldCount, read, write;
+ 
+         [eventsLock lock];
+ 
+-        indexes = [events indexesOfObjectsPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop){
+-            MacDrvEvent* event = obj;
+-            return block(event->event);
+-        }];
+-
+-        [events removeObjectsAtIndexes:indexes];
++        oldCount = eventsCount;
++        for (read = write = 0; read < oldCount; read++)
++        {
++            macdrv_event* event = events[(eventsHead + read) & (eventsCapacity - 1)];
++            if (block(event))
++                macdrv_release_event(event);
++            else
++                events[(eventsHead + write++) & (eventsCapacity - 1)] = event;
++        }
++        eventsCount = write;
++        while (write < oldCount)
++            events[(eventsHead + write++) & (eventsCapacity - 1)] = NULL;
++        if (!eventsCount) eventsHead = 0;
+ 
+         [eventsLock unlock];
+     }
+@@ -344,23 +349,24 @@ - (BOOL) query:(macdrv_query*)query timeout:(NSTimeInterval)timeout
+ 
+     - (void) resetMouseEventPositions:(CGPoint)pos
+     {
+-        MacDrvEvent* event;
++        NSUInteger i;
+ 
+         pos = cgpoint_win_from_mac(pos);
+ 
+         [eventsLock lock];
+ 
+-        for (event in events)
++        for (i = 0; i < eventsCount; i++)
+         {
+-            if (event->event->type == MOUSE_BUTTON)
++            macdrv_event* event = events[(eventsHead + i) & (eventsCapacity - 1)];
++            if (event->type == MOUSE_BUTTON)
+             {
+-                event->event->mouse_button.x = pos.x;
+-                event->event->mouse_button.y = pos.y;
++                event->mouse_button.x = pos.x;
++                event->mouse_button.y = pos.y;
+             }
+-            else if (event->event->type == MOUSE_SCROLL)
++            else if (event->type == MOUSE_SCROLL)
+             {
+-                event->event->mouse_scroll.x = pos.x;
+-                event->event->mouse_scroll.y = pos.y;
++                event->mouse_scroll.x = pos.x;
++                event->mouse_scroll.y = pos.y;
+             }
+         }
+ 
+@@ -519,13 +525,14 @@ void OnMainThread(dispatch_block_t block)
+         {
+             @autoreleasepool
+             {
+-                MacDrvEvent* macDrvEvent;
++                macdrv_event* event;
+                 struct kevent kev;
+ 
+                 while (!finished &&
+-                       (macDrvEvent = [queue getEventMatchingMask:event_mask_for_type(QUERY_EVENT)]))
++                       (event = [queue getEventMatchingMask:event_mask_for_type(QUERY_EVENT)]))
+                 {
+-                    queue->event_handler(macDrvEvent->event);
++                    queue->event_handler(event);
++                    macdrv_release_event(event);
+                 }
+ 
+                 if (!finished)
+@@ -618,11 +625,9 @@ int macdrv_copy_event_from_queue(macdrv_event_queue queue,
+ {
+     WineEventQueue* q = (WineEventQueue*)queue;
+ 
+-    MacDrvEvent* macDrvEvent = [q getEventMatchingMask:mask];
+-    if (macDrvEvent)
+-        *event = macdrv_retain_event(macDrvEvent->event);
++    *event = [q getEventMatchingMask:mask];
+ 
+-    return (macDrvEvent != nil);
++    return (*event != NULL);
+ }
+ }
+ 
+

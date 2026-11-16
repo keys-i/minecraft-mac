@@ -1295,10 +1295,11 @@ extension Assets {
         if let flower = tallFlowers[name] {
             return Array(repeating:try texture("textures/blocks/double_plant_"+flower+(states["half"] == "upper" ? "_top" : "_bottom")),count:6)
         }
-        if ["wheat","carrots","potatoes","beetroots"].contains(name) {
+        if ["wheat","carrots","potatoes","beetroot"].contains(name) {
             let age = min(7,max(0,Int(states["age"] ?? "7") ?? 7))
-            let stage = name == "wheat" ? age : name == "beetroots" ? min(3,age) : min(3,age == 7 ? 3 : age/2)
-            return Array(repeating:try texture("textures/blocks/"+name+"_stage_\(stage)"),count:6)
+            let stage = name == "wheat" ? age : name == "beetroot" ? min(3,age) : min(3,age == 7 ? 3 : age/2)
+            let texture = name == "beetroot" ? "beetroots" : name
+            return Array(repeating:try self.texture("textures/blocks/"+texture+"_stage_\(stage)"),count:6)
         }
         if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
         if name == "copper" { name = "copper_block" }

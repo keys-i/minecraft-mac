@@ -322,6 +322,7 @@ final class Rig {
     private let weight: Double
     private var resting = true
     let legs: [(SCNNode,SCNVector3,Double)]
+    private let arms: [(SCNNode,SCNVector3)]
 
     init(_ model: SCNNode, species: Species, clip: Clip? = nil, swim: Clip? = nil, wade: Clip? = nil,
          baby: Bool = false, weight: Double = 1, size: Int = 1) throws {
@@ -329,6 +330,12 @@ final class Rig {
         self.model = model; scale = model.scale; self.baby = baby; self.size = size
         let legs = clip == nil ? Self.legs(model) : []
         self.legs = legs
+        var arms: [(SCNNode,SCNVector3)] = []
+        model.enumerateChildNodes { node,_ in
+            let name = node.name?.lowercased().replacingOccurrences(of:"_",with:"") ?? ""
+            if name == "rightarm" || name == "leftarm" {arms.append((node,node.eulerAngles))}
+        }
+        self.arms = arms
         func bind(_ clip: Clip?) throws -> [Joint] {
             try clip?.bones.map { track in
                 guard let node = model.childNode(withName:track.name,recursively:true) else {throw AssetError.model}
@@ -488,6 +495,12 @@ final class Rig {
         sample(joints,at:min(1,max(0,phase))*clip.duration)
     }
 
+    func strike(_ phase: Double) {
+        resting = false
+        let swing = sin(min(1,max(0,phase))*Double.pi)*1.35
+        for (arm,base) in arms {arm.eulerAngles = .init(base.x-swing,base.y,base.z)}
+    }
+
     func idle() {
         guard !resting else {return}
         resting = true
@@ -495,6 +508,7 @@ final class Rig {
         for joint in joints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
         for joint in swimJoints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
         for joint in wadeJoints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
+        for (arm,base) in arms {arm.eulerAngles = base}
         if species.cube {model?.scale = scale; for (node,position,_) in slices {node.position = position}}
     }
 }

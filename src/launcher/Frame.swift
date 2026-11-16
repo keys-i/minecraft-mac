@@ -31,6 +31,10 @@ final class Frame: NSObject, SCNSceneRendererDelegate, @unchecked Sendable {
     private static let queue = DispatchQueue(label:"minecraft.frames",qos:.utility)
 
     var interval: Double {lock.lock(); defer {lock.unlock()}; return average}
+    var rate: Double {
+        let interval = interval
+        return interval>0 ? 1/interval : 0
+    }
 
     func reset() {
         lock.lock(); defer {lock.unlock()}
