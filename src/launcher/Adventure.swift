@@ -47,6 +47,10 @@ final class FlightView: SCNView {
     var step: ((Double) -> Void)?
     var materials: ((Double) -> Void)?
     var sweep: ((SCNVector3,SCNVector3) -> SCNVector3)?
+    var resolution: (Double) -> Void = { _ in }
+    var metrics: URL?
+    private let frames = Frame()
+    private var budget = Frame.Budget()
     private var heartbeat = false
     var sensitivity: Float = 0.15
     var inverted = false
@@ -61,7 +65,7 @@ final class FlightView: SCNView {
     private weak var inputWindow: NSWindow?
     private var acceptedMouse = false
     private(set) var captured = false
-    private var timer: Timer?
+    private var timer: CADisplayLink?
     private var clockRate = 0
     private var last = 0.0
     private var loading = false
@@ -180,7 +184,7 @@ final class FlightView: SCNView {
         heartbeat = enabled
         if enabled { start() } else { stop() }
     }
-    private func suspend() { timer?.invalidate(); timer = nil }
+    private func suspend() { timer?.invalidate(); timer = nil; frames.reset() }
 
     private func start() {
         guard !loading, window?.isKeyWindow == true, NSApp.isActive,
@@ -189,23 +193,31 @@ final class FlightView: SCNView {
             isPlaying = false; rendersContinuously = false; return
         }
         isPlaying = true; rendersContinuously = true
+        delegate = frames
         if timer != nil && clockRate != preferredFramesPerSecond {suspend()}
         guard timer == nil else { return }
         clockRate = preferredFramesPerSecond
         last = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(timeInterval:1.0/Double(max(1,preferredFramesPerSecond)),target:self,selector:#selector(tick),userInfo:nil,repeats:true)
+        let timer = displayLink(target:self,selector:#selector(tick(_:)))
+        let rate = Float(max(1,preferredFramesPerSecond))
+        timer.preferredFrameRateRange = CAFrameRateRange(minimum:rate,maximum:rate,preferred:rate)
         self.timer = timer
-        RunLoop.main.add(timer,forMode:.common)
+        timer.add(to:.main,forMode:.common)
     }
 
-    @objc private func tick() {
+    @objc private func tick(_ link: CADisplayLink) {
         guard heartbeat || exploring, window?.isKeyWindow == true, window?.occlusionState.contains(.visible) == true,
               NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); release(); return }
         let now = ProcessInfo.processInfo.systemUptime
         let seconds = min(0.1,max(0,now-last)); last = now
+        let state = ProcessInfo.processInfo.thermalState
+        if let scale = budget.sample(interval:frames.interval,seconds:seconds,target:1/Double(max(1,preferredFramesPerSecond)),
+                                     hot:state == .serious || state == .critical) {resolution(scale)}
         materials?(now)
         step?(seconds)
         if exploring { advance(seconds:seconds) }
+        frames.write(to:metrics,mode:exploring ? "look" : preferredFramesPerSecond>30 ? "journey" : "menu",scale:budget.scale,
+                     step:ProcessInfo.processInfo.systemUptime-now)
     }
 
     func advance(seconds: Double) {
@@ -261,7 +273,7 @@ final class FlightView: SCNView {
     }
 
     func dispose() {
-        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; materials = nil; sweep = nil; controller.pointOfView = nil
+        stop(); release(); delegate = nil; atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; materials = nil; sweep = nil; resolution = {_ in}; controller.pointOfView = nil
         NotificationCenter.default.removeObserver(self)
     }
 }
@@ -759,6 +771,7 @@ struct Adventure: NSViewRepresentable {
     var inverted = false
     var controls = Controls()
     var active = true
+    var resolution: (Double) -> Void = { _ in }
     let failed: () -> Void
 
     final class Coordinator: NSObject {
@@ -804,6 +817,7 @@ struct Adventure: NSViewRepresentable {
 
     func updateNSView(_ view: FlightView, context: Context) {
         let coordinator = context.coordinator
+        view.resolution = resolution
         view.materials = moving ? { [weak assets] time in if let assets {assets.animate(at:time-assets.started)} } : nil
         view.preferredFramesPerSecond = exploring ? 60 : 30
         view.travel = travel; view.finish = finish

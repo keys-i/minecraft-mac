@@ -103,6 +103,7 @@ struct Block: Hashable, Codable {
     var air: Bool { ["air","cave_air","void_air","structure_void"].contains(name) }
     var fluid: Bool { ["water","flowing_water","lava","flowing_lava","bubble_column"].contains(name) }
     var liquid: String? { name == "bubble_column" ? "water" : fluid ? name.replacingOccurrences(of:"flowing_",with:"") : nil }
+    var snowHeight: Double {Double(min(7,max(0,Int(states["height"] ?? "0") ?? 0))+1)/8}
     var properties: [String:String] {
         var p = states
         if let axis = states["pillar_axis"] { p["axis"] = axis }
@@ -144,8 +145,9 @@ struct Block: Hashable, Codable {
     }
 
     var passable: Bool {
-        air || fluid || Self.plant(model) || ["torch","rail","vine","petals","crop","wheat","carrots","potatoes","beetroot","seagrass","kelp","redstone_wire","door","ladder"].contains(where:model.contains)
-            || ["crimson_roots","warped_roots","hanging_roots","portal","nether_portal","end_portal","end_gateway","light_block"].contains(model)
+        let name = model
+        return air || fluid || Self.plant(name) || ["torch","rail","vine","petals","crop","wheat","carrots","potatoes","beetroot","seagrass","kelp","redstone_wire","door","ladder"].contains(where:name.contains)
+            || ["crimson_roots","warped_roots","hanging_roots","portal","nether_portal","end_portal","end_gateway","light_block"].contains(name)
     }
 
     static func plant(_ name: String) -> Bool {
@@ -168,6 +170,7 @@ struct Block: Hashable, Codable {
 
     var opaque: Bool {
         guard !passable, render == .opaque else { return false }
+        if model == "snow_layer" {return snowHeight == 1}
         if model.hasSuffix("_slab"), properties["type"] == "double" { return true }
         return !["stairs","slab","pane","fence","wall","bed","plate","carpet","banner","bell","brewing","chest","composter","cauldron","rod"].contains(where:model.contains)
             && !["farmland","grass_path","dirt_path","snow_layer"].contains(model)
@@ -177,7 +180,15 @@ struct Block: Hashable, Codable {
 struct Palette {
     let blocks: [Block]
     let indices: [UInt16]
+    let solids: [Bool]
+
+    init(blocks: [Block], indices: [UInt16]) {
+        self.blocks = blocks; self.indices = indices
+        solids = blocks.map { !$0.fluid && !$0.passable }
+    }
+
     func block(_ x: Int, _ y: Int, _ z: Int) -> Block { blocks[Int(indices[(x*16+z)*16+y])] }
+    func solid(_ x: Int, _ y: Int, _ z: Int) -> Bool { solids[Int(indices[(x*16+z)*16+y])] }
 }
 
 private struct Storage {
@@ -249,7 +260,7 @@ struct VoxelChunk {
             guard let section = sections[y] else { continue }
             for x in 0..<16 { for z in 0..<16 where surfaces[x*16+z] == (dimension == 0 ? -65 : -1) {
                 for dy in (0..<16).reversed() {
-                    if section.layers.contains(where:{ let block = $0.block(x,dy,z); return !block.passable || block.fluid }) {
+                    if section.layers.contains(where:{ $0.solid(x,dy,z) || $0.block(x,dy,z).fluid }) {
                         surfaces[x*16+z] = y*16+dy; break
                     }
                 }
@@ -316,6 +327,12 @@ struct WorldData {
         return Biome.bedrock(id,dimension:dimension)
     }
 
+    func nativeBiome(_ point: SCNVector3) -> String? {
+        let x = Int(floor(point.x)), z = Int(floor(point.z)), key = Self.key(x,z)
+        guard let id = chunks[key]?.biome(x-key.x*16,Int(floor(point.y)),z-key.z*16) else {return nil}
+        return Biome.identifiers[id]
+    }
+
     func surface(_ x: Int, _ z: Int, below: Int = 320) -> Int? {
         let key = Self.key(x,z)
         guard let chunk = chunks[key] else { return nil }
@@ -358,7 +375,7 @@ struct WorldData {
                         if feet.x+radius<=low.x || feet.x-radius>=high.x || feet.z+radius<=low.z || feet.z-radius>=high.z || feet.y+height<=low.y || feet.y>=high.y {continue}
                         return false
                     }
-                    var bottom = 0.0, top = 1.0
+                    var bottom = 0.0, top = name == "snow_layer" ? block.snowHeight : 1.0
                     if name.hasSuffix("_slab"), p["type"] != "double" { bottom = p["type"] == "top" ? 0.5 : 0; top = bottom+0.5 }
                     if name == "farmland" || name.contains("_path") { top = 0.9375 }
                     if name == "end_portal_frame" {
@@ -421,7 +438,7 @@ struct WorldData {
                 }
                 guard !cell.passable else {continue}
                 let p = cell.properties, name = cell.model
-                var top = 1.0
+                var top = name == "snow_layer" ? cell.snowHeight : 1.0
                 if name == "farmland" || name.contains("_path") {top = 0.9375}
                 if name.hasSuffix("_slab"), p["type"] != "double", p["type"] != "top" {top = 0.5}
                 if name.hasSuffix("_stairs"), p["half"] != "top" {levels.insert(Double(y)+0.5)}
@@ -460,7 +477,7 @@ struct WorldData {
 
     func node(_ key: Chunk, assets: Assets, cancelled: () -> Bool = {false}) throws -> SCNNode {
         guard chunks[key] != nil else { throw ChunkError.missing }
-        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], cells: [Int:Int] = [:], fluids: [Int:Int] = [:]
+        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], cells: [Int:Int] = [:], fluids: [Int:Int] = [:], overlays: [Int:Int] = [:]
         var levels: [Chunk:[Int]] = [:]
         for dx in -1...1 { for dz in -1...1 {
             let nearby = Chunk(x:key.x+dx,z:key.z+dz)
@@ -475,7 +492,7 @@ struct WorldData {
                     let y = sy*16+dy
                     for layer in 0...1 {
                         guard let block = block(x,y,z,layer:layer), !block.air else { continue }
-                        guard layer == 0 || block.fluid else { throw ChunkError.format }
+                        guard layer == 0 || block.fluid || block.passable else { throw ChunkError.format }
                         let index: Int
                         if let existing = indices[block] { index = existing }
                         else {
@@ -485,12 +502,20 @@ struct WorldData {
                         let cell = dx+1+18*(dz+1+18*(y+64))
                         if block.fluid { fluids[cell] = index }
                         else if layer == 0 { cells[cell] = index }
+                        else {overlays[cell] = index}
                     }
                 }
             }
         } }
         let node = try Structures.volume("chunk-\(key.x)-\(key.z)",size:[18,384,18],palette:palette,blocks:cells,fluids:fluids,assets:assets,interior:true,
-            biome:{ x,y,z in self.biome(.init(Double(key.x*16+x-1),Double(y-64),Double(key.z*16+z-1))) },cancelled:cancelled)
+            biome:{ x,y,z in self.biome(.init(Double(key.x*16+x-1),Double(y-64),Double(key.z*16+z-1))) },
+            identity:{ x,y,z in self.nativeBiome(.init(Double(key.x*16+x-1),Double(y-64),Double(key.z*16+z-1))) },cancelled:cancelled)
+        if !overlays.isEmpty {
+            // Bedrock also stores snow-covered vegetation in its secondary block layer
+            let overlay = try Structures.volume("chunk-overlays",size:[18,384,18],palette:palette,blocks:overlays,context:cells,
+                assets:assets,interior:true,cancelled:cancelled)
+            overlay.name = "chunk-overlays"; overlay.position = SCNVector3Zero; node.addChildNode(overlay)
+        }
         node.position = .init(Double(key.x*16)-1,-64,Double(key.z*16)-1)
         return node
     }

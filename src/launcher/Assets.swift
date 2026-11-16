@@ -79,6 +79,7 @@ final class Assets: @unchecked Sendable {
     }
     private var flipbooks: [String:Flipbook]?
     private let playbackLock = NSLock()
+    private var waterFogs: [String:(colour:UInt32,distance:Double)] = [:]
     private var playback: [ObjectIdentifier:Playback] = [:]
     private var scrolling: [ObjectIdentifier:SCNMaterial] = [:]
 
@@ -184,8 +185,9 @@ final class Assets: @unchecked Sendable {
             && ["_0.png","_0.tga","_0.hdr"].contains(where:name.hasSuffix) {
             let path = "textures/ui/"+name
             let bytes = try file(path)
-            guard bytes.count<=16*1024*1024, let image = NSImage(data:bytes),
-                  let bitmap = image.cgImage(forProposedRect:nil,context:nil,hints:nil), bitmap.width<=4096, bitmap.height<=4096 else { continue }
+            guard bytes.count<=16*1024*1024, let source = CGImageSourceCreateWithData(bytes as CFData,nil),
+                  let bitmap = CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceDecodeRequest:kCGImageSourceDecodeToSDR] as CFDictionary),
+                  bitmap.width<=4096, bitmap.height<=4096 else { continue }
             let index = origins[path] ?? 0
             if index>=(panorama?.pack ?? -1) { panorama = (index,NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))) }
         }
@@ -465,8 +467,8 @@ final class Assets: @unchecked Sendable {
         }
     }
 
-    func fluid(lava: Bool, biome: Biome = .meadow, flowing: Bool = false) throws -> SCNMaterial {
-        let water = lava ? nil : try self.water(biome)
+    func fluid(lava: Bool, biome: Biome = .meadow, flowing: Bool = false, native: String? = nil) throws -> SCNMaterial {
+        let water = lava ? nil : try self.water(biome,native:native)
         let path = "textures/blocks/"+(lava ? "lava" : "water")+(flowing ? "_flow" : "_still")+(lava ? "" : "_grey")
         let source = try texture(path,tint:water?.colour,animated:true,layer:lava ? .opaque : .fluid)
         let key = "fluid-\(ObjectIdentifier(source))-\(water?.opacity ?? 1)"
@@ -703,7 +705,7 @@ final class Assets: @unchecked Sendable {
             model.enumerateChildNodes { part,_ in if part.name?.lowercased().hasPrefix("chest") == true { part.isHidden = true } }
         }
         if name == "sulfur_cube" {
-            guard let path = textures["outer"] else { throw AssetError.model }
+            guard let path = textures[key == "small" ? "outer_small" : "outer"] else { throw AssetError.model }
             let skin = try texture(path).copy() as! SCNMaterial
             skin.blendMode = .alpha; skin.shaderModifiers = nil
             let outer = try node(definition,material:skin)
@@ -1169,11 +1171,12 @@ extension Assets {
         return table
     }
 
-    func water(_ biome: Biome) throws -> (colour: UInt32, opacity: CGFloat) {
+    func water(_ biome: Biome, native: String? = nil) throws -> (colour: UInt32, opacity: CGFloat) {
         let names: [Biome:String] = [.swamp:"swampland",.mangrove:"mangrove_swamp",.river:"river",.reef:"warm_ocean",
             .monument:"deep_ocean",.coast:"beach",.desert:"desert",.jungle:"jungle",.snow:"taiga",.ice:"frozen_ocean",.sulfur:"sulfur_caves"]
         let biomes = try table("biomes_client.json")
-        let entry = biomes["minecraft:"+(names[biome] ?? "plains")] as? [String:Any]
+        let name = native ?? names[biome] ?? "plains"
+        let entry = biomes["minecraft:"+name] as? [String:Any]
         let fallback = biomes["default"] as? [String:Any]
         var colour = entry?["water_surface_color"] as? String ?? fallback?["water_surface_color"] as? String ?? "#44AFF5"
         if biome == .sulfur {
@@ -1188,7 +1191,18 @@ extension Assets {
         let opacity = entry?["water_surface_transparency"] as? Double ?? fallback?["water_surface_transparency"] as? Double ?? 0.65
         guard colour.count == 7, colour.first == "#", let value = UInt32(colour.dropFirst(),radix:16),
               opacity.isFinite, (0...1).contains(opacity) else { throw AssetError.model }
+        let fog = entry?["water_fog_color"] as? String ?? fallback?["water_fog_color"] as? String ?? colour
+        let distance = (entry?["water_fog_distance"] as? NSNumber)?.doubleValue
+            ?? (fallback?["water_fog_distance"] as? NSNumber)?.doubleValue ?? 35
+        guard fog.count == 7, fog.first == "#", let tint = UInt32(fog.dropFirst(),radix:16),
+              distance.isFinite, (0.1...1024).contains(distance) else {throw AssetError.model}
+        playbackLock.lock(); waterFogs[name] = (tint,distance); playbackLock.unlock()
         return (value,CGFloat(opacity))
+    }
+
+    func waterFog(_ name: String?) -> (colour:UInt32,distance:Double)? {
+        playbackLock.lock(); defer {playbackLock.unlock()}
+        return waterFogs[name ?? "plains"]
     }
 
     func tiles(_ name: String, states: [String: String] = [:]) throws -> [SCNMaterial] {

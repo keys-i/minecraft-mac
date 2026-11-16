@@ -6,44 +6,69 @@ struct Horizon {
         let bottom: Int
         let top: Int
         let block: Block
+        let native: String?
+
+        init(bottom: Int, top: Int, block: Block, native: String? = nil) {
+            self.bottom = bottom; self.top = top; self.block = block; self.native = native
+        }
     }
     struct Tile {
         let step: Int
         let columns: [[Span]]
         let biome: Biome
 
-        init(_ chunk: VoxelChunk, near centre: Chunk) {
+        init(_ chunk: VoxelChunk, near centre: Chunk, data: WorldData? = nil) {
             step = Horizon.step(chunk.key,near:centre)
             var columns: [[Span]] = []
             let minimum = chunk.dimension == 0 ? -64 : 0, maximum = chunk.dimension == 1 ? 127 : chunk.dimension == 2 ? 255 : 319
-            let sections = chunk.sections.values.filter {$0.y*16<=maximum && $0.y*16+15>=minimum}.sorted {$0.y<$1.y}
+            let edits = data?.edits[chunk.key] ?? [:]
+            let edited = Set(edits.keys.map {Cell(x:$0.x,y:Int(floor(Double($0.y)/16)),z:$0.z)})
+            let sections = Set(chunk.sections.keys).union(edited.map(\.y))
+                .filter {$0*16<=maximum && $0*16+15>=minimum}.sorted()
             for z in stride(from:0,to:16,by:step) {for x in stride(from:0,to:16,by:step) {
+                let sx = x+step/2, sz = z+step/2, wx = chunk.key.x*16+sx, wz = chunk.key.z*16+sz
                 var spans: [Span] = [], solid: Span?, liquid: Span?
-                func append(_ block: Block?, bottom: Int, top: Int, to current: inout Span?) {
+                func append(_ block: Block?, bottom: Int, top: Int, native: String? = nil, to current: inout Span?) {
                     if let old = current {
                         let same = block?.fluid == true ? block?.liquid == old.block.liquid : block == old.block
-                        if let block, old.top == bottom, same {
-                            current = Span(bottom:old.bottom,top:top,block:block); return
+                        if let block, old.top == bottom, same, old.native == native {
+                            current = Span(bottom:old.bottom,top:top,block:block,native:native); return
                         }
                         spans.append(old); current = nil
                     }
-                    if let block { current = Span(bottom:bottom,top:top,block:block) }
+                    if let block { current = Span(bottom:bottom,top:top,block:block,native:native) }
                 }
-                func sample(_ primary: Block?, _ secondary: Block?, bottom: Int, top: Int) {
-                    let block = primary.flatMap { !$0.passable && !$0.fluid ? $0 : nil }
+                func sample(_ primary: Block?, _ secondary: Block?, solid supported: Bool, bottom: Int, top: Int) {
+                    let block = supported ? primary : nil
                     let water = primary?.fluid == true ? primary : secondary.flatMap {$0.fluid ? $0 : nil}
+                    let native = water.flatMap {_ in chunk.biome(sx,bottom,sz).flatMap {Biome.identifiers[$0]}}
                     append(block,bottom:bottom,top:top,to:&solid)
-                    append(water,bottom:bottom,top:top,to:&liquid)
+                    append(water,bottom:bottom,top:top,native:native,to:&liquid)
                 }
-                for section in sections {
-                    let primary = section.layers.first, secondary = section.layers.count>1 ? section.layers[1] : nil
-                    let bottom = max(minimum,section.y*16), top = min(maximum+1,section.y*16+16)
-                    if (primary?.blocks.count ?? 0)<=1 && (secondary?.blocks.count ?? 0)<=1 {
-                        sample(primary?.blocks.first,secondary?.blocks.first,bottom:bottom,top:top)
+                for y in sections {
+                    let section = chunk.sections[y], primary = section?.layers.first
+                    let secondary = (section?.layers.count ?? 0)>1 ? section?.layers[1] : nil
+                    let bottom = max(minimum,y*16), top = min(maximum+1,y*16+16)
+                    let changed = edited.contains(Cell(x:wx,y:y,z:wz))
+                    if !changed && (primary?.blocks.count ?? 0)<=1 && (secondary?.blocks.count ?? 0)<=1 {
+                        var start = bottom
+                        if primary?.blocks.first?.fluid == true || secondary?.blocks.first?.fluid == true,
+                           let identities = chunk.biomes[y] {
+                            let base = (sx*16+sz)*16-y*16
+                            for height in (bottom+1)..<top where identities[base+height] != identities[base+start] {
+                                sample(primary?.blocks.first,secondary?.blocks.first,solid:primary?.solids.first ?? false,bottom:start,top:height)
+                                start = height
+                            }
+                        }
+                        sample(primary?.blocks.first,secondary?.blocks.first,solid:primary?.solids.first ?? false,bottom:start,top:top)
                     } else {
-                        for y in bottom..<top {
-                            let dy = y-section.y*16
-                            sample(primary?.block(x+step/2,dy,z+step/2),secondary?.block(x+step/2,dy,z+step/2),bottom:y,top:y+1)
+                        for height in bottom..<top {
+                            let dy = height-y*16
+                            if changed, let block = edits[Cell(x:wx,y:height,z:wz)] {
+                                sample(block,nil,solid:!block.fluid && !block.passable,bottom:height,top:height+1)
+                            } else {
+                                sample(primary?.block(sx,dy,sz),secondary?.block(sx,dy,sz),solid:primary?.solid(sx,dy,sz) ?? false,bottom:height,top:height+1)
+                            }
                         }
                     }
                 }
@@ -122,8 +147,9 @@ struct Horizon {
             guard let tile = tiles[key] else {return []}
             return tile.columns[((z%16+16)%16/tile.step)*(16/tile.step)+(x%16+16)%16/tile.step]
         }
-        func top(_ span: Span) -> Double {
-            guard span.block.fluid else { return Double(span.top) }
+        func top(_ span: Span, in column: [Span]) -> Double {
+            guard span.block.fluid,
+                  !column.contains(where:{$0.bottom == span.top && $0.block.liquid == span.block.liquid}) else { return Double(span.top) }
             let level = Int(span.block.properties["level"] ?? "0") ?? 0
             return Double(span.top-1)+Double(8-(level&7))/9
         }
@@ -138,13 +164,13 @@ struct Horizon {
                 if cancelled() { throw CancellationError() }
                 let x = key.x*16+index%width*tile.step, z = key.z*16+index/width*tile.step
                 for span in tile.columns[index] {
-                    let low = Double(span.bottom), high = top(span)
+                    let low = Double(span.bottom), high = top(span,in:tile.columns[index])
                     let world = SCNVector3(Double(x)+step/2,high,Double(z)+step/2)
                     let materials: [SCNMaterial]
                     if span.block.fluid {
                         let lava = span.block.liquid == "lava"
-                        let flow = try assets.fluid(lava:lava,biome:tile.biome,flowing:true)
-                        let still = try assets.fluid(lava:lava,biome:tile.biome)
+                        let flow = try assets.fluid(lava:lava,biome:tile.biome,flowing:true,native:span.native)
+                        let still = try assets.fluid(lava:lava,biome:tile.biome,native:span.native)
                         materials = [flow,flow,flow,flow,(span.block.properties["level"] ?? "0") == "0" ? still : flow,still]
                     } else { materials = try assets.tiles(span.block.model,states:span.block.properties) }
                     func emit(_ size: SCNVector3, at point: SCNVector3, _ index: Int) {
@@ -154,17 +180,17 @@ struct Horizon {
                         else { mesh.cube(size,at:point,material:materials[index],faces:1 << index) }
                     }
                     let others = tile.columns[index].filter { $0 != span && covers(span,$0) }
-                    if !others.contains(where:{Double($0.bottom)<=high && top($0)>high}) {
+                    if !others.contains(where:{Double($0.bottom)<=high && top($0,in:tile.columns[index])>high}) {
                         emit(.init(step,0,step),at:world,4)
                     }
-                    if !others.contains(where:{Double($0.bottom)<low && top($0)>=low}) {
+                    if !others.contains(where:{Double($0.bottom)<low && top($0,in:tile.columns[index])>=low}) {
                         emit(.init(step,0,step),at:.init(world.x,low,world.z),5)
                     }
                     for (face,dx,dz) in [(0,0,1),(1,1,0),(2,0,-1),(3,-1,0)] {
                         let neighbours = column(x+dx*tile.step,z+dz*tile.step)
                         var exposed = [(low,high)]
                         for neighbour in neighbours where covers(span,neighbour) {
-                            let bottom = Double(neighbour.bottom), upper = top(neighbour)
+                            let bottom = Double(neighbour.bottom), upper = top(neighbour,in:neighbours)
                             exposed = exposed.flatMap { low,high -> [(Double,Double)] in
                                 if upper<=low || bottom>=high {return [(low,high)]}
                                 var rest: [(Double,Double)] = []

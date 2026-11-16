@@ -70,6 +70,26 @@ struct Voxels {
         node.categoryBitMask = 2
         return node
     }
+
+    // Render partitions keep only the vertices they draw, including their matching UVs and normals
+    func node(_ name: String, slots: [Int]) -> SCNNode {
+        if slots.elementsEqual(materials.indices) {return node(name)}
+        var compact = Voxels(), remap = [Int32](repeating:-1,count:vertices.count)
+        for slot in slots {
+            compact.materials.append(materials[slot])
+            var triangles: [Int32] = []; triangles.reserveCapacity(indices[slot].count)
+            for old in indices[slot] {
+                let index = Int(old)
+                if remap[index]<0 {
+                    remap[index] = Int32(compact.vertices.count)
+                    compact.vertices.append(vertices[index]); compact.normals.append(normals[index]); compact.uv.append(uv[index])
+                }
+                triangles.append(remap[index])
+            }
+            compact.indices.append(triangles)
+        }
+        return compact.node(name)
+    }
 }
 
 enum Landscape {

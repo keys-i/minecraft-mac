@@ -9,6 +9,16 @@ struct LauncherChecks {
     @MainActor static func main() throws {
         setbuf(stdout,nil)
         try LightChecks.run()
+        var budget = Frame.Budget()
+        for _ in 0..<200 { _ = budget.sample(interval:1.0/30,seconds:0.1,target:1.0/60,hot:false) }
+        precondition(abs(budget.scale-0.75)<0.001,"Resolution must remain inside its authorised lower bound")
+        for _ in 0..<70 { _ = budget.sample(interval:1.0/60,seconds:0.1,target:1.0/60,hot:false) }
+        precondition(abs(budget.scale-0.75)<0.001,"Recovery needs sustained spare frame budget")
+        for _ in 0..<500 { _ = budget.sample(interval:1.0/60,seconds:0.1,target:1.0/60,hot:false) }
+        precondition(abs(budget.scale-1)<0.001)
+        precondition(budget.sample(interval:.nan,seconds:1,target:1.0/60,hot:false) == nil)
+        for _ in 0..<22 { _ = budget.sample(interval:1.0/60,seconds:0.1,target:1.0/60,hot:true) }
+        precondition(abs(budget.scale-0.95)<0.001,"Thermal pressure must reduce only the 3D workload")
         let upright = SCNNode(), cameraRoot = SCNNode()
         cameraRoot.addChildNode(upright)
         for target in [SCNVector3(0,100,0),.init(-0.001,-100,0.001),.init(0,-1,-0.001),.init(10,0,0),.init(0,100,0)] {
@@ -55,10 +65,38 @@ struct LauncherChecks {
         var homesteadBlocks: [Cell:Block] = [:]
         for x in -24...24 {for z in -24...24 {homesteadBlocks[Cell(x:x,y:69,z:z)] = Block(name:"grass_block")}}
         homestead.apply(homesteadBlocks)
-        let shelter = Trail.plan(.init(kind:"end",x:0,y:70,z:0,seed:42),data:homestead)
+        let shelter = try Trail.plan(.init(kind:"end",x:0,y:70,z:0,seed:42),data:homestead)
         precondition(shelter.record.shelter != nil && shelter.record.foundation != nil)
+        precondition(shelter.record.version == 3 && shelter.record.valid)
+        if let last = shelter.record.connections?.last, !last.isEmpty {precondition(last.last == shelter.record.entry,"Planned connections stop outside the portal frame")}
+        let reopened = try Trail.plan(shelter.record,data:homestead)
+        precondition(shelter.blocks == reopened.blocks,"Reopening a natural route must preserve its exact layout")
+        let natural = Trail.Record(kind:"nether",x:0,y:70,z:0,seed:42,version:3).layout
+        let legacy = Trail.Record(kind:"nether",x:0,y:70,z:0,seed:42).layout
+        precondition(natural.anchors!.allSatisfy {Trail.coverage(natural).contains(WorldData.key($0.x,$0.z))})
+        do {
+            _ = try Trail.plan(legacy,data:homestead,cancelled:{true})
+            preconditionFailure("Cancelled route preparation must stop before constructing edits")
+        } catch is CancellationError {}
+        precondition(Trail(natural).blocks.count<Trail(legacy).blocks.count,"Natural routes must avoid unconditional chamber excavation")
         homestead.apply(shelter.blocks)
         precondition(shelter.approach(data:homestead,eye:.init(0.5,71.62,0.5),chest:true).contains {$0.title.contains("house chest")},"The End story needs a reachable house chest even outside villages")
+        for kind in ["nether","end"] {
+            let record = Trail.Record(kind:kind,x:0,y:70,z:0,seed:42)
+            var terrain = WorldData(dimension:0)
+            for key in Trail.coverage(record) {terrain.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}
+            let trail = try Trail.plan(record,data:terrain)
+            precondition(trail.record.connections?.last?.last == trail.record.entry)
+            terrain.apply(trail.blocks)
+            for (a,b) in zip(trail.route,trail.route.dropFirst()) {
+                let a = a.point, b = b.point
+                let count = max(1,Int(ceil(hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y)*10)))
+                for step in 0...count {
+                    let t = Double(step)/Double(count)
+                    precondition(terrain.vacant(.init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t-1.62,a.z+(b.z-a.z)*t)),"Planned routes must clear the entire portal approach")
+                }
+            }
+        }
         precondition(!Block(name:"grass_block").passable && Block(name:"short_grass").passable)
         precondition(!Block(name:"mangrove_roots").passable && !Block(name:"brown_mushroom_block").passable)
         precondition(!Block(name:"end_portal_frame").passable && Block(name:"end_portal").passable)
@@ -832,6 +870,10 @@ struct LauncherChecks {
                 coordinator.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil); coordinator.wanted.insert(key)
             } }
             coordinator.region = centre; camera.position = .init(520.5,22.62,520.5); camera.eulerAngles = .init(-0.2,0.8,0)
+            let remote = Chunk(x:centre.x+24,z:centre.z)
+            coordinator.prefetch.insert(remote)
+            precondition(coordinator.retained(remote) && !coordinator.nearby(remote) && coordinator.missing(remote),"Journey data stays owned beyond the visible mesh radius")
+            coordinator.prefetch = []
             for key in coordinator.wanted {coordinator.nodes[key] = SCNNode()}
             let border = Chunk(x:33,z:32)
             coordinator.nodes.removeValue(forKey:border)

@@ -5,6 +5,36 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 35 loading, fluids and natural routes
+
+October 23, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
+All 25 Rust unit checks and four integration checks pass, with rustfmt and Clippy warnings denied
+The final native synthetic suite and installed-art sweep pass 86 species, heroes, 43 areas and three legacy passages
+The optional-world check installs all 1,089 core meshes from 1,225 cached chunks and captures the clear sixteen-chunk horizon
+
+New regressions cover compact opaque/glass and mixed-fluid vertex buffers, gradient top UVs, shallow side UVs, native frozen-river/ocean colours and fog, and edited distant terrain
+The live seed-10 scenery exposed valid secondary vegetation beneath snow, which the former water-only layer guard rejected
+An independent read of its 387 cached nearby chunks identified snow with grass, ferns, bushes and flowers; the [Wiki snowlogging reference](https://minecraft.wiki/w/Snowlogging) corroborates that Bedrock mechanic
+Secondary vegetation now uses a batched mesh with primary-block placement context, and complete-cell edits remove both layers
+Rig checks cover bind-preserving gaze, horse neck yaw/pitch limits, parrot symmetry, turtle flipper axes, axolotl swim/floor tracks and matching cube size/collision
+Route checks cover cancellation, deterministic reopening, raw-data ownership outside the mesh radius, and continuously swept portal entry
+Adaptive-resolution checks cover its bounds, thermal reduction and recovery hysteresis
+
+A matched, read-only CPU probe runs three passes over the same cached world, with no game or compiler active
+Median 49-chunk horizon preparation changes from 4,565.38 to 197.37 ms, and decoding from 176.56 to 137.54 ms
+Median construction and voxel lighting for the same 25 chunks changes from 1,694.06 to 1,599.61 ms
+The complete probe's peak memory footprint changes from 249,758,560 to 237,617,992 bytes
+Both probes use whole-module optimisation with `-O`; these are bounded construction measurements, not sustained interactive FPS, game speed or whole-launcher memory results
+
+The native renderer now records submitted frame intervals; actual display presentation still requires separate live profiling
+The corrected build 35 package verifies 1,583 resource digests and strict deep signatures, with the installed authorised helper unchanged
+Computer Use inspects the normal and fullscreen menus, merged Keyboard & Mouse page and the 16-chunk setting on the user's saved seed 10
+It then intermittently reports `noWindowsAvailable`, capture failures and a file-picker timeout; later candidate exits have macOS exit status 0
+The live attempts have not reached a prepared Look around scene, so no interactive frame, ten-minute memory/thermal or Bedrock performance result is established
+The installed build 32, player worlds, accounts and game graphics settings remain unchanged
+Cube jump power/squish and parrot flap timing remain explicit scenery approximations where installed definitions depend on unavailable runtime state
+Full game-AI parity, native ARM64 execution of the x64 game and a completed 512-chunk preparation remain unverified
+
 ## Build 34 shared rendering and rigs
 
 October 21, 2026, on the same M3 Pro and macOS 27.0.1

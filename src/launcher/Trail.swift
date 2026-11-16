@@ -10,7 +10,7 @@ struct Cell: Hashable, Codable {
 
 // The saved plan reconstructs scenery edits without changing the owner's game world
 struct Trail {
-    struct Record: Codable {
+    struct Record: Codable, Equatable {
         let kind: String
         let x: Int
         let y: Int
@@ -21,12 +21,33 @@ struct Trail {
         var connections: [[Cell]]? = nil
         var shelter: Cell? = nil
         var foundation: Int? = nil
+        var joins: [Cell]? = nil
+        var entry: Cell {
+            let last = layout.anchors!.last!
+            return Cell(x:last.x,y:last.y+1,z:last.z-(kind == "end" ? 4 : 2))
+        }
+        var layout: Record {
+            var record = self
+            if record.anchors == nil {
+                let end = kind == "end", base = max(-44,y-(end ? 77 : 62))
+                let levels = end ? [y,base+40,base+25,base+16,base+7,base,base-1,base-2,base-2,base-3,base-5,base-5,base-5]
+                    : [y,base+30,base+17,base+7,base+2,base,base]
+                record.anchors = levels.enumerated().map {index,level in
+                    let dx = index == 0 ? 0 : Int((Terrain.random(index,13,seed:seed)-0.5)*48)
+                    let dz = index*30+(index == 0 ? 0 : Int(Terrain.random(index,17,seed:seed)*9))
+                    return Cell(x:x+dx,y:level,z:z+dz)
+                }
+            }
+            record.version = version == 3 ? 3 : 2
+            return record
+        }
         var valid: Bool { ["nether","end"].contains(kind) && (-29_998_999...29_998_999).contains(x) && (-29_998_999...29_998_999).contains(z) && (32...250).contains(y)
-            && (version == nil || version == 2)
+            && (version == nil || version == 2 || version == 3)
             && (anchors == nil || anchors!.count == (kind == "end" ? 13 : 7) && anchors!.allSatisfy {abs(Double($0.x)-Double(x))<192 && abs(Double($0.z)-Double(z))<480 && (-55...300).contains($0.y)})
             && (foundation == nil || (1...128).contains(foundation!))
             && (shelter == nil || abs(Double(shelter!.x)-Double(x))<64 && abs(Double(shelter!.z)-Double(z))<64 && (0...300).contains(shelter!.y))
-            && (connections == nil || anchors != nil && connections!.count == anchors!.count-1 && connections!.allSatisfy {$0.count<=2048 && $0.allSatisfy {abs(Double($0.x)-Double(x))<192 && abs(Double($0.z)-Double(z))<480 && (-55...300).contains($0.y)}}) }
+            && (connections == nil || anchors != nil && connections!.count == anchors!.count-1 && connections!.allSatisfy {$0.count<=2048 && $0.allSatisfy {abs(Double($0.x)-Double(x))<192 && abs(Double($0.z)-Double(z))<480 && (-55...300).contains($0.y)}})
+            && (joins == nil || version == 3 && joins!.count<=8192 && joins!.allSatisfy {abs(Double($0.x)-Double(x))<192 && abs(Double($0.z)-Double(z))<480 && (-55...300).contains($0.y)}) }
     }
     struct Stop {
         let point: SCNVector3
@@ -39,20 +60,20 @@ struct Trail {
     var entrance: SCNVector3 { route.first!.point }
     var portal: SCNVector3 { route.last!.point }
 
+    static func coverage(_ record: Record) -> Set<Chunk> {
+        var anchors = record.layout.anchors!
+        anchors.append(contentsOf:record.connections?.flatMap {$0} ?? [])
+        anchors.append(contentsOf:record.joins ?? [])
+        if let shelter = record.shelter {anchors.append(shelter)}
+        let first = WorldData.key(anchors.map(\.x).min()!-26,anchors.map(\.z).min()!-26)
+        let last = WorldData.key(anchors.map(\.x).max()!+26,anchors.map(\.z).max()!+26)
+        return Set((first.x...last.x).flatMap {x in (first.z...last.z).map {Chunk(x:x,z:$0)}})
+    }
+
     init(_ input: Record) {
         precondition(input.valid)
-        var record = input
-        let end = record.kind == "end", base = max(-44,record.y-(end ? 77 : 62))
-        let levels = end ? [record.y,base+40,base+25,base+16,base+7,base,base-1,base-2,base-2,base-3,base-5,base-5,base-5]
-            : [record.y,base+30,base+17,base+7,base+2,base,base]
-        if record.anchors == nil {
-            record.anchors = levels.enumerated().map { index,y in
-                let x = index == 0 ? 0 : Int((Terrain.random(index,13,seed:record.seed)-0.5)*48)
-                let z = index*30+(index == 0 ? 0 : Int(Terrain.random(index,17,seed:record.seed)*9))
-                return Cell(x:record.x+x,y:y,z:record.z+z)
-            }
-        }
-        record.version = 2
+        let record = input.layout, end = record.kind == "end"
+        let natural = record.version == 3
         self.record = record
         let centres = record.anchors!
         let titles = end ? ["Follow the eyes of Ender","Ravine cracks","The old mineshaft","Forgotten dungeon",
@@ -79,17 +100,17 @@ struct Trail {
             } } }
         }
         for (index,c) in centres.enumerated() {
-            let natural = !end || index<5
-            if natural {
+            if !natural && (!end || index<5) {
                 let wide = index == 0 ? 6 : index == 1 ? 13 : index == 3 ? 19 : 15
                 cavern(Cell(x:c.x,y:c.y+4,z:c.z),wide,index == 1 && end ? 19 : 10,wide+3)
             }
         }
+        for cell in record.joins ?? [] {cavern(Cell(x:cell.x,y:cell.y+1,z:cell.z),2,3,2)}
         // Existing clear cave connections are persisted; missing connections use seeded curved erosion
         var links: [[SCNVector3]] = []
         for index in 0..<(centres.count-1) {
             let a = centres[index], last = centres[index+1]
-            let b = index == centres.count-2 ? Cell(x:last.x,y:last.y+1,z:last.z-(end ? 4 : 2)) : last
+            let b = index == centres.count-2 ? record.entry : last
             if let connection = record.connections?[index], connection.count>=2 {
                 links.append(connection.map {.init(Double($0.x)+0.5,Double($0.y)+1.62,Double($0.z)+0.5)})
                 continue
@@ -106,8 +127,8 @@ struct Trail {
                 let y = Double(a.y)+Double(b.y-a.y)*ease
                 let c = Cell(x:Int(x.rounded()),y:Int(y.rounded()),z:Int(z.rounded()))
                 if step%2 == 0 || step == count {
-                    let radius = 3+Int(random(step,index)*3)
-                    cavern(Cell(x:c.x,y:c.y+3,z:c.z),radius,4+Int(random(index,step)*3),radius)
+                    let radius = natural ? 2 : 3+Int(random(step,index)*3)
+                    cavern(Cell(x:c.x,y:c.y+(natural ? 1 : 3),z:c.z),radius,natural ? 3 : 4+Int(random(index,step)*3),radius)
                 }
                 points.append(.init(x+0.5,y+1.62,z+0.5))
             }
@@ -196,16 +217,7 @@ struct Trail {
             for x in -9...(-4) {put(local(5,x,0,-8),"redstone_wire"); put(local(5,x,-1,-8),"obsidian")}
             put(local(5,-9,0,-7),"lever"); put(local(5,-4,0,-7),"redstone_lamp")
         }
-        // Recheck the full camera envelope after furnishing, keeping bends clear without box tunnels
         for (index,points) in links.enumerated() {
-            for (a,b) in zip(points,points.dropFirst()) {
-                let count = max(1,Int(ceil(hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y)/0.25)))
-                for step in 0...count {
-                    let t = Double(step)/Double(count)
-                    let x = Int(floor(a.x+(b.x-a.x)*t)), y = Int(floor(a.y+(b.y-a.y)*t-1.62)), z = Int(floor(a.z+(b.z-a.z)*t))
-                    for dx in -1...1 {for dz in -1...1 {for dy in 0...2 {put(Cell(x:x+dx,y:y+dy,z:z+dz),"air")}}}
-                }
-            }
             route += points.map {Stop(point:$0,title:titles[index+1])}
         }
         if end {
@@ -227,6 +239,21 @@ struct Trail {
             let c = centres.last!
             route.append(Stop(point:.init(Double(c.x)+0.5,Double(c.y)+2.62,Double(c.z)+2.5),title:"Entering the Nether"))
         }
+        // Sweep the complete route after furnishing, including the approach through the portal frame
+        for (a,b) in zip(route,route.dropFirst()) {
+            let a = a.point, b = b.point
+            let count = max(1,Int(ceil(hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y)/0.25)))
+            for step in 0...count {
+                let t = Double(step)/Double(count)
+                let x = a.x+(b.x-a.x)*t, y = a.y+(b.y-a.y)*t-1.62, z = a.z+(b.z-a.z)*t
+                let xs = natural ? Int(floor(x-0.31))...Int(floor(x+0.31)) : (Int(floor(x))-1)...(Int(floor(x))+1)
+                let zs = natural ? Int(floor(z-0.31))...Int(floor(z+0.31)) : (Int(floor(z))-1)...(Int(floor(z))+1)
+                for px in xs {for pz in zs {for py in Int(floor(y))...Int(floor(y+(natural ? 1.81 : 2))) {
+                    let cell = Cell(x:px,y:py,z:pz)
+                    if blocks[cell].map({["portal","end_portal"].contains($0.name)}) != true {put(cell,"air")}
+                } } }
+            }
+        }
         if let house = record.shelter {
             for x in -4...4 {for z in -4...4 {for y in -(record.foundation ?? 8)...5 {
                 let cell = Cell(x:house.x+x,y:house.y+y,z:house.z+z)
@@ -244,9 +271,13 @@ struct Trail {
         route[0] = Stop(point:route[0].point,title:titles[0])
     }
 
-    static func plan(_ record: Record, data: WorldData) -> Trail {
-        if record.version == 2 {return Trail(record)}
-        var record = Trail(record).record
+    static func plan(_ record: Record, data source: WorldData, cancelled: () -> Bool = {false}) throws -> Trail {
+        guard !cancelled() else {throw CancellationError()}
+        guard record.valid else {throw ChunkError.format}
+        if record.version == 3, record.connections?.allSatisfy({!$0.isEmpty}) == true,
+           record.connections?.last?.last == record.entry {return Trail(record)}
+        var data = source; data.edits = [:]; data.columns = [:]
+        var record = record.layout
         let entrance = record.anchors![0].point
         let nearby = record.kind == "end" ? chests(data:data,near:entrance).filter {cell in
             data.surface(cell.x,cell.z).map {cell.y>$0-8} ?? false
@@ -276,9 +307,10 @@ struct Trail {
         }
         var centres = record.anchors!
         for index in 1..<centres.count where index<(record.kind == "end" ? 5 : 6) {
+            guard !cancelled() else {throw CancellationError()}
             let c = centres[index]
             var best: (Cell,Double)?
-            for dx in stride(from:-12,through:12,by:3) {for dz in stride(from:-12,through:12,by:3) {for dy in stride(from:-9,through:9,by:3) {
+            for dx in stride(from:-24,through:24,by:3) {for dz in stride(from:-24,through:24,by:3) {for dy in stride(from:-12,through:12,by:3) {
                 let cell = Cell(x:c.x+dx,y:c.y+dy,z:c.z+dz)
                 guard let floor = data.standing(at:cell.point,radius:0.3,height:1.8),
                       data.surface(cell.x,cell.z).map({Double($0)>floor.y+5}) == true else {continue}
@@ -288,10 +320,27 @@ struct Trail {
             if let best {centres[index] = best.0}
         }
         record.anchors = centres
-        record.connections = zip(centres,centres.dropFirst()).map { a,b in
+        var joins = Set<Cell>()
+        record.connections = try zip(centres,centres.dropFirst()).enumerated().map { index,pair in
+            guard !cancelled() else {throw CancellationError()}
+            let a = pair.0, b = index == centres.count-2 ? record.entry : pair.1
             let start = SCNVector3(a.point.x,a.point.y+1.62,a.point.z), end = SCNVector3(b.point.x,b.point.y+1.62,b.point.z)
-            return path(data:data,from:start,to:end)?.map {Cell(x:Int(floor($0.x)),y:Int(floor($0.y-1.62+0.01)),z:Int(floor($0.z)))} ?? []
+            let route = path(data:data,from:start,to:end,cancelled:cancelled) ?? path(data:data,from:start,to:end,excavating:true,cancelled:cancelled)
+            guard !cancelled() else {throw CancellationError()}
+            if let route {
+                for (a,b) in zip(route,route.dropFirst()) {
+                    let steps = max(1,Int(ceil(hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y))))
+                    for step in 0...steps {
+                        let t = Double(step)/Double(steps), cell = Cell(x:Int(floor(a.x+(b.x-a.x)*t)),y:Int(floor(a.y+(b.y-a.y)*t-1.62+0.01)),z:Int(floor(a.z+(b.z-a.z)*t)))
+                        if !data.vacant(cell.point) {joins.insert(cell)}
+                    }
+                }
+            }
+            return route?.map {Cell(x:Int(floor($0.x)),y:Int(floor($0.y-1.62+0.01)),z:Int(floor($0.z)))} ?? []
         }
+        record.version = 3; record.joins = joins.sorted {($0.x,$0.y,$0.z)<($1.x,$1.y,$1.z)}
+        guard !cancelled() else {throw CancellationError()}
+        guard record.valid else {throw ChunkError.format}
         return Trail(record)
     }
     static func anchor(data: WorldData, eye: SCNVector3, destination: World, seed: String) -> Record? {
@@ -379,10 +428,10 @@ struct Trail {
         return result
     }
 
-    static func path(data: WorldData, from start: SCNVector3, to end: SCNVector3) -> [SCNVector3]? {
+    static func path(data: WorldData, from start: SCNVector3, to end: SCNVector3, excavating: Bool = false, cancelled: () -> Bool = {false}) -> [SCNVector3]? {
         func cell(_ eye: SCNVector3) -> Cell {Cell(x:Int(floor(eye.x)),y:Int(floor(eye.y-1.62+0.1)),z:Int(floor(eye.z)))}
         let first = cell(start), last = cell(end)
-        guard data.vacant(last.point), hypot(Double(last.x-first.x),Double(last.z-first.z))<160 else {return nil}
+        guard (excavating || data.vacant(last.point)), hypot(Double(last.x-first.x),Double(last.z-first.z))<160 else {return nil}
         func estimate(_ cell: Cell) -> Double {Double(abs(cell.x-last.x)+abs(cell.y-last.y)+abs(cell.z-last.z))}
         var heap: [(Cell,Double)] = [(first,estimate(first))]
         func push(_ value: (Cell,Double)) {
@@ -403,6 +452,7 @@ struct Trail {
         }
         var previous: [Cell:Cell] = [:], costs: [Cell:Double] = [first:0], visited = Set<Cell>()
         while let current = pop(), visited.count<24_000 {
+            if visited.count & 255 == 0, cancelled() {return nil}
             if current == last {
                 var cells = [current], cursor = current
                 while cursor != first {guard let next = previous[cursor] else {return nil}; cells.append(next); cursor = next}
@@ -420,8 +470,13 @@ struct Trail {
             for (dx,dy,dz) in [(1,0,0),(-1,0,0),(0,0,1),(0,0,-1),(0,1,0),(0,-1,0)] {
                 let next = Cell(x:current.x+dx,y:current.y+dy,z:current.z+dz)
                 guard !visited.contains(next), next.y>=min(first.y,last.y)-4, next.y<=max(first.y,last.y)+12,
-                      abs(next.x-first.x)<160, abs(next.z-first.z)<160, data.vacant(next.point) else {continue}
-                let cost = costs[current,default:0]+(dy == 0 ? 1 : 1.2)
+                      abs(next.x-first.x)<160, abs(next.z-first.z)<160 else {continue}
+                let open = data.vacant(next.point)
+                if !open {
+                    guard excavating, let block = data.block(next.x,next.y,next.z), !block.fluid, block.name != "bedrock",
+                          data.block(next.x,next.y+1,next.z)?.fluid != true else {continue}
+                }
+                let cost = costs[current,default:0]+(dy == 0 ? 1 : 1.2)+(open ? 0 : 12)
                 if cost<costs[next,default:Double.infinity] {costs[next] = cost; previous[next] = current; push((next,cost+estimate(next)))}
             }
         }

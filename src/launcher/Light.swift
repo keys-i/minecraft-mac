@@ -230,7 +230,8 @@ struct Light {
         if name.contains("sea_pickle"), on("dead_bit") { emission = 0 }
         let loss: UInt8
         if name == "tinted_glass" { loss = 15 }
-        else if name == "water" || name == "flowing_water" || name == "ice" || name == "frosted_ice" { loss = 3 }
+        else if name == "water" || name == "flowing_water" || name == "bubble_column" { loss = 1 }
+        else if name == "ice" || name == "frosted_ice" { loss = 3 }
         else if name.contains("leaves") { loss = 1 }
         else { loss = block.opaque ? 15 : 0 }
         // shortcut: partial shapes transmit through their cell, refine when sub-voxel lighting is introduced

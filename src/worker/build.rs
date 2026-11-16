@@ -357,7 +357,7 @@ pub fn launcher(root: &Path) -> Result<PathBuf> {
         ("CFBundleDisplayName", NAME),
         ("CFBundlePackageType", "APPL"),
         ("CFBundleIconFile", "AppIcon"),
-        ("CFBundleVersion", "34"),
+        ("CFBundleVersion", "35"),
         ("CFBundleShortVersionString", "0.17.0"),
         ("LSMinimumSystemVersion", "15.0"),
         (

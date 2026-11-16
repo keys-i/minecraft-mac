@@ -111,6 +111,7 @@ src/launcher/Chunks.h
 src/launcher/Chunks.swift
 src/launcher/Generation.swift
 src/launcher/Expedition.swift
+src/launcher/Frame.swift
 src/launcher/Horizon.swift
 src/launcher/Crowd.swift
 src/launcher/Rig.swift

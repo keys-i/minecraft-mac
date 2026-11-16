@@ -67,11 +67,14 @@ Brief generator-lock contention waits for owned cleanup, with a 30-second deadli
 Immutable `WorldData` snapshots feed rendering, movement, resident clearance and the minimap
 The native decoder validates little-endian NBT palettes, packed storage, dimension heights and biome sections
 Meshes omit buried faces and share original materials from the installed game
+Palette solidity is resolved once; opaque and translucent partitions retain only their own vertex buffers
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
 The previous scene or installed panorama stays visible while nearby meshes prepare; Look around becomes available after the core scene is ready
 The normal horizon stays at the prepared chunk distance instead of collapsing into nearby fog; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
 Menu scenery targets 30 FPS and active Look around/journeys target 60 FPS, with a 30 FPS low-power limit
+The native display link drives input; measured submitted-frame intervals adapt only the 3D viewport between 75% and 100% resolution
+Menus and text retain native resolution, with bounded private frame diagnostics in `logs/scenery/frames.json`
 Hidden, unfocused or game-covered views stop continuous rendering; inactive streaming cancels owned generation, reads and mesh work
 The requested chunk radius is 8–512 in the three generated dimensions
 The nearest 8–16 chunks retain full voxel geometry and collision; farther terrain uses progressively coarser vertical solid bands from those same official chunks
@@ -92,9 +95,9 @@ Physical key bindings, camera capture and master volume remain in the native Min
 The biome title is 1.25 times the corner-credit type size and automatically scrolls when it overflows
 Reduced Motion removes animated transitions and marquee motion
 
-Portal routes connect existing clear caves where available and carve seeded irregular caverns around missing links in scenery overrides, without modifying the Bedrock database or any player world
+Portal routes prepare and retain their generated raw terrain before choosing existing caves and excavation-weighted small joins in scenery overrides, without modifying the Bedrock database or any player world
 At most two versioned route records per dimension retain the anchors, discovered cave connections and procedural seed after reopening
-Legacy records remain readable and a recovery copy precedes their first replacement
+Legacy records remain readable and a versioned recovery copy precedes replacement; migration rebuilds owned edits instead of accumulating older excavations
 The Nether path includes a nearby cave, mineshafts, dungeon, buried ruins and an obsidian lava-pool portal
 The End path follows a reachable house chest where available, then a ravine/mine approach, dungeon, lush/dripstone cavern, stronghold prisons, kitchens, shrine, sleeping rooms, aqueduct and hidden portal passage
 Routes share collision/meshing/map data and remain explorable; manual movement cancels the cinematic while retaining its structures
@@ -104,6 +107,8 @@ Residents use original installed geometry and textures, swept support/medium che
 Streamed and authored models share leg phases and the installed bat timing profile
 Native rabbit adult/baby tracks own crouching, takeoff and landing, with collision checked across each hop
 Declared geometry identifiers, calm visibility and native rest transforms are resolved before shared rigs and attention pivots are attached
+Horse neck attention retains its native limits; turtle and axolotl movement selects their installed swimming tracks
+Cube geometry and collision share size variants, with native delay ranges and a scenery approximation for runtime jump power and squish
 Drowned remain bottom walkers in ambient scenery; amphibious pose selection distinguishes wet support from free water
 Authored species awareness selects a 10–40% chance per eight-second attention interval
 This is scenery AI, not a reproduction of the complete Minecraft behaviour/combat engine
@@ -116,7 +121,9 @@ The earlier `Adventure`, `Terrain` and `Passage` implementation remains for cust
 Archive readers are bounded; newer versioned packs override older entries across PNG/TGA formats and geometry filenames
 Loose same-pack files take precedence, partial catalog definitions inherit unchanged fields, and path arrays support dictionary entries
 Grass colour-mask alpha selects tint while preserving opaque dirt, shortened path sides use cropped UVs, and plants use cutout geometry
-Block families share opaque, cutout, blend and fluid policies; waterlogged cells retain secondary water and complete-cell edits clear it
+Block families share opaque, cutout, blend and fluid policies; cells retain secondary water and snow-covered vegetation, and complete-cell edits clear both
+Secondary vegetation uses one additional chunk mesh with primary-block context for placement and occlusion
+Fluids preserve raw biome colour/fog, crop shallow side UVs and orient flowing tops from the surface gradient
 Installed flipbook metadata drives cached square frames through one active scene clock
 Chunk vertices carry occluded skylight and blocklight; daylight updates material uniforms rather than rebuilding geometry
 No Minecraft art, music, game payload or account data is included in source exports

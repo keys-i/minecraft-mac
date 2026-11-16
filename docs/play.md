@@ -70,6 +70,7 @@ Entering Look around interrupts the tour and leaves the same caves and ruins exp
 The main menu groups Play and Settings in the centre, with one corner spyglass
 Settings has Video, Audio, Keyboard & Mouse, Character and Accessibility categories
 Video controls background animation, automatic touring and chunk distance
+Scenery adapts its 3D resolution between 75% and 100% under sustained frame or thermal pressure; menus and text stay sharp
 Audio has master volume; Keyboard & Mouse has sensitivity, inverted Y and all key bindings
 Each category has its own Reset defaults button
 Choose **Abandoned mineshaft** or **Stronghold · Portal room** in the area picker

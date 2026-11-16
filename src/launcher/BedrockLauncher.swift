@@ -504,15 +504,16 @@ private struct Scenery: View {
     let controls: Controls
     let activity: (Bool) -> Void
     @ObservedObject var launcher: Launcher
+    @State private var resolution = 1.0
 
     var body: some View {
         ZStack {
             if let poster = launcher.frames["panorama"] ?? launcher.poster { Image(nsImage:poster).resizable().scaledToFill() }
             #if LAUNCHER_TEST
             if let image = launcher.previewImage { Image(nsImage:image).resizable().scaledToFill() }
-            else { world }
+            else { viewport }
             #else
-            world
+            viewport
             #endif
             VStack(spacing:0) {
                 LinearGradient(colors:[.black.opacity(0.45),.clear],startPoint:.top,endPoint:.bottom).frame(height:130)
@@ -520,6 +521,14 @@ private struct Scenery: View {
                 LinearGradient(colors:[.clear,.black.opacity(0.65)],startPoint:.top,endPoint:.bottom).frame(height:250)
             }.allowsHitTesting(false)
         }.accessibilityHidden(true)
+    }
+
+    private var viewport: some View {
+        GeometryReader { geometry in
+            world.frame(width:geometry.size.width*resolution,height:geometry.size.height*resolution)
+                .scaleEffect(1/resolution,anchor:.topLeading)
+                .frame(width:geometry.size.width,height:geometry.size.height,alignment:.topLeading).clipped()
+        }
     }
 
     @ViewBuilder private var world: some View {
@@ -531,11 +540,11 @@ private struct Scenery: View {
                     cinematic:journey.passage != nil,arrived:{ world in
                         if launcher.journey.world != world { launcher.journey.select(world,animated:false) }
                         launcher.journey.skip()
-                    })
+                    },resolution:{ resolution = $0 })
             } else { Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
                 travel:travel,arrived:{ launcher.journey.area($0) },finish:finish,
                 renderDistance:renderDistance,seed:Seed.number(seed),farLands:farLands,location:location,activity:activity,report:report,
-                sensitivity:sensitivity,inverted:inverted,controls:controls,active:active) { launcher.sceneryFailed = true } }
+                sensitivity:sensitivity,inverted:inverted,controls:controls,active:active,resolution:{resolution = $0}) { launcher.sceneryFailed = true } }
         }
     }
 }

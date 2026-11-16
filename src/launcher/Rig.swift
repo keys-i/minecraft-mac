@@ -203,7 +203,7 @@ final class Rig {
                     let v = try vector(value)
                     return Frame(time:time,before:v,after:v,curved:false)
                 }.sorted { $0.time<$1.time }
-                guard frames.first?.time == 0, zip(frames,frames.dropFirst()).allSatisfy({ $0.0.time<$0.1.time }) else {throw AssetError.model}
+                guard zip(frames,frames.dropFirst()).allSatisfy({ $0.0.time<$0.1.time }) else {throw AssetError.model}
             }
         }
 
@@ -229,6 +229,7 @@ final class Rig {
         }
         let duration: Double
         let bones: [Bone]
+        let distance: Double?
 
         init(_ value: [String:Any]) throws {
             guard let length = value["animation_length"] as? NSNumber, CFGetTypeID(length) != CFBooleanGetTypeID(),
@@ -236,6 +237,14 @@ final class Rig {
                   let bones = value["bones"] as? [String:[String:Any]], !bones.isEmpty, bones.count<=32 else {throw AssetError.model}
             let duration = length.doubleValue
             self.duration = duration
+            if let raw = value["anim_time_update"] {
+                guard let expression = raw as? String else {throw AssetError.model}
+                switch expression.lowercased().filter({!$0.isWhitespace}) {
+                case "query.modified_distance_moved": distance = 1
+                case "0.5*query.modified_distance_moved": distance = 0.5
+                default: throw AssetError.model
+                }
+            } else {distance = nil}
             self.bones = try bones.keys.sorted().map { name in
                 let fields = bones[name]!
                 guard fields["scale"] == nil,
@@ -244,6 +253,10 @@ final class Rig {
                     position:fields["position"].map {try Channel($0,duration:duration)})
             }
         }
+
+        func time(distance: Double, elapsed: Double) -> Double {
+            max(0,self.distance.map {$0*distance} ?? elapsed).truncatingRemainder(dividingBy:duration)
+        }
     }
 
     struct Skip {
@@ -251,6 +264,17 @@ final class Rig {
         let duration: Double
         let delay: Double
         let distance: Double
+        let takeoff: Double
+        let landing: Double
+        let variation: Double
+
+        init(height: Double, duration: Double, delay: Double, distance: Double,
+             takeoff: Double = 1.0/6, landing: Double = 8.0/9, variation: Double = 0) {
+            self.height = height; self.duration = duration; self.delay = delay; self.distance = distance
+            self.takeoff = takeoff; self.landing = landing; self.variation = variation
+        }
+
+        func pause(_ fraction: Double) -> Double {delay+variation*(2*min(1,max(0,fraction))-1)}
     }
 
     struct Hop {
@@ -259,8 +283,8 @@ final class Rig {
         let skip: Skip
 
         func point(_ phase: Double) -> SCNVector3 {
-            // Native rabbit tracks crouch before takeoff and extend through landing
-            let t = min(1,max(0,(phase-1.0/6)/(8.0/9-1.0/6)))
+            // Rabbits crouch before takeoff; scenery cube arcs use the whole interval
+            let t = min(1,max(0,(phase-skip.takeoff)/(skip.landing-skip.takeoff)))
             return .init(start.x+(end.x-start.x)*t,start.y+(end.y-start.y)*t+4*skip.height*t*(1-t),start.z+(end.z-start.z)*t)
         }
 
@@ -285,18 +309,47 @@ final class Rig {
     private let species: Species
     private let clip: Clip?
     private let joints: [Joint]
+    private let swim: Clip?
+    private let swimJoints: [Joint]
+    private let wade: Clip?
+    private let wadeJoints: [Joint]
+    private let flippers: [(SCNNode,simd_quatf,Int)]
+    private let slices: [(SCNNode,SCNVector3,Double)]
+    private weak var model: SCNNode?
+    private let scale: SCNVector3
+    private let baby: Bool
+    private let size: Int
     private let weight: Double
     private var resting = true
     let legs: [(SCNNode,SCNVector3,Double)]
 
-    init(_ model: SCNNode, species: Species, clip: Clip? = nil, weight: Double = 1) throws {
-        self.species = species; self.clip = clip; self.weight = weight
-        legs = clip == nil ? Self.legs(model) : []
-        joints = try clip?.bones.map { track in
-            guard let node = model.childNode(withName:track.name,recursively:true) else {throw AssetError.model}
-            node.removeAllActions()
-            return Joint(node:node,rotation:node.eulerAngles,position:node.position,track:track)
-        } ?? []
+    init(_ model: SCNNode, species: Species, clip: Clip? = nil, swim: Clip? = nil, wade: Clip? = nil,
+         baby: Bool = false, weight: Double = 1, size: Int = 1) throws {
+        self.species = species; self.clip = clip; self.swim = swim; self.wade = wade; self.weight = weight
+        self.model = model; scale = model.scale; self.baby = baby; self.size = size
+        let legs = clip == nil ? Self.legs(model) : []
+        self.legs = legs
+        func bind(_ clip: Clip?) throws -> [Joint] {
+            try clip?.bones.map { track in
+                guard let node = model.childNode(withName:track.name,recursively:true) else {throw AssetError.model}
+                node.removeAllActions()
+                return Joint(node:node,rotation:node.eulerAngles,position:node.position,track:track)
+            } ?? []
+        }
+        joints = try bind(clip); swimJoints = try bind(swim); wadeJoints = try bind(wade)
+        flippers = species == .turtle ? legs.compactMap { node,_,_ in
+            guard let index = node.name?.last?.wholeNumberValue, (0...3).contains(index) else {return nil}
+            return (node,node.simdOrientation,index)
+        } : []
+        var slices: [(SCNNode,SCNVector3,Double)] = []
+        if species == .magma {
+            model.enumerateChildNodes { node,_ in
+                guard let name = node.name?.lowercased(), name.hasPrefix("bodycube_"),
+                      let index = name.last?.wholeNumberValue, index != 3 else {return}
+                slices.append((node,node.position,Double(3-index)))
+            }
+        }
+        self.slices = slices
     }
 
     static func legs(_ model: SCNNode) -> [(SCNNode,SCNVector3,Double)] {
@@ -316,13 +369,109 @@ final class Rig {
 
     @discardableResult static func gaze(_ model: SCNNode) -> SCNNode? {
         if let gaze = model.childNode(withName:"head-gaze",recursively:true) {return gaze}
-        guard let head = model.childNode(withName:"head",recursively:true), let parent = head.parent else {return nil}
+        var heads: [SCNNode] = [], necks: [SCNNode] = []
+        model.enumerateChildNodes { node,_ in
+            var ancestor = node.parent
+            while let parent = ancestor, parent !== model {
+                if parent.name == "jockey-rider" {return}
+                ancestor = parent.parent
+            }
+            if node.name?.lowercased() == "head" {heads.append(node)}
+            if node.name == "Neck" {necks.append(node)}
+        }
+        let targets = necks.isEmpty ? heads : necks
+        guard let head = targets.first, let parent = head.parent else {return nil}
         let pivot = SCNNode(); pivot.name = "head-gaze"; pivot.position = head.position
-        parent.addChildNode(pivot); pivot.addChildNode(head); head.position = SCNVector3Zero
+        parent.addChildNode(pivot)
+        // Texture overlays share the same attention pivot instead of leaving a second stationary head
+        for head in targets {
+            let local = simd_inverse(pivot.simdWorldTransform)*head.simdWorldTransform
+            pivot.addChildNode(head); head.simdTransform = local
+        }
         return pivot
     }
 
-    func apply(distance: Double, phase: Double? = nil) {
+    // Conjugate attention through the parent bind so a rotated body cannot turn yaw into roll
+    static func look(_ pivot: SCNNode, actor: SCNNode, yaw: Double, pitch: Double, seconds: Double) {
+        guard let parent = pivot.parent else {return}
+        let body = actor.simdWorldOrientation, basis = parent.simdWorldOrientation
+        let limit = pivot.childNodes.contains(where:{$0.name == "Neck"}) ? 20*Double.pi/180 : 1.35
+        let elevation = min(0.65,limit)
+        let turn = simd_quatf(angle:Float(min(limit,max(-limit,yaw))),axis:.init(0,1,0))
+            * simd_quatf(angle:Float(-min(elevation,max(-elevation,pitch))),axis:.init(1,0,0))
+        let target = basis.inverse*body*turn*body.inverse*basis
+        pivot.simdOrientation = simd_slerp(pivot.simdOrientation,target,Float(1-exp(-max(0,seconds)*6)))
+    }
+
+    static func face(_ actor: SCNNode, x: Double, z: Double) {
+        guard hypot(x,z)>0.00001 else {return}
+        let yaw = actor.eulerAngles.y, delta = atan2(x,z)-yaw
+        actor.eulerAngles = .init(0,yaw+atan2(sin(delta),cos(delta)),0)
+    }
+
+    private func sample(_ joints: [Joint], at time: Double, pitch: Double = 0) {
+        let radians = Double.pi/180
+        for joint in joints {
+            if let channel = joint.track.rotation {
+                let v = channel.sample(time), b = joint.rotation
+                joint.node.eulerAngles = .init(b.x-v.x*radians+(joint.track.name == "body" ? pitch : 0),b.y+v.y*radians,b.z-v.z*radians)
+            }
+            if let channel = joint.track.position {
+                let v = channel.sample(time), b = joint.position
+                joint.node.position = .init(b.x+v.x/16,b.y+v.y/16,b.z+v.z/16)
+            }
+        }
+    }
+
+    private func turtle(distance: Double, speed: Double, water: Bool) {
+        let radians = Double.pi/180
+        func angle(_ phase: Double, amplitude: Double) -> Double {min(90,max(-90,cos(phase*radians)*speed*amplitude))*radians}
+        for (node,base,index) in flippers {
+            let hind = index<2, reverse = index == 0 || index == 2
+            let phase = reverse ? 180.0 : 0
+            let axis: SIMD3<Float>
+            let value: Double
+            if !water {
+                axis = .init(0,1,0)
+                value = angle(distance*5*57.3+phase,amplitude:(hind ? 3 : 8)*57.3)
+            } else if baby {
+                axis = hind ? .init(0,0,1) : .init(0,1,0)
+                value = angle(distance*(hind ? 30 : 25)+phase,amplitude:hind ? 60 : 135)*(hind ? -1 : 1)
+            } else {
+                axis = hind ? .init(1,0,0) : .init(0,0,1)
+                let phase = index == 1 || index == 2 ? 180.0 : 0
+                value = -angle(distance*22.92+phase,amplitude:28.65)
+            }
+            node.simdOrientation = base*simd_quatf(angle:Float(value),axis:axis)
+        }
+    }
+
+    func swimming(distance: Double, time: Double, speed: Double, pitch: Double = 0) {
+        guard species == .turtle || swim != nil else {return}
+        resting = false
+        if let swim {sample(swimJoints,at:swim.time(distance:distance,elapsed:time),pitch:pitch)}
+        else {turtle(distance:distance,speed:speed,water:true)}
+    }
+
+    func apply(distance: Double, phase: Double? = nil, time: Double = 0, wet: Bool = false) {
+        if species.cube {
+            guard let phase else {idle(); return}
+            resting = false
+            // shortcut: a hop envelope substitutes runtime squish state while retaining the native deformation formulas
+            let squish = 0.35*sin(2*Double.pi*min(1,max(0,phase)))
+            let bounce = 1/(squish/(Double(size)*0.5+1)+1)
+            model?.scale = .init(scale.x*bounce,scale.y/bounce,scale.z*bounce)
+            for (node,position,factor) in slices {node.position.y = position.y+factor*max(0,squish)*1.7/16}
+            return
+        }
+        if species == .turtle {
+            resting = false; turtle(distance:distance,speed:weight,water:false); return
+        }
+        if species == .axolotl, let selected = wet ? wade : clip {
+            resting = false
+            sample(wet ? wadeJoints : joints,at:selected.time(distance:distance,elapsed:time))
+            return
+        }
         guard let clip, let phase else {
             if clip != nil {idle()}
             else {
@@ -336,17 +485,7 @@ final class Rig {
             return
         }
         resting = false
-        let time = min(1,max(0,phase))*clip.duration, radians = Double.pi/180
-        for joint in joints {
-            if let channel = joint.track.rotation {
-                let v = channel.sample(time), b = joint.rotation
-                joint.node.eulerAngles = .init(b.x-v.x*radians,b.y+v.y*radians,b.z-v.z*radians)
-            }
-            if let channel = joint.track.position {
-                let v = channel.sample(time), b = joint.position
-                joint.node.position = .init(b.x+v.x/16,b.y+v.y/16,b.z+v.z/16)
-            }
-        }
+        sample(joints,at:min(1,max(0,phase))*clip.duration)
     }
 
     func idle() {
@@ -354,5 +493,8 @@ final class Rig {
         resting = true
         for (leg,base,_) in legs {leg.eulerAngles = base}
         for joint in joints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
+        for joint in swimJoints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
+        for joint in wadeJoints {joint.node.eulerAngles = joint.rotation; joint.node.position = joint.position}
+        if species.cube {model?.scale = scale; for (node,position,_) in slices {node.position = position}}
     }
 }

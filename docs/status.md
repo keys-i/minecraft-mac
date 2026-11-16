@@ -4,13 +4,29 @@ This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
 notarization and clean-Mac installation have not been verified. Apple Developer
 membership is not required to publish source or build a local preview
 
-Status snapshot: October 21, 2026. The earlier native launcher source was merged in
+Status snapshot: October 23, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
 ## Minecraft Launcher 0.17.0
+
+### Build 35 candidate
+
+The corrected 0.17.0/build 35 candidate is prepared in `outputs/0.17.0-build35` beside the checkout
+It fixes native snowlogging and snow thickness, compact chunk meshes, fluid UVs and biome colours, and terrain-aware portal approaches
+The native input clock and adaptive 75–100% 3D viewport preserve full-resolution menus
+Natural portal routes retain their generated terrain and replace older owned route edits safely
+
+All 25 Rust unit checks, four integration checks, rustfmt, Clippy and the native installed-art suite pass
+A paired cached-world CPU probe measures 49-chunk horizon preparation at 197.37 ms, down from 4,565.38 ms
+These are construction measurements, not sustained interactive FPS or game performance
+The corrected package verifies 1,583 resource digests and strict deep signatures, with the authorised helper byte-identical to the installed helper
+Computer Use verifies the normal/fullscreen menu and merged Keyboard & Mouse settings
+Live Look around, journey playback, sustained FPS and thermal checks remain blocked by intermittent window-access failures during candidate testing
+The installed launcher remains build 32 and no player world or account has been replaced
+See the [build 35 evidence](test.md#build-35-loading-fluids-and-natural-routes) for methods and remaining limits
 
 ### Build 34 candidate
 

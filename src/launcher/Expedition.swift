@@ -39,8 +39,13 @@ struct Expedition: NSViewRepresentable {
     let activity: (Bool) -> Void
     let cinematic: Bool
     let arrived: (World) -> Void
+    var resolution: (Double) -> Void = { _ in }
 
     @MainActor final class Coordinator {
+        enum Preparation {
+            case chunks(Trail.Record,Set<Chunk>)
+            case ready(Trail,[Trail.Stop],SCNNode?,SCNNode,SCNNode,WorldData,[Chunk:Horizon.Tile])
+        }
         weak var view: FlightView?
         let chart: Chart
         let assets: Assets
@@ -90,6 +95,7 @@ struct Expedition: NSViewRepresentable {
         var waypoint = 0
         var pending: (World,Int)?
         var passage: Operation?
+        var planning: Trail.Record?
         var geometryRevision = 0
         var doors: [Door] = []
         var guide: SCNNode?
@@ -112,24 +118,25 @@ struct Expedition: NSViewRepresentable {
         var horizonMap = Horizon()
         var coverage = 0
         var cruise = 3.0
-        var skipping = false
         var portalCover: SCNNode?
         var streaming = true {
             didSet {
                 if streaming && !oldValue {
-                    if initial {visit()}
+                    if let pending, route.isEmpty {begin(pending.0)}
+                    else if initial {visit()}
                     else if let eye = view?.pointOfView?.position {updateRegion(at:eye,force:true)}
                 } else if !streaming && oldValue {
                     generation?.cancel(); generation = nil
                     reader?.cancel(); reader = nil
                     mesh?.cancel(); mesh = nil
+                    passage?.cancel(); passage = nil
                     horizonMap.cancel()
                 }
             }
         }
         var near: Int { min(16,radius) }
         func nearby(_ key: Chunk) -> Bool { region.map {Horizon.within(key,of:$0,radius:near)} ?? true }
-        func retained(_ key: Chunk) -> Bool {region.map {Horizon.within(key,of:$0,radius:near+1)} ?? true}
+        func retained(_ key: Chunk) -> Bool {prefetch.contains(key) || (region.map {Horizon.within(key,of:$0,radius:near+1)} ?? true)}
         func missing(_ key: Chunk) -> Bool {
             if retained(key) || prefetch.contains(key) {return data.chunks[key] == nil}
             guard let tile = horizonMap.tiles[key], let region else {return true}
@@ -153,7 +160,7 @@ struct Expedition: NSViewRepresentable {
                 }
                 pending = (world,biome); begin(world); return
             }
-            if pending != nil { passage?.cancel(); passage = nil; pending = nil; route = []; guide?.removeFromParentNode(); guide = nil; veil?.removeFromParentNode(); veil = nil; activity(false) }
+            if pending != nil { passage?.cancel(); passage = nil; pending = nil; planning = nil; prefetch = []; route = []; guide?.removeFromParentNode(); guide = nil; veil?.removeFromParentNode(); veil = nil; activity(false) }
             guard self.world != world || self.seed != seed else {
                 if self.biome != biome { self.biome = biome; visit() }
                 return
@@ -166,10 +173,11 @@ struct Expedition: NSViewRepresentable {
             reader?.cancel(); reader = nil
             horizonMap.clear(); coverage = 0
             halo = []; dirty = []; litMaterials = [:]; blocked = 0; reroutes = 0
-            continuation = nil; doorGroups = [:]; repairs = [:]; skipping = false
+            continuation = nil; doorGroups = [:]; repairs = [:]
             dragon = nil; healing = nil; crystals = []; greeting = false
             wasExploring = false; idleAim = .init(12,1,-22)
             passage?.cancel(); passage = nil; pending = nil; route = []; guide = nil; veil = nil; doors = []; plans = []; restored = false; prefetch = []; revisit = false
+            planning = nil
             population?.cancel(); population = nil; crowd = nil
             self.world = world; self.seed = seed; self.biome = biome
             data = WorldData(dimension:world.dimension!); nodes = [:]; wanted = []; region = nil
@@ -181,23 +189,34 @@ struct Expedition: NSViewRepresentable {
         func begin(_ destination: World) {
             guard passage == nil, let eye = view?.pointOfView?.position, let database else { return }
             target = nil; speed = 0; blocked = 0; reroutes = 0; activity(true); chart.error = nil; chart.message = "Finding a path beneath your world"
-            let snapshot = data, seed = seed, token = request, saved = plans
+            let snapshot = data, seed = seed, token = request, saved = plans, centre = region ?? .init(x:0,z:0), prepared = planning
             let operation = BlockOperation(), file = database.deletingLastPathComponent().appendingPathComponent("journeys-\(data.dimension).json")
             operation.addExecutionBlock { [weak self,weak operation] in
                 guard let self, let operation, !operation.isCancelled else { return }
-                let result = Result { () -> (Trail,[Trail.Stop],SCNNode?,SCNNode,SCNNode) in
+                let result = Result { () -> Preparation in
                     let kind = destination == .nether ? "nether" : "end"
-                    guard let record = saved.first(where:{$0.kind == kind}) ?? Trail.anchor(data:snapshot,eye:eye,destination:destination,seed:seed) else { throw ChunkError.database("Explore a little farther before entering this portal") }
-                    let trail = Trail.plan(record,data:snapshot)
-                    var approach = trail.approach(data:snapshot,eye:eye,chest:destination == .end)
-                    approach += trail.route
+                    guard let record = prepared ?? saved.first(where:{$0.kind == kind}) ?? Trail.anchor(data:snapshot,eye:eye,destination:destination,seed:seed) else { throw ChunkError.database("Explore a little farther before entering this portal") }
+                    let required = Trail.coverage(record)
+                    if required.contains(where:{snapshot.chunks[$0] == nil}) {return .chunks(record,required)}
+                    let trail = try Trail.plan(record,data:snapshot,cancelled:{operation.isCancelled})
                     var plans = saved.filter { $0.kind != kind }; plans.append(trail.record)
+                    // Replace owned overrides so a migrated route cannot retain its old excavations
+                    var rebuilt = snapshot; rebuilt.edits = [:]; rebuilt.columns = [:]
+                    for plan in plans {rebuilt.apply(plan.kind == kind ? trail.blocks : Trail(plan).blocks)}
+                    var approach = trail.approach(data:rebuilt,eye:eye,chest:destination == .end)
+                    approach += trail.route
+                    let changed = Set(snapshot.edits.keys).union(rebuilt.edits.keys)
+                    let tiles = snapshot.chunks.filter {changed.contains($0.key)}.mapValues {Horizon.Tile($0,near:centre,data:rebuilt)}
+                    guard !operation.isCancelled else {throw CancellationError()}
                     if (try? file.resourceValues(forKeys:[.isSymbolicLinkKey]).isSymbolicLink) == true { throw ChunkError.format }
-                    let backup = file.appendingPathExtension("v1")
-                    if saved.contains(where:{$0.version == nil}), FileManager.default.fileExists(atPath:file.path), !FileManager.default.fileExists(atPath:backup.path) {
+                    let backup = file.appendingPathExtension("v\(record.version ?? 1)")
+                    if record != trail.record, FileManager.default.fileExists(atPath:file.path), !FileManager.default.fileExists(atPath:backup.path) {
                         try FileManager.default.copyItem(at:file,to:backup)
                     }
-                    try JSONEncoder().encode(plans).write(to:file,options:[.atomic,.completeFileProtectionUnlessOpen])
+                    let bytes = try JSONEncoder().encode(plans)
+                    guard bytes.count<=2*1024*1024 else {throw ChunkError.format}
+                    guard !operation.isCancelled else {throw CancellationError()}
+                    try bytes.write(to:file,options:[.atomic,.completeFileProtectionUnlessOpen])
                     let guide: SCNNode?
                     if destination == .end {
                         let plane = SCNPlane(width:0.28,height:0.28); plane.firstMaterial = try self.assets.texture("textures/items/ender_eye")
@@ -207,18 +226,25 @@ struct Expedition: NSViewRepresentable {
                     let plane = SCNPlane(width:1.2,height:0.8); plane.firstMaterial = material
                     let veil = SCNNode(geometry:plane); veil.name = "portal-distortion"; veil.position.z = -0.3; veil.opacity = 0; veil.renderingOrder = 1000
                     Landscape.animate(veil,material:material)
-                    return (trail,approach,guide,try trail.decoration(assets:self.assets),veil)
+                    return .ready(trail,approach,guide,try trail.decoration(assets:self.assets),veil,rebuilt,tiles)
                 }
                 DispatchQueue.main.async {
                     guard !operation.isCancelled, self.request == token, !self.disposed else { return }
                     self.passage = nil
                     switch result {
                     case .failure(let error): self.chart.error = error.localizedDescription; self.chart.message = nil
-                    case .success(let (trail,route,guide,decoration,veil)):
+                    case .success(.chunks(let record,let required)):
+                        self.planning = record; self.prefetch = required
+                        self.generate(Array(required.filter {self.data.chunks[$0] == nil}))
+                    case .success(.ready(let trail,let route,let guide,let decoration,let veil,let rebuilt,let tiles)):
+                        self.planning = nil
                         self.plans.removeAll { $0.kind == trail.record.kind }; self.plans.append(trail.record)
-                        self.data.apply(trail.blocks); self.chart.install(self.data)
-                        let changed = Set(trail.blocks.keys.map { WorldData.key($0.x,$0.z) })
-                        self.prefetch = changed
+                        let changed = Set(self.data.edits.keys).union(rebuilt.edits.keys)
+                        self.data.edits = rebuilt.edits; self.data.columns = rebuilt.columns
+                        self.chart.install(self.data)
+                        for key in changed {self.horizonMap.tiles.removeValue(forKey:key)}
+                        self.horizonMap.insert(tiles)
+                        self.prefetch.formUnion(changed)
                         self.invalidate(changed)
                         self.route = route; self.waypoint = 0; self.guide = guide
                         let length = zip(route,route.dropFirst()).reduce(0.0) { sum,pair in
@@ -303,6 +329,7 @@ struct Expedition: NSViewRepresentable {
         func invalidate(_ changed: Set<Chunk>) {
             guard !changed.isEmpty else { return }
             geometryRevision += 1; mesh?.cancel(); mesh = nil
+            horizonMap.cancel()
             for key in changed {for dx in -1...1 {for dz in -1...1 {
                 let neighbour = Chunk(x:key.x+dx,z:key.z+dz)
                 if nodes[neighbour] != nil {dirty.insert(neighbour)}
@@ -347,7 +374,7 @@ struct Expedition: NSViewRepresentable {
 
         func load(_ chunks: [Chunk], manifest: URL, token: Int, discovered: Bool) {
             guard let database else { return }
-            let operation = BlockOperation(), dimension = data.dimension, restore = !restored, centre = region ?? .init(x:0,z:0)
+            let operation = BlockOperation(), dimension = data.dimension, restore = !restored, centre = region ?? .init(x:0,z:0), snapshot = data
             operation.addExecutionBlock { [weak self,weak operation] in
                 guard let self, let operation, !operation.isCancelled else { return }
                 let result = Result { () -> ([Chunk:VoxelChunk],[[String:Any]],[Trail],Set<Chunk>,[Chunk:Horizon.Tile]) in
@@ -367,10 +394,12 @@ struct Expedition: NSViewRepresentable {
                         let bytes = try Data(contentsOf:file)
                         guard bytes.count<=2*1024*1024 else { throw ChunkError.format }
                         let records = try JSONDecoder().decode([Trail.Record].self,from:bytes)
-                        guard records.count<=2, records.allSatisfy(\.valid) else { throw ChunkError.format }
+                        guard records.count<=2, Set(records.map(\.kind)).count == records.count, records.allSatisfy(\.valid) else { throw ChunkError.format }
                         trails = records.map(Trail.init)
                     }
-                    return (loaded,(value["destinations"] as? [[String:Any]] ?? []).filter { $0["dimension"] as? Int == dimension },trails,missing,loaded.mapValues {Horizon.Tile($0,near:centre)})
+                    var terrain = snapshot; terrain.chunks.merge(loaded) {_,new in new}
+                    for trail in trails {terrain.apply(trail.blocks)}
+                    return (loaded,(value["destinations"] as? [[String:Any]] ?? []).filter { $0["dimension"] as? Int == dimension },trails,missing,loaded.mapValues {Horizon.Tile($0,near:centre,data:terrain)})
                 }
                 DispatchQueue.main.async {
                     guard !operation.isCancelled, !self.disposed, self.request == token else { return }
@@ -382,7 +411,6 @@ struct Expedition: NSViewRepresentable {
                         self.data.chunks.merge(loaded.filter {self.retained($0.key)}) { _,new in new }; self.destinations = destinations
                         self.invalidate(changed)
                         self.horizonMap.insert(tiles)
-                        self.prefetch.subtract(loaded.keys)
                         if restore {
                             self.restored = true; self.plans = trails.map(\.record)
                             for trail in trails { self.data.apply(trail.blocks) }
@@ -394,6 +422,12 @@ struct Expedition: NSViewRepresentable {
                                 self.chart.error = "Some chunks couldn’t be saved; try again"; self.chart.message = nil; return
                             }
                             self.generate(Array(missing),refresh:missing); self.pump(); return
+                        }
+                        if self.planning != nil, let pending = self.pending {
+                            let missing = self.prefetch.filter {self.data.chunks[$0] == nil}
+                            if missing.isEmpty {self.begin(pending.0)}
+                            else {self.generate(Array(missing))}
+                            self.pump(); return
                         }
                         if !self.initial {self.greet()}
                         if discovered {
@@ -680,7 +714,6 @@ struct Expedition: NSViewRepresentable {
                 if !route.isEmpty, let pending {
                     if chart.error != nil || passage != nil {speed = 0}
                     else {
-                    if skipping {completeJourney(pending); return}
                     if waypoint>=route.count {
                         completeJourney(pending); return
                     }
@@ -821,16 +854,17 @@ struct Expedition: NSViewRepresentable {
             guard let scene = view?.scene else { return }
             let x = Int(floor(eye.x)), y = Int(floor(eye.y)), z = Int(floor(eye.z))
             let primary = data.block(x,y,z), medium = primary?.fluid == true ? primary : data.block(x,y,z,layer:1)
-            let fluid = medium?.name.replacingOccurrences(of:"flowing_",with:"")
+            let fluid = medium?.liquid
+            let water = assets.waterFog(data.nativeBiome(eye))
             scene.fogStartDistance = fluid == "lava" ? 0 : fluid == "water" ? 2 : horizon
-            scene.fogEndDistance = fluid == "lava" ? 3 : fluid == "water" ? 35 : horizon+32
-            scene.fogColor = fluid == "lava" ? Landscape.colour(0xC84009) : fluid == "water" ? Landscape.colour(0x245A92) : environmentFog
+            scene.fogEndDistance = fluid == "lava" ? 3 : fluid == "water" ? water?.distance ?? 35 : horizon+32
+            scene.fogColor = fluid == "lava" ? Landscape.colour(0xC84009) : fluid == "water" ? Landscape.colour(water?.colour ?? 0x245A92) : environmentFog
             view?.pointOfView?.camera?.zFar = Double(radius*16+32)
         }
 
         func skip() {
-            guard pending != nil else {return}
-            skipping = true
+            guard let pending else {return}
+            completeJourney(pending)
         }
 
         private func completeJourney(_ destination: (World,Int)) {
@@ -843,8 +877,9 @@ struct Expedition: NSViewRepresentable {
 
         func interrupt() {
             passage?.cancel(); passage = nil; route = []; pending = nil; target = nil; speed = 0; blocked = 0; reroutes = 0
+            planning = nil; prefetch = []
             guide?.removeFromParentNode(); guide = nil; veil?.removeFromParentNode(); veil = nil
-            portalCover?.removeFromParentNode(); portalCover = nil; skipping = false
+            portalCover?.removeFromParentNode(); portalCover = nil
             chart.message = nil
             if let world {arrived(world)}
             activity(false)
@@ -852,6 +887,7 @@ struct Expedition: NSViewRepresentable {
 
         func dispose() {
             disposed = true; request += 1
+            planning = nil; prefetch = []
             reader?.cancel(); reader = nil
             horizonMap.clear()
             generation?.cancel(); mesh?.cancel(); population?.cancel(); passage?.cancel(); generation = nil; mesh = nil; population = nil; passage = nil; crowd = nil; guide = nil; doors = []
@@ -890,6 +926,8 @@ struct Expedition: NSViewRepresentable {
         coordinator.radius = min(512,max(8,distance))
         coordinator.streaming = active
         view.controls = controls; view.sensitivity = Float(min(100,max(1,sensitivity)))*0.003; view.inverted = inverted
+        view.resolution = resolution
+        view.metrics = root.appendingPathComponent("logs/scenery/frames.json")
         view.finish = finish; view.exploring = exploring
         let animated = moving || active && exploring
         view.preferredFramesPerSecond = exploring || coordinator.pending != nil ? (ProcessInfo.processInfo.isLowPowerModeEnabled ? 30 : 60) : 30
