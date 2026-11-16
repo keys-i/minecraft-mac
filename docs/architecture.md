@@ -69,7 +69,7 @@ The native decoder validates little-endian NBT palettes, packed storage, dimensi
 Meshes omit buried faces and share original materials from the installed game
 Palette solidity is resolved once; opaque and translucent partitions retain only their own vertex buffers
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
-The previous scene or installed panorama stays visible while nearby meshes prepare; Look around becomes available after the core scene is ready
+The previous scene or installed panorama stays visible while the nearest 25 meshes and their 49-chunk lighting and collision halo prepare; Look around then becomes available while the selected horizon keeps streaming
 The normal horizon stays at the prepared chunk distance instead of collapsing into nearby fog; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
 Menu scenery targets 30 FPS and active Look around/journeys target 60 FPS, with a 30 FPS low-power limit

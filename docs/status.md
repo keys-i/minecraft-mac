@@ -12,6 +12,20 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
+### Build 36 candidate
+
+The 0.17.0/build 36 candidate is prepared in `outputs/0.17.0-build36` beside the checkout
+Look around now becomes available after the nearest 25 meshes and their 49-chunk lighting and collision halo are ready
+The selected 16–512 chunk horizon continues streaming after entry, so an unfinished outer chunk no longer keeps the control disabled indefinitely
+
+All 25 Rust unit checks, four integration checks, rustfmt, Clippy and the native synthetic suite pass
+The saved seed-10 world check installs the corrected entry scene at the generated village and retains a 256-block first-frame horizon
+The installed-art sweep passes 86 species, heroes, 43 areas and three passages
+The package verifies 1,583 resource digests and strict deep signatures, with the authorised helper byte-identical to the installed helper
+Live Look around input and outer-ring streaming still need checking after the active older launcher and generator have been quit normally
+The installed launcher remains build 32 and no player world, account or graphics setting has been replaced
+See the [build 36 evidence](test.md#build-36-look-around-readiness) for methods and remaining limits
+
 ### Build 35 candidate
 
 The corrected 0.17.0/build 35 candidate is prepared in `outputs/0.17.0-build35` beside the checkout

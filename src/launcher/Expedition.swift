@@ -135,6 +135,17 @@ struct Expedition: NSViewRepresentable {
             }
         }
         var near: Int { min(16,radius) }
+        var entry: Set<Chunk> {
+            guard let region else {return []}
+            return Set((-2...2).flatMap {dx in (-2...2).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+        }
+        var entryHalo: Set<Chunk> {
+            guard let region else {return []}
+            return Set((-3...3).flatMap {dx in (-3...3).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+        }
+        var entryReady: Bool {
+            !entry.isEmpty && entry.allSatisfy {nodes[$0] != nil} && entryHalo.allSatisfy {data.chunks[$0] != nil}
+        }
         func nearby(_ key: Chunk) -> Bool { region.map {Horizon.within(key,of:$0,radius:near)} ?? true }
         func retained(_ key: Chunk) -> Bool {prefetch.contains(key) || (region.map {Horizon.within(key,of:$0,radius:near+1)} ?? true)}
         func missing(_ key: Chunk) -> Bool {
@@ -311,7 +322,10 @@ struct Expedition: NSViewRepresentable {
             data.chunks = data.chunks.filter { retained($0.key) }
             let missing = wanted.union(halo).filter { self.missing($0) }
             if !missing.isEmpty {
-                let ordered = missing.sorted { hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z)) }
+                let first = initial ? missing.intersection(entryHalo) : []
+                let ordered = (first.isEmpty ? missing : first).sorted {
+                    hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z))
+                }
                 generate(ordered)
             }
             pump()
@@ -473,8 +487,7 @@ struct Expedition: NSViewRepresentable {
             guard let key = wanted.filter({nearby($0) && (nodes[$0] == nil || dirty.contains($0)) && data.chunks[$0] != nil}).min(by:{
                 hypot(Double($0.x-centre.x),Double($0.z-centre.z)) < hypot(Double($1.x-centre.x),Double($1.z-centre.z))
             }) else {
-                if initial && !installing && wanted.filter({nearby($0)}).allSatisfy({nodes[$0] != nil})
-                   && halo.allSatisfy({data.chunks[$0] != nil}) && generation == nil && !reading {
+                if initial && !installing && entryReady {
                     if let feet = spawn(near:home) {install(at:feet)}
                     else {chart.error = "No safe place was found here; choose another biome"}
                 }
@@ -509,8 +522,7 @@ struct Expedition: NSViewRepresentable {
                                 if let eye = view.pointOfView?.position { self.horizon = self.visibleDistance(at:eye); self.fog(at:eye) }
                             }
                             self.doorGroups[key] = Door.collect(node); self.doors = self.doorGroups.values.flatMap {$0}
-                            if self.initial, self.wanted.filter({self.nearby($0)}).allSatisfy({self.nodes[$0] != nil}),
-                               self.halo.allSatisfy({self.data.chunks[$0] != nil}), let feet = self.spawn(near:self.home) {self.install(at:feet)}
+                            if self.initial, self.entryReady, let feet = self.spawn(near:self.home) {self.install(at:feet)}
                         }
                     }
                     self.pump()

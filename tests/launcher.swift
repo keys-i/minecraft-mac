@@ -832,23 +832,31 @@ struct LauncherChecks {
         field.radius = 512; field.world = .overworld
         field.updateRegion(at:.init(0,100,0))
         precondition(field.radius == 512 && field.wanted.count == 33*33+17*8,"A 512-chunk target must keep its working queue bounded without changing the requested radius")
+        precondition(field.entry.count == 25 && field.entryHalo.count == 49,"Look around readiness keeps a bounded rendered core and data halo")
+        precondition(!field.entryReady,"Look around must wait for its playable core")
+        for key in field.entryHalo {field.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}
+        precondition(!field.entryReady,"Raw collision data alone must not enable Look around")
+        for key in field.entry {field.nodes[key] = SCNNode()}
+        precondition(field.entryReady,"Look around enables after the playable core and collision halo are ready")
         field.dispose()
         if let path = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_WORLD"] {
             let database = try Database(URL(fileURLWithPath:path)), chart = Chart(), view = FlightView(frame:NSRect(x:0,y:0,width:1040,height:760))
             let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
             coordinator.view = view; coordinator.world = .overworld
-            coordinator.home = .init(232.5,320,696.5); coordinator.region = .init(x:14,z:43)
-            coordinator.wanted = Set((-2...30).flatMap {x in (27...59).map {Chunk(x:x,z:$0)}})
-            coordinator.halo = Set((-3...31).flatMap {x in (26...60).map {Chunk(x:x,z:$0)}})
-            for key in coordinator.halo {
-                coordinator.data.chunks[key] = try database.chunk(key,dimension:0)!
+            let centre = Chunk(x:13,z:12)
+            coordinator.home = .init(216.5,320,200.5); coordinator.region = centre
+            coordinator.wanted = Set((-16...16).flatMap {dx in (-16...16).map {Chunk(x:centre.x+dx,z:centre.z+$0)}})
+            coordinator.halo = Set((-17...17).flatMap {dx in (-17...17).map {Chunk(x:centre.x+dx,z:centre.z+$0)}})
+            for key in coordinator.entryHalo {
+                guard let chunk = try database.chunk(key,dimension:0) else {fatalError("Entry halo chunk \(key) is missing from the saved world")}
+                coordinator.data.chunks[key] = chunk
             }
             coordinator.pump()
             let deadline = Date().addingTimeInterval(600)
             while coordinator.initial && chart.error == nil && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
             precondition(!coordinator.initial && chart.visible && view.scene != nil && view.pointOfView!.position.y>50,"A prepared sixteen-chunk scene must install a visible world")
-            precondition(coordinator.wanted.allSatisfy {coordinator.nodes[$0] != nil},"All core meshes must be ready before Look around is enabled")
-            precondition(coordinator.nodes.count == 33*33,"The lighting halo holds data without duplicate full and distant meshes")
+            precondition(coordinator.entry.allSatisfy {coordinator.nodes[$0] != nil},"The nearest 25 meshes must be ready before Look around is enabled")
+            precondition(coordinator.entryHalo.allSatisfy {coordinator.data.chunks[$0] != nil},"The entry lighting and collision halo must be loaded before Look around is enabled")
             precondition(view.scene!.fogStartDistance>=256 && view.scene!.fogEndDistance>view.scene!.fogStartDistance,"The first frame must retain the sixteen-chunk horizon")
             if let output = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_CAPTURE"] {
                 let image = view.snapshot(), bitmap = NSBitmapImageRep(data:image.tiffRepresentation!)!

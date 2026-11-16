@@ -5,6 +5,21 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 36 Look around readiness
+
+October 23, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
+All 25 Rust unit checks and four integration checks pass, with rustfmt and Clippy warnings denied
+The native synthetic suite checks that raw collision data alone cannot enable Look around and that readiness requires the nearest 25 rendered meshes plus a 49-chunk raw-data halo
+
+The optional saved-world check reads the generated seed-10 village at chunk 13,12 and installs its scene at `216.5, 74.62, 200.5`
+The first frame retains a 256-block horizon while outer chunks remain eligible for background streaming
+The same process passes the installed-art sweep of 86 species, heroes, 43 areas and three passages in 9.798 seconds
+
+The build 36 package verifies 1,583 resource digests and strict deep signatures with a measured minimum macOS version of 27.0
+Its authorised helper is byte-identical to the installed build 32 helper
+These checks establish the corrected readiness boundary and package integrity, not sustained interactive FPS, thermal behaviour or a complete 512-chunk preparation
+Live keyboard, mouse, minimap, Escape and continued outer-ring streaming remain to be checked after the active older launcher and generator have been quit normally
+
 ## Build 35 loading, fluids and natural routes
 
 October 23, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
