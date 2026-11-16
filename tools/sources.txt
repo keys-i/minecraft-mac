@@ -113,6 +113,11 @@ src/launcher/Generation.swift
 src/launcher/Expedition.swift
 src/launcher/Horizon.swift
 src/launcher/Crowd.swift
+src/launcher/Rig.swift
+src/launcher/Light.swift
+tests/light.swift
+tests/render.swift
+tests/rig.swift
 src/launcher/Trail.swift
 src/launcher/Network.c
 tests/cli.rs

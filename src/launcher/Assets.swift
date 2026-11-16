@@ -54,9 +54,33 @@ final class Assets: @unchecked Sendable {
     private var materials: [String: SCNMaterial] = [:]
     private var tilesets: [String: [SCNMaterial]] = [:]
     private var tables: [String: [String: Any]] = [:]
-    private var families: [String:(mask:Bool,blend:Bool)] = [:]
+    private var families: [String:(mask:Bool,blend:Bool,emissive:Bool)] = [:]
     private var origins: [String:Int] = [:]
     private var registeredUI = false
+    private var variants: [String:SCNMaterial] = [:]
+    private var rendering: [ObjectIdentifier:Block.Render] = [:]
+    private var models: [String:(definition:[String:Any],parent:String?,pack:Int,path:String)]?
+    private var controllers: [String:[String:[String:Any]]] = [:]
+    private struct Flipbook {
+        let frames: [Int]?
+        let interval: Double
+        let replicate: Int
+    }
+    private final class Playback {
+        let material: SCNMaterial
+        let images: [CGImage]
+        let frames: [Int]
+        let interval: Double
+        var current = -1
+
+        init(_ material: SCNMaterial, images: [CGImage], frames: [Int], interval: Double) {
+            self.material = material; self.images = images; self.frames = frames; self.interval = interval
+        }
+    }
+    private var flipbooks: [String:Flipbook]?
+    private let playbackLock = NSLock()
+    private var playback: [ObjectIdentifier:Playback] = [:]
+    private var scrolling: [ObjectIdentifier:SCNMaterial] = [:]
 
     init(data: URL, classic: Bool = false) throws {
         self.data = data
@@ -109,6 +133,7 @@ final class Assets: @unchecked Sendable {
             let face = try? self.texture("textures/blocks/stone")
             let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
             var frames: [String:NSImage] = [:]
+            frames["panorama"] = try? self.panorama()
             for name in ["hotbar_0","selected_hotbar_slot","title","icon_setting","sound_glyph","how_to_play_button_default","camera-small","spyglass","loading_bar",
                          "accessibility_glyph","keyboard_and_mouse_glyph","video_glyph","controller_glyph","achievements_pause_menu_icon",
                          "accessibility_glyph_color","keyboard_and_mouse_glyph_color","video_glyph_color","sound_glyph_color"] {
@@ -151,6 +176,20 @@ final class Assets: @unchecked Sendable {
             DispatchQueue.main.async { completion(images,stone,frames,font,splash) }
         }
         queue.addOperation(operation)
+    }
+
+    func panorama() throws -> NSImage? {
+        var panorama: (pack:Int,image:NSImage)?
+        for name in try names("textures/ui") where name.hasPrefix("panorama") && !name.contains("alternate")
+            && ["_0.png","_0.tga","_0.hdr"].contains(where:name.hasSuffix) {
+            let path = "textures/ui/"+name
+            let bytes = try file(path)
+            guard bytes.count<=16*1024*1024, let image = NSImage(data:bytes),
+                  let bitmap = image.cgImage(forProposedRect:nil,context:nil,hints:nil), bitmap.width<=4096, bitmap.height<=4096 else { continue }
+            let index = origins[path] ?? 0
+            if index>=(panorama?.pack ?? -1) { panorama = (index,NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))) }
+        }
+        return panorama?.image
     }
 
     func music() throws -> [String] {
@@ -219,14 +258,17 @@ final class Assets: @unchecked Sendable {
         return names
     }
 
-    func texture(_ path: String, tint: UInt32? = nil, animated: Bool = false, colourMask: Bool = false) throws -> SCNMaterial {
-        let key = path+"-"+(tint.map(String.init) ?? "none")+(animated ? "-animated" : "")+(colourMask ? "-mask" : "")
+    func texture(_ path: String, tint: UInt32? = nil, animated: Bool = false, colourMask: Bool = false,
+                 layer: Block.Render? = nil) throws -> SCNMaterial {
+        let motion = try animated || (path.hasPrefix("textures/blocks/") && books()[path] != nil)
+        let policy = layer ?? (path.hasPrefix("textures/blocks/") ? Block(name:(path as NSString).lastPathComponent).render : nil)
+        let key = path+"-"+(tint.map(String.init) ?? "none")+(motion ? "-animated" : "")+(colourMask ? "-mask" : "")+(policy.map { "-"+$0.rawValue } ?? "")
         if let material = materials[key] { return material }
         let data = try file([path+".png",path+".tga"])
         guard data.count <= 8*1024*1024, let image = NSImage(data:data),
               let decoded = image.cgImage(forProposedRect:nil,context:nil,hints:nil),
               decoded.width <= 2048, decoded.height <= 4096 else { throw AssetError.image }
-        var bitmap = !animated && path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
+        var bitmap = !motion && path.hasPrefix("textures/blocks/") && decoded.height > decoded.width && decoded.height % decoded.width == 0
             ? decoded.cropping(to:CGRect(x:0,y:0,width:decoded.width,height:decoded.width))! : decoded
         if let tint {
             guard let context = CGContext(data:nil,width:bitmap.width,height:bitmap.height,bitsPerComponent:8,bytesPerRow:bitmap.width*4,
@@ -273,7 +315,168 @@ final class Assets: @unchecked Sendable {
         // Minecraft cutouts must not hide the opaque mesh beneath them
         material.shaderModifiers = [.fragment: "if (_output.color.a < 0.1) { discard_fragment(); }"]
         material.isDoubleSided = true
+        if let policy { configure(material,layer:policy); rendering[ObjectIdentifier(material)] = policy }
+        if motion { try register(material,path:path) }
+        if path == "textures/entity/end_portal", policy == .fluid {
+            material.diffuse.contentsTransform = SCNMatrix4MakeScale(4,4,1)
+            playbackLock.lock(); scrolling[ObjectIdentifier(material)] = material; playbackLock.unlock()
+        }
         materials[key] = material
+        return material
+    }
+
+    private func configure(_ material: SCNMaterial, layer: Block.Render) {
+        material.readsFromDepthBuffer = true
+        material.writesToDepthBuffer = layer == .opaque || layer == .cutout
+        material.isDoubleSided = layer == .cutout || layer == .fluid
+        material.blendMode = layer == .opaque || layer == .cutout ? .replace : .alpha
+        if layer == .fluid { material.lightingModel = .constant }
+        var shaders = material.shaderModifiers ?? [:]
+        switch layer {
+        case .opaque: shaders[.fragment] = "_output.color.a = 1.0;"
+        case .cutout: shaders[.fragment] = "if (_output.color.a < 0.1) { discard_fragment(); } _output.color.a = 1.0;"
+        case .blend, .fluid: shaders.removeValue(forKey:.fragment)
+        }
+        material.shaderModifiers = shaders
+    }
+
+    private func variant(_ source: SCNMaterial, layer: Block.Render, rotated: Bool = false) -> SCNMaterial {
+        if !rotated && rendering[ObjectIdentifier(source)] == layer { return source }
+        let key = "\(ObjectIdentifier(source))-\(layer.rawValue)-\(rotated)"
+        if let material = variants[key] { return material }
+        let material = copy(source)
+        playbackLock.lock()
+        configure(material,layer:layer)
+        rendering[ObjectIdentifier(material)] = layer
+        if rotated { material.diffuse.contentsTransform = SCNMatrix4MakeRotation(.pi/2,0,0,1) }
+        playbackLock.unlock()
+        variants[key] = material
+        return material
+    }
+
+    private func copy(_ source: SCNMaterial) -> SCNMaterial {
+        playbackLock.lock()
+        let material = source.copy() as! SCNMaterial
+        if let sequence = playback[ObjectIdentifier(source)] {
+            playback[ObjectIdentifier(material)] = Playback(material,images:sequence.images,frames:sequence.frames,interval:sequence.interval)
+        }
+        if scrolling[ObjectIdentifier(source)] != nil { scrolling[ObjectIdentifier(material)] = material }
+        playbackLock.unlock()
+        rendering[ObjectIdentifier(material)] = rendering[ObjectIdentifier(source)]
+        return material
+    }
+
+    /// Lighting owns a variant so original actors and interface artwork retain their material
+    func lit(_ source: SCNMaterial) -> SCNMaterial {
+        let key = "lit-\(ObjectIdentifier(source))"
+        if let material = variants[key] { return material }
+        let material = copy(source)
+        playbackLock.lock()
+        Light.configure(material:material)
+        playbackLock.unlock()
+        variants[key] = material
+        return material
+    }
+
+    func overlay(end: Bool) throws -> SCNMaterial {
+        let key = end ? "overlay-end" : "overlay-nether"
+        if let material = variants[key] { return material }
+        let material = try copy(texture(end ? "textures/entity/end_portal" : "textures/blocks/portal",animated:true,layer:.fluid))
+        material.lightingModel = .constant
+        material.readsFromDepthBuffer = false; material.writesToDepthBuffer = false
+        variants[key] = material
+        return material
+    }
+
+    func void() -> SCNMaterial {
+        if let material = materials["end-void"] { return material }
+        let material = SCNMaterial()
+        material.name = "end-void"; material.diffuse.contents = NSColor.black
+        material.lightingModel = .constant; material.blendMode = .replace; material.isDoubleSided = true
+        materials["end-void"] = material
+        return material
+    }
+
+    private func books() throws -> [String:Flipbook] {
+        if let flipbooks { return flipbooks }
+        var result: [String:Flipbook] = [:]
+        for pack in resources {
+            let path = pack.appendingPathComponent("textures/flipbook_textures.json")
+            guard FileManager.default.fileExists(atPath:path.path) else { continue }
+            let data = try Data(contentsOf:path)
+            guard data.count<=2*1024*1024,
+                  let entries = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [[String:Any]],
+                  entries.count<=4096 else { throw AssetError.model }
+            for entry in entries {
+                guard let path = entry["flipbook_texture"] as? String, path.hasPrefix("textures/"),
+                      !path.split(separator:"/").contains(".."), !path.contains("\\") else { throw AssetError.model }
+                let ticks = (entry["ticks_per_frame"] as? NSNumber)?.doubleValue ?? 1
+                let replicate = entry["replicate"] as? Int ?? 1
+                let frames = entry["frames"] as? [Int]
+                guard ticks.isFinite, ticks>0, ticks<=1200, (1...16).contains(replicate), entry["frames"] == nil || frames != nil,
+                      frames == nil || (!frames!.isEmpty && frames!.count<=4096 && frames!.allSatisfy { $0>=0 && $0<4096 }) else { throw AssetError.model }
+                result[path] = Flipbook(frames:frames,interval:ticks/20,replicate:replicate)
+            }
+        }
+        flipbooks = result
+        return result
+    }
+
+    private func register(_ material: SCNMaterial, path: String) throws {
+        guard let contents = material.diffuse.contents, CFGetTypeID(contents as CFTypeRef) == CGImage.typeID else { return }
+        let image = contents as! CGImage
+        guard image.width>0, image.height>image.width, image.height%image.width == 0 else { return }
+        let count = image.height/image.width, book = try books()[path]
+        let frames = book?.frames ?? Array(0..<count)
+        guard count<=4096, frames.allSatisfy({$0<count}) else { throw AssetError.model }
+        let images = try (0..<count).map { index -> CGImage in
+            guard let frame = image.cropping(to:CGRect(x:0,y:index*image.width,width:image.width,height:image.width)) else { throw AssetError.image }
+            return frame
+        }
+        material.diffuse.contents = images[frames[0]]
+        if let replicate = book?.replicate, replicate>1 {
+            material.diffuse.contentsTransform = SCNMatrix4MakeScale(1/CGFloat(replicate),1/CGFloat(replicate),1)
+        }
+        playbackLock.lock()
+        playback[ObjectIdentifier(material)] = Playback(material,images:images,frames:frames,interval:book?.interval ?? 0.05)
+        playbackLock.unlock()
+    }
+
+    /// The active scene owns one clock; cached frame images preserve ordinary repeat UVs
+    func animate(at time: Double) {
+        guard time.isFinite, time>=0 else { return }
+        playbackLock.lock(); let sequences = Array(playback.values), portals = Array(scrolling.values); playbackLock.unlock()
+        for sequence in sequences {
+            let position = (time/sequence.interval).truncatingRemainder(dividingBy:Double(sequence.frames.count))
+            guard position.isFinite else { continue }
+            let step = Int(position)
+            let frame = sequence.frames[step]
+            guard frame != sequence.current else { continue }
+            playbackLock.lock()
+            sequence.material.diffuse.contents = sequence.images[frame]
+            sequence.current = frame
+            playbackLock.unlock()
+        }
+        if !portals.isEmpty {
+            var transform = SCNMatrix4MakeScale(4,4,1); transform.m41 = CGFloat(time/96); transform.m42 = CGFloat(time/128)
+            playbackLock.lock()
+            for material in portals { material.diffuse.contentsTransform = transform }
+            playbackLock.unlock()
+        }
+    }
+
+    func fluid(lava: Bool, biome: Biome = .meadow, flowing: Bool = false) throws -> SCNMaterial {
+        let water = lava ? nil : try self.water(biome)
+        let path = "textures/blocks/"+(lava ? "lava" : "water")+(flowing ? "_flow" : "_still")+(lava ? "" : "_grey")
+        let source = try texture(path,tint:water?.colour,animated:true,layer:lava ? .opaque : .fluid)
+        let key = "fluid-\(ObjectIdentifier(source))-\(water?.opacity ?? 1)"
+        if let material = variants[key] { return material }
+        let material = copy(source)
+        playbackLock.lock()
+        material.lightingModel = .constant
+        material.transparency = water?.opacity ?? 1
+        playbackLock.unlock()
+        variants[key] = material
         return material
     }
 
@@ -298,24 +501,25 @@ final class Assets: @unchecked Sendable {
         return item
     }
 
-    private func family(_ name: String) throws -> (mask:Bool,blend:Bool) {
+    private func family(_ name: String) throws -> (mask:Bool,blend:Bool,emissive:Bool) {
         if let found = families[name] { return found }
         let definitions: [String:Any]
         do {
             guard let entries = try json("materials/entity.material")["materials"] as? [String:Any] else { throw AssetError.model }
             definitions = entries
-        } catch AssetError.missing { return (false,false) }
-        var current = name, seen = Set<String>(), mask = false, blend = false
+        } catch AssetError.missing { return (false,false,false) }
+        var current = name, seen = Set<String>(), mask = false, blend = false, emissive = false
         while !current.isEmpty {
             guard seen.count < 16, seen.insert(current).inserted else { throw AssetError.model }
             guard let entry = definitions.first(where:{ $0.key.split(separator:":").first.map(String.init) == current }) else { break }
             guard let flags = entry.value as? [String:Any] else { throw AssetError.model }
             mask = mask || ((flags["defines"] as? [String] ?? [])+(flags["+defines"] as? [String] ?? [])).contains("USE_COLOR_MASK")
             blend = blend || ((flags["states"] as? [String] ?? [])+(flags["+states"] as? [String] ?? [])).contains("Blending")
+            emissive = emissive || current.contains("emissive")
             current = entry.key.split(separator:":").dropFirst().first.map(String.init) ?? ""
         }
-        families[name] = (mask,blend)
-        return (mask,blend)
+        families[name] = (mask,blend,emissive)
+        return (mask,blend,emissive)
     }
 
     func avatar(skin: CGImage, cape: CGImage?, slim: Bool) throws -> SCNNode {
@@ -382,8 +586,15 @@ final class Assets: @unchecked Sendable {
         guard let identifier = baby ? geometries["baby"] : geometries[key] ?? geometries["default"],
               let image = textures[skinKey] else { throw AssetError.model }
         var definition = try geometry(identifier, entity: name)
-        if name == "cat", var bones = definition["bones"] as? [[String:Any]] {
+        if ["cat","ocelot"].contains(name), !baby, var bones = definition["bones"] as? [[String:Any]] {
             for index in bones.indices where ["body","tail1","tail2"].contains(bones[index]["name"] as? String ?? "") && bones[index]["bind_pose_rotation"] == nil {
+                bones[index]["bind_pose_rotation"] = [90.0,0.0,0.0]
+            }
+            definition["bones"] = bones
+        }
+        if name == "polar_bear", !baby, var bones = definition["bones"] as? [[String:Any]] {
+            // The updated pack retains the vertical body cubes but omits their original bind
+            for index in bones.indices where bones[index]["name"] as? String == "body" && bones[index]["bind_pose_rotation"] == nil {
                 bones[index]["bind_pose_rotation"] = [90.0,0.0,0.0]
             }
             definition["bones"] = bones
@@ -467,7 +678,7 @@ final class Assets: @unchecked Sendable {
             material.diffuse.contents = image
         }
         let model = try node(definition,material:material)
-        if name == "cat" {
+        if ["cat","ocelot"].contains(name), !baby {
             model.childNode(withName:"tail1",recursively:true)?.eulerAngles.x += 51.57 * .pi/180
             model.childNode(withName:"tail2",recursively:true)?.eulerAngles.x -= 62 * .pi/180
         }
@@ -475,11 +686,6 @@ final class Assets: @unchecked Sendable {
         if name == "villager" || name == "villager_v2" && !baby || name == "wandering_trader", let arms = model.childNode(withName:"arms",recursively:true) {
             arms.position.y -= 1.0/16; arms.position.z -= 1.0/16
             arms.eulerAngles.x += 42.97 * .pi/180
-        }
-        if name == "stray" {
-            guard let overlay = geometries["overlay"], let path = textures["overlay"] else { throw AssetError.model }
-            let layer = try node(geometry(overlay,entity:name),material:texture(path))
-            layer.name = "stray-clothes"; model.addChildNode(layer)
         }
         if ["horse_v3","donkey_v3","mule_v3","zombie_horse_v3"].contains(name) {
             let key = (baby ? "baby_" : "")+["markings_none","markings_white","markings_whitefield","markings_whitedots","markings_blackdots"][variant%5]
@@ -531,7 +737,9 @@ final class Assets: @unchecked Sendable {
                 model.addChildNode(layer)
             }
         }
+        try calm(model,entity:name,identifier:identifier,description:description,baby:baby)
         assemble(model, name: name)
+        try Rig.rest(model,definition:definition,name:name,baby:baby,assets:self)
         model.name = name
         if let script = description["scripts"] as? [String: Any] {
             let scale = (script["scale"] as? NSNumber)?.doubleValue ?? Double(script["scale"] as? String ?? "") ?? 1
@@ -657,41 +865,167 @@ final class Assets: @unchecked Sendable {
         }
     }
 
-    private func geometry(_ identifier: String, entity: String, depth: Int = 0) throws -> [String: Any] {
-        guard depth < 8 else { throw AssetError.model }
-        let stem = (identifier.split(separator:".").dropFirst().first.map(String.init) ?? entity).replacingOccurrences(of:"_",with:"")
-        let prefix = entity.replacingOccurrences(of:"_",with:"")
-        let candidates = try names("models/entity").filter {
-            let name = $0.replacingOccurrences(of:"_",with:"")
-            return name.hasPrefix(stem) || name.hasPrefix(prefix) || name.hasPrefix("baby"+stem)
+    // Only the documented calm/baby booleans are interpreted; other Molang stays with the game
+    private func calm(_ expression: Any, baby: Bool) -> Bool? {
+        if let number = expression as? NSNumber { return number.doubleValue == 0 ? false : number.doubleValue == 1 ? true : nil }
+        guard let text = expression as? String, text.utf8.count<=512 else { return nil }
+        let characters = Array(text.lowercased()), values = ["true":true,"false":false,"1":true,"0":false,"query.is_baby":baby,
+            "query.is_sleeping":false,"query.is_saddled":false,"query.has_rider":false,"query.is_sheared":false,"variable.use_rolled_up_model":false]
+        var tokens: [String] = [], offset = 0
+        while offset<characters.count {
+            let c = characters[offset]
+            if c.isWhitespace { offset += 1; continue }
+            if c == "!" || c == "(" || c == ")" { tokens.append(String(c)); offset += 1; continue }
+            if c == "&" || c == "|" {
+                guard offset+1<characters.count, characters[offset+1] == c else { return nil }
+                tokens.append(String([c,c])); offset += 2; continue
+            }
+            let first = offset
+            while offset<characters.count && (characters[offset].isLetter || characters[offset].isNumber || characters[offset] == "." || characters[offset] == "_") { offset += 1 }
+            guard offset>first else { return nil }
+            tokens.append(String(characters[first..<offset]))
         }
-            .map { "models/entity/"+$0 } + ["models/mobs.json"]
-        let definitions = try candidates.compactMap { path -> (String,[String:Any])? in
-            do { return (path,try json(path)) }
-            catch AssetError.missing { return nil }
-        }.sorted {
-            let a = origins[$0.0] ?? -1, b = origins[$1.0] ?? -1
-            return a == b ? $0.0<$1.0 : a>b
+        guard tokens.count<=128 else { return nil }
+        var index = 0
+        func atom(_ depth: Int) -> Bool? {
+            guard depth<16, index<tokens.count else { return nil }
+            let token = tokens[index]; index += 1
+            if token == "!" { return atom(depth+1).map { !$0 } }
+            if token == "(" {
+                guard let result = disjunction(depth+1), index<tokens.count, tokens[index] == ")" else { return nil }
+                index += 1; return result
+            }
+            return values[token]
         }
-        for (_,object) in definitions {
-            if let definition = object[identifier] as? [String: Any] { return definition }
-            if let modern = object["minecraft:geometry"] as? [[String: Any]],
-               let definition = modern.first(where: { ($0["description"] as? [String: Any])?["identifier"] as? String == identifier }) { return definition }
-            if let entry = object.first(where: { $0.key.split(separator:":").first.map(String.init) == identifier }),
-               let derived = entry.value as? [String: Any], let parent = entry.key.split(separator:":").dropFirst().first {
-                var base = try geometry(String(parent),entity:entity,depth:depth+1)
-                var bones = base["bones"] as? [[String: Any]] ?? []
-                for child in derived["bones"] as? [[String: Any]] ?? [] {
-                    if let index = bones.firstIndex(where: { $0["name"] as? String == child["name"] as? String }) {
-                        let cubes = (bones[index]["cubes"] as? [[String: Any]] ?? []) + (child["cubes"] as? [[String: Any]] ?? [])
-                        bones[index].merge(child) { _,value in value }; bones[index]["cubes"] = cubes
-                    } else { bones.append(child) }
+        func conjunction(_ depth: Int) -> Bool? {
+            guard var result = atom(depth) else { return nil }
+            while index<tokens.count && tokens[index] == "&&" {
+                index += 1; guard let next = atom(depth) else { return nil }; result = result && next
+            }
+            return result
+        }
+        func disjunction(_ depth: Int) -> Bool? {
+            guard var result = conjunction(depth) else { return nil }
+            while index<tokens.count && tokens[index] == "||" {
+                index += 1; guard let next = conjunction(depth) else { return nil }; result = result || next
+            }
+            return result
+        }
+        guard let result = disjunction(0), index == tokens.count else { return nil }
+        return result
+    }
+
+    private func calm(_ model: SCNNode, entity: String, identifier: String, description: [String:Any], baby: Bool) throws {
+        let entries = description["render_controllers"] as? [Any] ?? []
+        guard !entries.isEmpty else { return }
+        guard entries.count<=64 else { throw AssetError.model }
+        if controllers[entity] == nil {
+            let prefix = entity.replacingOccurrences(of:"_",with:"")
+            let paths = try names("render_controllers").filter { $0.hasSuffix(".json") && $0.replacingOccurrences(of:"_",with:"").hasPrefix(prefix) }.map {"render_controllers/"+$0}
+            guard paths.count<=64 else { throw AssetError.model }
+            let documents = try paths.map { ($0,try json($0)) }.sorted {
+                let a = origins[$0.0] ?? -1, b = origins[$1.0] ?? -1
+                return a == b ? $0.0>$1.0 : a<b
+            }
+            var definitions: [String:[String:Any]] = [:]
+            for (_,document) in documents {
+                for (key,value) in document["render_controllers"] as? [String:Any] ?? [:] {
+                    if let definition = value as? [String:Any] { definitions[key] = definition }
                 }
-                base.merge(derived) { _,value in value }; base["bones"] = bones
-                return base
+            }
+            controllers[entity] = definitions
+        }
+        let geometries = description["geometry"] as? [String:String] ?? [:], textures = description["textures"] as? [String:String] ?? [:]
+        let materials = description["materials"] as? [String:String] ?? [:]
+        func binding(_ value: Any?, prefix: String) -> String? {
+            guard let text = value as? String, text.utf8.count<=512 else { return nil }
+            var selected = text.filter { !$0.isWhitespace }
+            if selected.hasPrefix("query.is_baby?") {
+                let choices = selected.dropFirst("query.is_baby?".count).split(separator:":",maxSplits:1).map(String.init)
+                guard choices.count == 2 else { return nil }; selected = choices[baby ? 0 : 1]
+            }
+            guard selected.hasPrefix(prefix), !selected.contains("[") else { return nil }
+            return String(selected.dropFirst(prefix.count))
+        }
+        func visibility(_ node: SCNNode, _ renderer: [String:Any]) throws {
+            let entries = renderer["part_visibility"] as? [[String:Any]] ?? []
+            guard entries.count<=256 else { throw AssetError.model }
+            var rules: [(NSRegularExpression,Bool)] = []
+            for entry in entries { for (pattern,expression) in entry {
+                guard pattern.utf8.count<=128 else { throw AssetError.model }
+                if let value = calm(expression,baby:baby) {
+                    let escaped = NSRegularExpression.escapedPattern(for:pattern).replacingOccurrences(of:"\\*",with:".*")
+                    rules.append((try NSRegularExpression(pattern:"^"+escaped+"$"),value))
+                }
+            } }
+            node.enumerateChildNodes { part,_ in
+                guard let name = part.name else { return }
+                var visible = true
+                for (pattern,value) in rules where pattern.firstMatch(in:name,range:NSRange(name.startIndex..<name.endIndex,in:name)) != nil { visible = value }
+                if !visible { part.geometry = nil }
             }
         }
-        throw AssetError.missing(identifier)
+        var imported = Set<String>()
+        for entry in entries {
+            let active: [(String,Bool)]
+            if let name = entry as? String { active = [(name,true)] }
+            else { active = (entry as? [String:Any] ?? [:]).compactMap { key,value in calm(value,baby:baby).map {(key,$0)} } }
+            for (name,enabled) in active where enabled && imported.insert(name).inserted {
+                guard let renderer = controllers[entity]?[name], let key = binding(renderer["geometry"],prefix:"Geometry."), let geometry = geometries[key] else { continue }
+                if geometry == identifier { try visibility(model,renderer); continue }
+                guard ["armor","overlay","breeze_eyes"].contains(key),
+                      let path = binding((renderer["textures"] as? [String])?.first,prefix:"Texture.").flatMap({textures[$0]}),
+                      let materialKey = binding((renderer["materials"] as? [[String:String]])?.first?["*"],prefix:"Material.") else { continue }
+                let skin = try texture(path).copy() as! SCNMaterial
+                let family = try family(materials[materialKey] ?? "entity_alphatest")
+                configure(skin,layer:family.blend ? .blend : .cutout)
+                if family.emissive { skin.lightingModel = .constant }
+                let layer = try node(self.geometry(geometry,entity:entity),material:skin)
+                layer.name = entity+(key == "armor" ? "-shell" : key == "overlay" ? "-clothes" : "-eyes")
+                try visibility(layer,renderer); model.addChildNode(layer)
+            }
+        }
+    }
+
+    private func geometry(_ identifier: String, entity: String, depth: Int = 0) throws -> [String: Any] {
+        guard depth < 8 else { throw AssetError.model }
+        if models == nil {
+            let paths = try names("models/entity").filter { $0.hasSuffix(".json") && !$0.contains("/") }.map {"models/entity/"+$0} + ["models/mobs.json"]
+            guard paths.count<=4096 else { throw AssetError.model }
+            var index: [String:(definition:[String:Any],parent:String?,pack:Int,path:String)] = [:]
+            for path in paths {
+                let object: [String:Any]
+                do { object = try json(path) } catch AssetError.missing { continue }
+                let pack = origins[path] ?? -1
+                func add(_ identifier: String, _ definition: [String:Any], parent: String? = nil) throws {
+                    guard identifier.utf8.count<=256, index.count<16_384 else { throw AssetError.model }
+                    if let old = index[identifier], old.pack>pack || old.pack == pack && old.path<path { return }
+                    index[identifier] = (definition,parent,pack,path)
+                }
+                for (key,value) in object where key.hasPrefix("geometry.") {
+                    guard let definition = value as? [String:Any] else { throw AssetError.model }
+                    let parts = key.split(separator:":",maxSplits:1).map(String.init)
+                    try add(parts[0],definition,parent:parts.count == 2 ? parts[1] : nil)
+                }
+                for definition in object["minecraft:geometry"] as? [[String:Any]] ?? [] {
+                    guard let name = (definition["description"] as? [String:Any])?["identifier"] as? String else { throw AssetError.model }
+                    try add(name,definition)
+                }
+            }
+            models = index
+        }
+        guard let entry = models?[identifier] else { throw AssetError.missing(identifier) }
+        guard let parent = entry.parent else { return entry.definition }
+        var base = try geometry(parent,entity:entity,depth:depth+1)
+        var bones = base["bones"] as? [[String:Any]] ?? []
+        for child in entry.definition["bones"] as? [[String:Any]] ?? [] {
+            if let index = bones.firstIndex(where: { $0["name"] as? String == child["name"] as? String }) {
+                let cubes = (bones[index]["cubes"] as? [[String:Any]] ?? [])+(child["cubes"] as? [[String:Any]] ?? [])
+                bones[index].merge(child) { _,value in value }; bones[index]["cubes"] = cubes
+            } else { bones.append(child) }
+        }
+        base.merge(entry.definition) { _,value in value }; base["bones"] = bones
+        return base
     }
 
     private func node(_ definition: [String: Any], material: SCNMaterial) throws -> SCNNode {
@@ -861,15 +1195,12 @@ extension Assets {
         let key = name+states.keys.sorted().map { "|"+$0+"="+states[$0]! }.joined()
         if let tiles = tilesets[key] { return tiles }
         var tiles = try resolve(name,states:states)
+        let layer = Block(name:name.replacingOccurrences(of:"minecraft:",with:""),states:states).render
         if states["axis"] == "x" || states["axis"] == "z" {
             let order = states["axis"] == "x" ? [0,4,2,5,3,1] : [4,1,5,3,2,0]
             tiles = order.map { tiles[$0] }
             let side = states["axis"] == "x" ? [0,2,4,5] : [1,3]
-            for index in side {
-                let material = tiles[index].copy() as! SCNMaterial
-                material.diffuse.contentsTransform = SCNMatrix4MakeRotation(.pi/2,0,0,1)
-                tiles[index] = material
-            }
+            tiles = tiles.enumerated().map { variant($0.element,layer:layer,rotated:side.contains($0.offset)) }
         } else if let facing = states["facing"], ["north","east","west","up","down"].contains(facing) {
             let order: [Int]
             switch facing {
@@ -880,7 +1211,8 @@ extension Assets {
             default: order = [4,1,5,3,2,0]
             }
             tiles = order.map { tiles[$0] }
-        }
+            tiles = tiles.map { variant($0,layer:layer) }
+        } else { tiles = tiles.map { variant($0,layer:layer) } }
         tilesets[key] = tiles
         return tiles
     }
@@ -925,6 +1257,20 @@ extension Assets {
 
     private func resolve(_ name: String, states: [String: String]) throws -> [SCNMaterial] {
         var name = name.replacingOccurrences(of:"minecraft:",with:"")
+        if ["seagrass","tall_seagrass"].contains(name) {
+            let type = (states["sea_grass_type"] ?? (name == "tall_seagrass" ? (states["half"] == "upper" ? "tall_top" : "tall_bot") : "default")).replacingOccurrences(of:"double_",with:"tall_")
+            let tall = type == "tall_top" || type == "tall_bot" || type == "tall_bottom"
+            let stem = tall ? "seagrass_doubletall_"+(type == "tall_top" ? "top" : "bottom") : "seagrass"
+            let first = try texture("textures/blocks/"+stem+(tall ? "_a" : ""),animated:true)
+            let second = tall ? try texture("textures/blocks/"+stem+"_b",animated:true) : first
+            return [first,second,first,second,first,second]
+        }
+        if name == "kelp" || name == "kelp_plant" {
+            let tip = states["tip"] == "true" || name == "kelp" && states["tip"] == nil
+            let first = try texture("textures/blocks/"+(tip ? "kelp_top" : "kelp_a"),animated:true)
+            let second = try texture("textures/blocks/"+(tip ? "kelp_top_bulb" : "kelp_b"),animated:true)
+            return [first,second,first,second,first,second]
+        }
         let flowers = ["dandelion":"flower_dandelion","poppy":"flower_rose","blue_orchid":"flower_blue_orchid","allium":"flower_allium",
             "azure_bluet":"flower_houstonia","red_tulip":"flower_tulip_red","orange_tulip":"flower_tulip_orange",
             "white_tulip":"flower_tulip_white","pink_tulip":"flower_tulip_pink","oxeye_daisy":"flower_oxeye_daisy"]
@@ -956,12 +1302,8 @@ extension Assets {
             if stained && !["white","orange","magenta","light_blue","yellow","lime","pink","gray","silver","cyan","purple","blue","brown","green","red","black"].contains(dye) { throw AssetError.model }
             let suffix = stained ? "_"+dye : ""
             let face = try texture("textures/blocks/"+(name == "tinted_glass" ? name : "glass"+suffix))
-            face.isDoubleSided = false
-            if stained || name == "tinted_glass" { face.writesToDepthBuffer = false }
             if !pane { return Array(repeating:face,count:6) }
             let edge = try texture("textures/blocks/glass_pane_top"+suffix)
-            edge.isDoubleSided = false
-            edge.writesToDepthBuffer = face.writesToDepthBuffer
             return [face,edge,face,edge,edge,edge]
         }
         if name == "red_mushroom_block" || name == "brown_mushroom_block" {

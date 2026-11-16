@@ -276,6 +276,9 @@ pub fn native(root: &Path, tests: bool, output: &Path) -> Result<()> {
     }
     if tests {
         command.arg(root.join("tests/launcher.swift"));
+        command.arg(root.join("tests/light.swift"));
+        command.arg(root.join("tests/render.swift"));
+        command.arg(root.join("tests/rig.swift"));
     }
     execute(
         command
@@ -354,7 +357,7 @@ pub fn launcher(root: &Path) -> Result<PathBuf> {
         ("CFBundleDisplayName", NAME),
         ("CFBundlePackageType", "APPL"),
         ("CFBundleIconFile", "AppIcon"),
-        ("CFBundleVersion", "33"),
+        ("CFBundleVersion", "34"),
         ("CFBundleShortVersionString", "0.17.0"),
         ("LSMinimumSystemVersion", "15.0"),
         (

@@ -5,6 +5,44 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 34 shared rendering and rigs
+
+October 21, 2026, on the same M3 Pro and macOS 27.0.1
+All 25 Rust unit checks and four integration checks pass, with rustfmt and Clippy warnings denied
+The native suite passes the installed-art sweep of 86 species, heroes, 43 authored areas and three legacy passages
+Focused checks cover adult/cub polar bounds and scale, native rabbit tracks and swept hops, separate head attention, constant setup channels and preserved inverse binds
+Wolf, parrot, guardian/elder, witch, evoker and turtle calm poses use the effective installed animation definitions
+
+Rendering checks cover secondary water, complete-cell edits, fluid families, cutout occlusion, transparent depth groups, native seagrass/kelp states and cached flipbook timing
+The portal overlays retain the same material clock, and the installed panorama supplies the cold scenery background
+The broader village sweep caught floor-support logic incorrectly coupled to full-cube occlusion; path/farmland support is now shared independently
+The existing composter-height, four-worker routine and reachable-interior checks pass with that correction
+The rendered portal check caught the need for an opaque depth layer beneath its star atlas; all nine portal cells now have that backing in both generated and authored scenes
+The final native sweep and rendered cave/portal/contact-sheet checks pass after that correction
+
+In the same process, the 12-fixture terrain-band reference takes 211.07 ms versus 64.73 ms for section runs, with identical material/medium spans
+The synthetic light field takes 10.04 ms, retains 812,544 bytes and uses 4,875,264 bytes for dense construction arrays
+These are bounded fixture results, not game-startup, sustained FPS, thermal or whole-launcher memory measurements
+The player game remains open during these checks
+
+The isolated official-server request completes all 1,225 requested coordinates, including 686 not marked complete, using one lifecycle and bounded ticking-area windows
+A later final-protocol request saves another chunk and exits through area cleanup, normal stop and `Quit correctly`, without the inappropriate live-backup `save resume` command
+No player world, account helper or Keychain entry is used by these generator checks
+The independent native reader reopens all 1,225 chunk records, constructs all 1,089 core meshes and installs the sixteen-chunk scene before enabling Look around
+Its captured first frame keeps a 256-block clear horizon, without the nearby unfinished-chunk fog
+That complete optional-world regression process takes 50.22 seconds and reports 5,537,873,920 maximum resident bytes and a 1,674,102,776-byte peak memory footprint
+The process includes synthetic checks, the full initial scene, its captured frame and the later artwork sweep; those figures are not launcher startup or steady-state memory measurements
+
+The final 25-chunk image probe includes voxel lighting, cached animated frames and no MSAA
+Its ten post-warm-up 1280 × 900 snapshot samples have p95 wall times of 8.66 ms for the village, 10.15 ms for the buried ruins and 9.23 ms for the End portal room
+Mesh/light construction takes 1.96, 3.30 and 2.99 seconds respectively
+Minecraft and app compilation are running during this image check, so it is diagnostic evidence, not a controlled build-to-build comparison or sustained interactive FPS result
+The final build 34 candidate passes strict deep signatures and all 1,583 resource digests, with a measured minimum macOS version of 27.0
+Its authorised helper is byte-identical to the installed helper, SHA-256 `706bba4f8cb08d90b080b0949dfd133e0a47f1122ee90693a54b058a05a280d6`
+
+Read-only REA inspection establishes the installed executable's PE layout, while the effective installed client, geometry, controller and animation assets provide the model references
+Full native game decompilation and complete AI parity remain unverified
+
 ## Build 33 scenery and journeys
 
 October 21, 2026, on the same M3 Pro and macOS 27.0.1

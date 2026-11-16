@@ -87,9 +87,8 @@ enum Landscape {
         let camera = SCNNode(); camera.name = "camera"; camera.camera = SCNCamera()
         camera.camera?.fieldOfView = 67; camera.camera?.zFar = 230; camera.camera?.zNear = 0.1
         camera.camera?.wantsHDR = true; camera.camera?.wantsExposureAdaptation = false
-        camera.camera?.exposureOffset = -0.15; camera.camera?.bloomIntensity = 0.12
-        camera.camera?.bloomThreshold = 1.2; camera.camera?.screenSpaceAmbientOcclusionIntensity = 0.65
-        camera.camera?.screenSpaceAmbientOcclusionRadius = 1.2
+        camera.camera?.exposureOffset = -0.15; camera.camera?.bloomIntensity = 0
+        camera.camera?.screenSpaceAmbientOcclusionIntensity = 0
         scene.rootNode.addChildNode(camera)
         let sun = SCNNode(); sun.light = SCNLight(); sun.light?.type = .directional
         sun.name = "sunlight"
@@ -491,18 +490,12 @@ enum Landscape {
     }
 
     static func flow(assets: Assets, lava: Bool, biome: Biome = .meadow) throws -> SCNMaterial {
-        let water = lava ? nil : try assets.water(biome)
-        let material = try assets.texture(lava ? "textures/blocks/lava_still" : "textures/blocks/water_still_grey",
-            tint:water?.colour,animated:true).copy() as! SCNMaterial
-        // Bedrock combines atlas alpha with the biome's surface opacity
-        material.transparency = water?.opacity ?? 1
-        material.lightingModel = .constant
-        material.writesToDepthBuffer = lava
-        return material
+        try assets.fluid(lava:lava,biome:biome,flowing:false)
     }
 
     static func animate(_ node: SCNNode, material: SCNMaterial) {
         let image = material.diffuse.contents as! CGImage, frames = max(1,image.height/image.width)
+        guard frames>1 else {return}
         material.diffuse.contentsTransform = SCNMatrix4MakeScale(1,1/CGFloat(frames),1)
         material.emission.contentsTransform = material.diffuse.contentsTransform
         let interval = material.name?.contains("lava") == true ? 0.1 : 0.05
@@ -645,7 +638,7 @@ enum Landscape {
             let count = try factory.group(species,biome:area,seed:(terrain.seed &+ kind) & Int.max) ?? fallback
             let coat = min(6,Int(Terrain.random(kind,0,seed:terrain.seed)*7))
             for index in 0..<count {
-                let baby = count>2 && index>=max(2,count-1) && [.cow,.pig,.sheep,.chicken,.wolf,.horse,.cat,.axolotl,.villager].contains(species)
+                let baby = count>2 && index>=max(2,count-1) && [.cow,.pig,.sheep,.chicken,.wolf,.horse,.cat,.axolotl,.villager,.rabbit,.polarBear].contains(species)
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"+(baby ? "-baby" : "")
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)
                 let classic = Terrain.random(kind,index,seed:terrain.seed &+ 227) < Mobs.classicChance(daylight:daylight)
@@ -725,7 +718,7 @@ enum Landscape {
                 let start = point(x,z)
                 actor.position = start; actor.eulerAngles.y = a
                 if species != .shulker && species != .warden && species != .snowGolem {
-                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,root:scene.rootNode,ground:height,point:point)
+                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,baby:baby,root:scene.rootNode,ground:height,point:point)
                 }
                 if species == .golem { try factory.oxidation(actor,model:model,stage:index%3,seed:kind*17+index) }
                 scene.rootNode.addChildNode(actor)

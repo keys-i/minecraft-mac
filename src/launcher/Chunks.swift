@@ -80,6 +80,8 @@ final class Database {
 }
 
 struct Block: Hashable, Codable {
+    enum Render: String { case opaque, cutout, blend, fluid }
+
     let name: String
     let states: [String:String]
 
@@ -99,7 +101,8 @@ struct Block: Hashable, Codable {
     }
 
     var air: Bool { ["air","cave_air","void_air","structure_void"].contains(name) }
-    var fluid: Bool { ["water","flowing_water","lava","flowing_lava"].contains(name) }
+    var fluid: Bool { ["water","flowing_water","lava","flowing_lava","bubble_column"].contains(name) }
+    var liquid: String? { name == "bubble_column" ? "water" : fluid ? name.replacingOccurrences(of:"flowing_",with:"") : nil }
     var properties: [String:String] {
         var p = states
         if let axis = states["pillar_axis"] { p["axis"] = axis }
@@ -125,6 +128,7 @@ struct Block: Hashable, Codable {
     }
 
     var model: String {
+        if let liquid { return liquid }
         if name == "yellow_flower" { return "dandelion" }
         if name == "red_flower" { return states["flower_type"] ?? "poppy" }
         if name == "double_plant" {
@@ -153,8 +157,20 @@ struct Block: Hashable, Codable {
             || name.hasSuffix("_flower") || name.hasSuffix("_sapling") || name.hasSuffix("_tulip")
     }
 
+    var render: Render {
+        let name = model
+        if fluid { return .fluid }
+        if name.contains("glass") || ["ice","frosted_ice","slime","slime_block","honey_block","portal","nether_portal","end_portal","end_gateway"].contains(name) { return .blend }
+        if Self.plant(name) || ["leaves","azalea","scaffolding","chain","vine","rail","torch","door","ladder","bars","lantern","candle"].contains(where:name.contains)
+            || ["mangrove_roots","hanging_roots","pointed_dripstone","waterlily","lily_pad","redstone_wire"].contains(name) { return .cutout }
+        return .opaque
+    }
+
     var opaque: Bool {
-        !passable && model != "pointed_dripstone" && !["stairs","slab","pane","fence","wall","leaves","glass","bed","plate","carpet","candle","lantern","bars","banner","bell","brewing","chest","scaffolding","chain"].contains(where:model.contains)
+        guard !passable, render == .opaque else { return false }
+        if model.hasSuffix("_slab"), properties["type"] == "double" { return true }
+        return !["stairs","slab","pane","fence","wall","bed","plate","carpet","banner","bell","brewing","chest","composter","cauldron","rod"].contains(where:model.contains)
+            && !["farmland","grass_path","dirt_path","snow_layer"].contains(model)
     }
 }
 
@@ -230,11 +246,12 @@ struct VoxelChunk {
         self.key = key; self.dimension = dimension; self.sections = sections
         var surfaces = Array(repeating:dimension == 0 ? -65 : -1,count:256)
         for y in sections.keys.sorted(by:>) {
-            guard let palette = sections[y]?.layers.first else { continue }
+            guard let section = sections[y] else { continue }
             for x in 0..<16 { for z in 0..<16 where surfaces[x*16+z] == (dimension == 0 ? -65 : -1) {
                 for dy in (0..<16).reversed() {
-                    let block = palette.block(x,dy,z)
-                    if !block.passable || block.fluid { surfaces[x*16+z] = y*16+dy; break }
+                    if section.layers.contains(where:{ let block = $0.block(x,dy,z); return !block.passable || block.fluid }) {
+                        surfaces[x*16+z] = y*16+dy; break
+                    }
                 }
             } }
         }
@@ -289,7 +306,7 @@ struct WorldData {
 
     func block(_ x: Int, _ y: Int, _ z: Int, layer: Int = 0) -> Block? {
         let key = Self.key(x,z)
-        if layer == 0, let block = edits[key]?[Cell(x:x,y:y,z:z)] { return block }
+        if let block = edits[key]?[Cell(x:x,y:y,z:z)] { return layer == 0 ? block : nil }
         return chunks[key]?.block(x-key.x*16,y,z-key.z*16,layer:layer)
     }
 
@@ -306,7 +323,10 @@ struct WorldData {
         let top = max(chunk.surfaces[(x-key.x*16)*16+z-key.z*16],edited ?? -65)
         if edited == nil && top<below { return top }
         for y in stride(from:min(top,below-1),through:dimension == 0 ? -64 : 0,by:-1) {
-            if let block = self.block(x,y,z), !block.air && (!block.passable || block.fluid) { return y }
+            if (0...1).contains(where:{ layer in
+                guard let block = self.block(x,y,z,layer:layer) else { return false }
+                return !block.air && (!block.passable || block.fluid)
+            }) { return y }
         }
         return nil
     }
@@ -438,9 +458,9 @@ struct WorldData {
         return point
     }
 
-    func node(_ key: Chunk, assets: Assets) throws -> SCNNode {
+    func node(_ key: Chunk, assets: Assets, cancelled: () -> Bool = {false}) throws -> SCNNode {
         guard chunks[key] != nil else { throw ChunkError.missing }
-        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], cells: [Int:Int] = [:]
+        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], cells: [Int:Int] = [:], fluids: [Int:Int] = [:]
         var levels: [Chunk:[Int]] = [:]
         for dx in -1...1 { for dz in -1...1 {
             let nearby = Chunk(x:key.x+dx,z:key.z+dz)
@@ -448,22 +468,29 @@ struct WorldData {
             levels[nearby] = Set(chunks[nearby]?.sections.keys.map {$0} ?? []).union(changed).sorted()
         } }
         for dx in -1...16 { for dz in -1...16 {
+            if cancelled() { throw CancellationError() }
             let x = key.x*16+dx, z = key.z*16+dz
             for sy in levels[Self.key(x,z)] ?? [] {
                 for dy in 0..<16 {
                     let y = sy*16+dy
-                    guard let block = block(x,y,z), !block.air else { continue }
-                    let index: Int
-                    if let existing = indices[block] { index = existing }
-                    else {
-                        index = palette.count; indices[block] = index
-                        palette.append(["Name":"minecraft:"+block.model,"Properties":block.properties])
+                    for layer in 0...1 {
+                        guard let block = block(x,y,z,layer:layer), !block.air else { continue }
+                        guard layer == 0 || block.fluid else { throw ChunkError.format }
+                        let index: Int
+                        if let existing = indices[block] { index = existing }
+                        else {
+                            index = palette.count; indices[block] = index
+                            palette.append(["Name":"minecraft:"+block.model,"Properties":block.properties])
+                        }
+                        let cell = dx+1+18*(dz+1+18*(y+64))
+                        if block.fluid { fluids[cell] = index }
+                        else if layer == 0 { cells[cell] = index }
                     }
-                    cells[dx+1+18*(dz+1+18*(y+64))] = index
                 }
             }
         } }
-        let node = try Structures.volume("chunk-\(key.x)-\(key.z)",size:[18,384,18],palette:palette,blocks:cells,assets:assets,interior:true)
+        let node = try Structures.volume("chunk-\(key.x)-\(key.z)",size:[18,384,18],palette:palette,blocks:cells,fluids:fluids,assets:assets,interior:true,
+            biome:{ x,y,z in self.biome(.init(Double(key.x*16+x-1),Double(y-64),Double(key.z*16+z-1))) },cancelled:cancelled)
         node.position = .init(Double(key.x*16)-1,-64,Double(key.z*16)-1)
         return node
     }

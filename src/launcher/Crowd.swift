@@ -19,25 +19,20 @@ final class Crowd {
         var choice = 0
         var wait = 0.0
         var stride = 0.0
-        let legs: [(SCNNode,SCNVector3,Double)]
+        let rig: Rig
+        var hop: Rig.Hop?
+        var hopTime = 0.0
         let head: SCNNode?
         let rest: SCNVector3
         var watching = false
         var glance = -1
 
-        init(actor: SCNNode, model: SCNNode, species: Species, motion: Mobs.Motion, width: Double, height: Double, seed: Int) {
+        init(actor: SCNNode, model: SCNNode, species: Species, motion: Mobs.Motion, rig: Rig, seed: Int) {
             self.actor = actor; self.model = model; self.species = species; swimming = species.swimming
-            self.motion = motion; self.width = width; self.height = height; self.seed = seed; home = actor.position
-            var legs: [(SCNNode,SCNVector3,Double)] = []
-            model.enumerateChildNodes { node,_ in
-                let name = node.name?.lowercased() ?? ""
-                if name.contains("leg") {
-                    let side = Mobs.legSign(name)
-                    legs.append((node,node.eulerAngles,side))
-                }
-            }
-            self.legs = legs
-            head = model.childNode(withName:"head",recursively:true)
+            self.motion = motion; width = motion.width; height = motion.height; self.seed = seed; home = actor.position
+            self.rig = rig
+            head = Rig.gaze(model)
+            head?.removeAllActions()
             rest = head?.eulerAngles ?? .init(0,0,0)
         }
     }
@@ -84,17 +79,17 @@ final class Crowd {
                 }
             }
             if species.flying { point.y += 2+Terrain.random(index,2,seed:421)*4 }
-            let baby = index%7 == 0 && [.pig,.cow,.sheep,.villager,.horse,.cat,.axolotl,.chicken].contains(species)
+            let baby = index%7 == 0 && [.pig,.cow,.sheep,.villager,.horse,.cat,.axolotl,.chicken,.rabbit,.polarBear].contains(species)
             let name = species == .sheep && index%5 == 0 ? "jeb_" : species == .rabbit && index%3 == 0 ? "Toast" : nil
             let model = species == .creeper && index%9 == 0 ? try factory.charged()
                 : try factory.make(species,biome:biome,variant:index,classic:false,baby:baby,named:name)
-            let motion = try factory.locomotion(species)
+            let motion = try factory.locomotion(species,baby:baby)
             if species.swimming {
                 point.y = min(point.y,Double(top)+0.85-motion.height)
                 guard data.immersed(point,radius:motion.width/2,height:motion.height,in:"water") else {continue}
             }
             if !species.flying && !species.swimming {
-                guard let floor = data.standing(at:point,radius:motion.width/2*(baby ? 0.5 : 1),height:motion.height*(baby ? 0.5 : 1),lava:species == .strider,water:species.amphibious) else {continue}
+                guard let floor = data.standing(at:point,radius:motion.width/2,height:motion.height,lava:species == .strider,water:species.amphibious) else {continue}
                 point = floor
             }
             guard species.swimming || data.vacant(point,radius:motion.width/2,height:motion.height) else { continue }
@@ -104,7 +99,7 @@ final class Crowd {
             actor.position = point; actor.eulerAngles.y = angle; actor.categoryBitMask = 1
             if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y*model.scale.y) }
             actor.addChildNode(model); root.addChildNode(actor)
-            residents.append(Resident(actor:actor,model:model,species:species,motion:motion,width:motion.width*(baby ? 0.5 : 1),height:motion.height*(baby ? 0.5 : 1),seed:index))
+            residents.append(Resident(actor:actor,model:model,species:species,motion:motion,rig:try factory.rig(model,species:species,baby:baby),seed:index))
         }
         if let trader = residents.first(where:{ $0.species == .trader }) {
             for llama in residents.filter({ $0.species == .traderLlama }).prefix(2) {
@@ -151,6 +146,7 @@ final class Crowd {
                 else if species == .axolotl && support != nil {resident.swimming = false}
             }
             let swimming = resident.swimming
+            if species.flying || swimming {resident.rig.idle()}
             if let observer, let head = resident.head {
                 let turn = Int(elapsed/8)
                 if turn != resident.glance {
@@ -174,19 +170,39 @@ final class Crowd {
                     head.eulerAngles.y+(target.y-head.eulerAngles.y)*blend,head.eulerAngles.z+(target.z-head.eulerAngles.z)*blend)
             }
             resident.wait -= dt
+            if let hop = resident.hop {
+                resident.hopTime += dt
+                let phase = min(1,resident.hopTime/hop.skip.duration), start = actor.position, next = hop.point(phase)
+                let moved = data.move(from:start,to:next,radius:resident.width/2,height:resident.height)
+                let dx = moved.x-start.x, dz = moved.z-start.z, travelled = hypot(dx,dz)
+                actor.position = moved; resident.stride += travelled
+                if travelled>0.00001 {actor.eulerAngles = .init(0,atan2(dx,dz),0)}
+                resident.rig.apply(distance:resident.stride,phase:phase)
+                if hypot(hypot(moved.x-next.x,moved.z-next.z),moved.y-next.y)>0.001 {
+                    resident.hop = nil; resident.target = nil; resident.airborne = true
+                    resident.velocity = SCNVector3Zero; resident.wait = hop.skip.delay; resident.rig.idle()
+                } else if phase>=1 {
+                    resident.hop = nil; resident.airborne = false; resident.wait = hop.skip.delay; resident.rig.idle()
+                    if let floor = data.standing(at:moved,radius:resident.width/2,height:resident.height), abs(floor.y-moved.y)<0.05 {actor.position = floor}
+                    else {resident.airborne = true}
+                }
+                continue
+            }
             if species.flying && resident.motion.reselect && elapsed>=resident.nextChoice {
                 resident.target = nil; resident.wait = 0
             }
+            let footing = !species.flying && !swimming ? data.standing(at:actor.position,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious) : nil
             if !species.flying && !swimming,
-               data.standing(at:actor.position,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious) == nil {
+               resident.airborne || footing == nil || abs(footing!.y-actor.position.y)>0.04 {
                 resident.airborne = true
                 resident.velocity.y = max(-12,resident.velocity.y-dt*20)
                 let next = SCNVector3(actor.position.x,actor.position.y+resident.velocity.y*dt,actor.position.z)
                 actor.position = data.move(from:actor.position,to:next,radius:resident.width/2,height:resident.height)
-                if let floor = data.standing(at:actor.position,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious) {
+                if let floor = data.standing(at:actor.position,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious),
+                   resident.velocity.y<=0, floor.y>=actor.position.y-0.15 {
                     actor.position = floor; resident.velocity = SCNVector3Zero; resident.airborne = false
                 }
-                for (leg,base,_) in resident.legs {leg.eulerAngles = base}
+                resident.rig.idle()
                 continue
             }
             resident.airborne = false
@@ -221,7 +237,7 @@ final class Crowd {
                 if resident.target == nil {resident.wait = species.flying ? resident.motion.interval.lowerBound : 1.5}
             }
             guard let target = resident.target else {
-                for (leg,base,_) in resident.legs {leg.eulerAngles.x += (base.x-leg.eulerAngles.x)*(1-exp(-dt*10))}
+                resident.rig.idle()
                 continue
             }
             let start = actor.position, dx = target.x-start.x, dy = target.y-start.y, dz = target.z-start.z
@@ -232,6 +248,22 @@ final class Crowd {
                 continue
             }
             let speed = swimming ? resident.motion.waterSpeed : resident.motion.speed
+            if let skip = resident.motion.skip {
+                guard resident.wait<=0 else {resident.rig.idle(); continue}
+                let horizontal = hypot(dx,dz), span = min(horizontal,speed*skip.duration*skip.distance)
+                guard horizontal>0.001,
+                      let landing = data.standing(at:.init(start.x+dx/horizontal*span,start.y,start.z+dz/horizontal*span),radius:resident.width/2,height:resident.height) else {
+                    resident.target = nil; resident.wait = skip.delay; resident.rig.idle(); continue
+                }
+                let hop = Rig.Hop(start:start,end:landing,skip:skip)
+                guard hop.clear({ a,b in
+                    let moved = data.move(from:a,to:b,radius:resident.width/2,height:resident.height)
+                    return hypot(hypot(moved.x-b.x,moved.z-b.z),moved.y-b.y)<0.001
+                }) else {resident.target = nil; resident.wait = skip.delay; resident.rig.idle(); continue}
+                resident.hop = hop; resident.hopTime = 0; resident.airborne = true
+                resident.rig.apply(distance:resident.stride,phase:0)
+                continue
+            }
             let step = min(distance,dt*speed), scale = step/distance
             var next = SCNVector3(start.x+dx*scale,start.y+dy*scale,start.z+dz*scale)
             if species.flying || swimming {
@@ -251,13 +283,13 @@ final class Crowd {
             let mx = moved.x-start.x, my = moved.y-start.y, mz = moved.z-start.z, travelled = hypot(mx,mz)
             if hypot(travelled,my)<step*0.1 {
                 resident.target = nil; resident.velocity = SCNVector3Zero; resident.wait = species.flying ? 0 : 0.3
-                for (leg,base,_) in resident.legs {leg.eulerAngles = base}
+                resident.rig.idle()
                 continue
             }
             actor.position = moved
             if travelled>0.00001 {actor.eulerAngles = .init(0,atan2(mx,mz),0)}
-            resident.stride += travelled*7
-            if !species.flying && !swimming {Mobs.pose(resident.legs,species:species,distance:resident.stride/7)}
+            resident.stride += travelled
+            if !species.flying && !swimming {resident.rig.apply(distance:resident.stride)}
         }
         for (trader,llama,segments) in leashes {
             let a = trader.position, b = llama.position

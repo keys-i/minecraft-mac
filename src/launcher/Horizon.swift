@@ -2,7 +2,7 @@ import SceneKit
 
 // Distant columns preserve caves, canopy gaps and island undersides from the original chunks
 struct Horizon {
-    struct Span {
+    struct Span: Equatable {
         let bottom: Int
         let top: Int
         let block: Block
@@ -16,17 +16,39 @@ struct Horizon {
             step = Horizon.step(chunk.key,near:centre)
             var columns: [[Span]] = []
             let minimum = chunk.dimension == 0 ? -64 : 0, maximum = chunk.dimension == 1 ? 127 : chunk.dimension == 2 ? 255 : 319
+            let sections = chunk.sections.values.filter {$0.y*16<=maximum && $0.y*16+15>=minimum}.sorted {$0.y<$1.y}
             for z in stride(from:0,to:16,by:step) {for x in stride(from:0,to:16,by:step) {
-                var spans: [Span] = [], bottom: Int?, material: Block?
-                for y in minimum...(maximum+1) {
-                    let block = y<=maximum ? chunk.block(x+step/2,y,z+step/2) : nil
-                    let occupied = block.map {!$0.passable || $0.fluid} ?? false
-                    if let low = bottom, !occupied || block?.fluid != material?.fluid {
-                        spans.append(Span(bottom:low,top:y,block:material!)); bottom = nil; material = nil
+                var spans: [Span] = [], solid: Span?, liquid: Span?
+                func append(_ block: Block?, bottom: Int, top: Int, to current: inout Span?) {
+                    if let old = current {
+                        let same = block?.fluid == true ? block?.liquid == old.block.liquid : block == old.block
+                        if let block, old.top == bottom, same {
+                            current = Span(bottom:old.bottom,top:top,block:block); return
+                        }
+                        spans.append(old); current = nil
                     }
-                    if occupied {if bottom == nil {bottom = y}; material = block}
+                    if let block { current = Span(bottom:bottom,top:top,block:block) }
                 }
-                columns.append(spans)
+                func sample(_ primary: Block?, _ secondary: Block?, bottom: Int, top: Int) {
+                    let block = primary.flatMap { !$0.passable && !$0.fluid ? $0 : nil }
+                    let water = primary?.fluid == true ? primary : secondary.flatMap {$0.fluid ? $0 : nil}
+                    append(block,bottom:bottom,top:top,to:&solid)
+                    append(water,bottom:bottom,top:top,to:&liquid)
+                }
+                for section in sections {
+                    let primary = section.layers.first, secondary = section.layers.count>1 ? section.layers[1] : nil
+                    let bottom = max(minimum,section.y*16), top = min(maximum+1,section.y*16+16)
+                    if (primary?.blocks.count ?? 0)<=1 && (secondary?.blocks.count ?? 0)<=1 {
+                        sample(primary?.blocks.first,secondary?.blocks.first,bottom:bottom,top:top)
+                    } else {
+                        for y in bottom..<top {
+                            let dy = y-section.y*16
+                            sample(primary?.block(x+step/2,dy,z+step/2),secondary?.block(x+step/2,dy,z+step/2),bottom:y,top:y+1)
+                        }
+                    }
+                }
+                if let solid { spans.append(solid) }; if let liquid { spans.append(liquid) }
+                columns.append(spans.sorted { $0.bottom<$1.bottom })
             } }
             self.columns = columns
             biome = Biome.bedrock(chunk.biome(8,64,8),dimension:chunk.dimension)
@@ -94,46 +116,67 @@ struct Horizon {
     }
 
     static func node(_ page: Chunk, tiles: [Chunk:Tile], centre: Chunk, near: Int, assets: Assets, cancelled: () -> Bool = {false}) throws -> SCNNode {
-        var mesh = Voxels(), liquids = Voxels(), flows: [String:SCNMaterial] = [:]
+        var mesh = Voxels(), liquids = Voxels(), molten = Voxels(), translucent = Voxels()
         func column(_ x: Int,_ z: Int) -> [Span] {
             let key = WorldData.key(x,z)
             guard let tile = tiles[key] else {return []}
             return tile.columns[((z%16+16)%16/tile.step)*(16/tile.step)+(x%16+16)%16/tile.step]
         }
+        func top(_ span: Span) -> Double {
+            guard span.block.fluid else { return Double(span.top) }
+            let level = Int(span.block.properties["level"] ?? "0") ?? 0
+            return Double(span.top-1)+Double(8-(level&7))/9
+        }
+        func covers(_ span: Span, _ neighbour: Span) -> Bool {
+            neighbour.block.opaque || span.block.fluid && neighbour.block.liquid == span.block.liquid
+                || span.block.render == .blend && neighbour.block == span.block
+        }
         for (key,tile) in tiles where Self.page(key) == page && !within(key,of:centre,radius:near) {
             if cancelled() {throw CancellationError()}
             let width = 16/tile.step, step = Double(tile.step)
             for index in tile.columns.indices {
+                if cancelled() { throw CancellationError() }
                 let x = key.x*16+index%width*tile.step, z = key.z*16+index/width*tile.step
                 for span in tile.columns[index] {
-                    let world = SCNVector3(Double(x)+step/2,Double(span.top)-0.02,Double(z)+step/2)
+                    let low = Double(span.bottom), high = top(span)
+                    let world = SCNVector3(Double(x)+step/2,high,Double(z)+step/2)
+                    let materials: [SCNMaterial]
                     if span.block.fluid {
-                        let name = span.block.name+":"+tile.biome.rawValue
-                        let material: SCNMaterial
-                        if let flow = flows[name] {material = flow}
-                        else {material = try Landscape.flow(assets:assets,lava:span.block.name.contains("lava"),biome:tile.biome); flows[name] = material}
-                        liquids.cube(.init(step,0,step),at:.init(world.x,world.y-0.125,world.z),material:material,faces:16)
-                        continue
+                        let lava = span.block.liquid == "lava"
+                        let flow = try assets.fluid(lava:lava,biome:tile.biome,flowing:true)
+                        let still = try assets.fluid(lava:lava,biome:tile.biome)
+                        materials = [flow,flow,flow,flow,(span.block.properties["level"] ?? "0") == "0" ? still : flow,still]
+                    } else { materials = try assets.tiles(span.block.model,states:span.block.properties) }
+                    func emit(_ size: SCNVector3, at point: SCNVector3, _ index: Int) {
+                        if span.block.liquid == "lava" { molten.cube(size,at:point,material:materials[index],faces:1 << index) }
+                        else if span.block.fluid { liquids.cube(size,at:point,material:materials[index],faces:1 << index) }
+                        else if span.block.render == .blend { translucent.cube(size,at:point,material:materials[index],faces:1 << index) }
+                        else { mesh.cube(size,at:point,material:materials[index],faces:1 << index) }
                     }
-                    let materials = try assets.tiles(span.block.model,states:span.block.properties)
-                    mesh.cube(.init(step,0,step),at:world,material:materials[4],faces:16)
-                    mesh.cube(.init(step,0,step),at:.init(world.x,Double(span.bottom)+0.02,world.z),material:materials[5],faces:32)
+                    let others = tile.columns[index].filter { $0 != span && covers(span,$0) }
+                    if !others.contains(where:{Double($0.bottom)<=high && top($0)>high}) {
+                        emit(.init(step,0,step),at:world,4)
+                    }
+                    if !others.contains(where:{Double($0.bottom)<low && top($0)>=low}) {
+                        emit(.init(step,0,step),at:.init(world.x,low,world.z),5)
+                    }
                     for (face,dx,dz) in [(0,0,1),(1,1,0),(2,0,-1),(3,-1,0)] {
                         let neighbours = column(x+dx*tile.step,z+dz*tile.step)
-                        var exposed = [(span.bottom,span.top)]
-                        for neighbour in neighbours where !neighbour.block.fluid {
-                            exposed = exposed.flatMap { low,high -> [(Int,Int)] in
-                                if neighbour.top<=low || neighbour.bottom>=high {return [(low,high)]}
-                                var rest: [(Int,Int)] = []
-                                if low<neighbour.bottom {rest.append((low,neighbour.bottom))}
-                                if neighbour.top<high {rest.append((neighbour.top,high))}
+                        var exposed = [(low,high)]
+                        for neighbour in neighbours where covers(span,neighbour) {
+                            let bottom = Double(neighbour.bottom), upper = top(neighbour)
+                            exposed = exposed.flatMap { low,high -> [(Double,Double)] in
+                                if upper<=low || bottom>=high {return [(low,high)]}
+                                var rest: [(Double,Double)] = []
+                                if low<bottom {rest.append((low,bottom))}
+                                if upper<high {rest.append((upper,high))}
                                 return rest
                             }
                         }
                         for (low,high) in exposed {
-                            let height = Double(high-low)
-                            mesh.cube(dx == 0 ? .init(step,height,0) : .init(0,height,step),
-                                at:.init(world.x+Double(dx)*(step/2-0.015),Double(low)+height/2,world.z+Double(dz)*(step/2-0.015)),material:materials[face],faces:1 << face)
+                            let height = high-low
+                            let point = SCNVector3(world.x+Double(dx)*step/2,low+height/2,world.z+Double(dz)*step/2)
+                            emit(dx == 0 ? .init(step,height,0) : .init(0,height,step),at:point,face)
                         }
                     }
                 }
@@ -141,10 +184,17 @@ struct Horizon {
         }
         let node = mesh.node("distant-\(page.x)-\(page.z)")
         node.categoryBitMask = 0; node.castsShadow = false
+        if !translucent.vertices.isEmpty {
+            let glass = translucent.node("distant-translucent"); glass.categoryBitMask = 0; glass.castsShadow = false
+            node.addChildNode(glass)
+        }
         if !liquids.vertices.isEmpty {
             let water = liquids.node("distant-fluids"); water.categoryBitMask = 1; water.castsShadow = false
             node.addChildNode(water)
-            for material in flows.values {Landscape.animate(water,material:material)}
+        }
+        if !molten.vertices.isEmpty {
+            let lava = molten.node("distant-lava"); lava.categoryBitMask = 1; lava.castsShadow = false
+            node.addChildNode(lava)
         }
         return node
     }

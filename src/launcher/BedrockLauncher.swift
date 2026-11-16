@@ -507,7 +507,7 @@ private struct Scenery: View {
 
     var body: some View {
         ZStack {
-            if let poster = launcher.poster { Image(nsImage:poster).resizable().scaledToFill() }
+            if let poster = launcher.frames["panorama"] ?? launcher.poster { Image(nsImage:poster).resizable().scaledToFill() }
             #if LAUNCHER_TEST
             if let image = launcher.previewImage { Image(nsImage:image).resizable().scaledToFill() }
             else { world }
@@ -1018,7 +1018,7 @@ struct LauncherView: View {
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @StateObject private var music = Music()
-    @AppStorage("renderDistance") private var renderDistance = 8
+    @AppStorage("renderDistance") private var renderDistance = 16
     @AppStorage("generationSeed") private var worldSeed = "0"
     @AppStorage("controls") private var controlData = Data()
     @AppStorage("skinPath") private var skinPath = ""
@@ -1034,6 +1034,7 @@ struct LauncherView: View {
     @State private var exploring = false
     @State private var mapVisible = true
     @State private var navigating = false
+    @State private var sceneryReady = false
     @State private var avatarError = ""
     @State private var map = false
     @State private var focused = false
@@ -1049,6 +1050,7 @@ struct LauncherView: View {
     private var fresh: Bool { launcher.status.state == "new" }
     private var controls: Controls { Controls(data:controlData) }
     private var available: Bool { launcher.assets != nil && !launcher.sceneryFailed }
+    private var canExplore: Bool {available && (sceneryReady || launcher.journey.world.dimension == nil || launcher.journey.world == .overworld && farLands != 0)}
     private var moving: Bool {
         available && !launcher.loading && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery || launcher.settings || launcher.help,lowPower:lowPower,
             active:scenePhase == .active,visible:visible,playing:launcher.status.state == "playing")
@@ -1216,6 +1218,7 @@ struct LauncherView: View {
         .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onDisappear { music.stop() }
         .onReceive(launcher.chart.$error) { if $0 != nil { explore(false) } }
+        .onReceive(launcher.chart.$visible) { ready in sceneryReady = ready; if !ready && !canExplore {explore(false)} }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
             focused = (notification.object as? NSWindow)?.title == launcherName
         }
@@ -1332,14 +1335,14 @@ struct LauncherView: View {
         Button { explore(!exploring) } label: {
             glyph("spyglass",fallback:exploring ? "eye.fill" : "eye",size:32.4*scale).frame(width:56*scale,height:56*scale)
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone,scale:scale))
-            .disabled(!available || launcher.journey.passage == .rift || launcher.status.state == "playing")
+            .disabled(!canExplore || launcher.journey.passage == .rift || launcher.status.state == "playing")
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
             .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
             .help(exploring ? "Return · Esc" : "Look around · \(controls.label(.look))")
     }
 
     private func explore(_ enabled: Bool) {
-        if enabled && (!available || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage == .rift) { return }
+        if enabled && (!canExplore || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage == .rift) { return }
         exploring = enabled
     }
 
@@ -1635,7 +1638,7 @@ struct Preferences: View {
     @AppStorage("rotateScenery") private var rotateScenery = true
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
-    @AppStorage("renderDistance") private var renderDistance = 8
+    @AppStorage("renderDistance") private var renderDistance = 16
     @AppStorage("generationSeed") private var worldSeed = "0"
     @AppStorage("controls") private var controlData = Data()
     @AppStorage("skinPath") private var skinPath = ""
@@ -1854,7 +1857,7 @@ struct Preferences: View {
     }
     private func reset() {
         switch page {
-        case .video: animateScenery = true; rotateScenery = true; renderDistance = 8; worldSeed = "0"; seedText = "0"; seedError = false
+        case .video: animateScenery = true; rotateScenery = true; renderDistance = 16; worldSeed = "0"; seedText = "0"; seedError = false
         case .audio: musicEnabled = true; musicVolume = 0.18
         case .input: lookSensitivity = 50; invertLook = false; controlData = Controls().data
         case .character: skinPath = ""; capePath = ""; slimSkin = false; skinError = nil

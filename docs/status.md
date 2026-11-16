@@ -4,13 +4,31 @@ This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
 notarization and clean-Mac installation have not been verified. Apple Developer
 membership is not required to publish source or build a local preview
 
-Status snapshot: October 20, 2026. The earlier native launcher source was merged in
+Status snapshot: October 21, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
 ## Minecraft Launcher 0.17.0
+
+### Build 34 candidate
+
+The 0.17.0/build 34 candidate is prepared in `outputs/0.17.0-build34` beside the checkout
+It fixes shared geometry/rest-pose handling, adult/cub polar scale, native rabbit hopping and independent head attention
+Block families share transparency, occlusion and animated-frame handling, including secondary water and native underwater plant states
+Skylight/blocklight is baked into chunk vertices; path/farmland support is independent of full-cube occlusion
+End portals retain an opaque void beneath their animated stars
+
+New defaults use 16 chunks and retain the 8–512 setting range and existing saved choices
+The previous scene or installed panorama stays visible until the nearby scene is prepared; routine progress remains in the background
+Upright journey aiming, neighbouring-chunk invalidation and owned read/mesh cancellation have focused native checks
+All 86 species, 43 authored areas and three legacy passages pass the installed-art sweep
+An independent check reopens 1,225 saved chunks and installs all 1,089 core meshes with a clear sixteen-chunk horizon
+
+The candidate uses the existing authorised helper and runtime and awaits a normal quit before installation
+See the [build 34 evidence](test.md#build-34-shared-rendering-and-rigs) for actual measurements and their limits
+Sustained interactive FPS, maximum-distance preparation, full native game-AI parity and Rosetta independence remain unverified
 
 ### Build 33 candidate
 

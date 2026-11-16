@@ -45,6 +45,7 @@ final class FlightView: SCNView {
     var finish: (() -> Void)?
     var report: ((SCNVector3,Double) -> Void)?
     var step: ((Double) -> Void)?
+    var materials: ((Double) -> Void)?
     var sweep: ((SCNVector3,SCNVector3) -> SCNVector3)?
     private var heartbeat = false
     var sensitivity: Float = 0.15
@@ -61,6 +62,7 @@ final class FlightView: SCNView {
     private var acceptedMouse = false
     private(set) var captured = false
     private var timer: Timer?
+    private var clockRate = 0
     private var last = 0.0
     private var loading = false
     private var area: Biome = .meadow
@@ -83,14 +85,19 @@ final class FlightView: SCNView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self,name:NSWindow.didResignKeyNotification,object:nil)
+        NotificationCenter.default.removeObserver(self,name:NSWindow.didBecomeKeyNotification,object:nil)
+        NotificationCenter.default.removeObserver(self,name:NSApplication.didBecomeActiveNotification,object:nil)
         stop(); release()
         if let window {
             NotificationCenter.default.addObserver(self,selector:#selector(lostFocus),name:NSWindow.didResignKeyNotification,object:window)
+            NotificationCenter.default.addObserver(self,selector:#selector(gainedFocus),name:NSWindow.didBecomeKeyNotification,object:window)
+            NotificationCenter.default.addObserver(self,selector:#selector(gainedFocus),name:NSApplication.didBecomeActiveNotification,object:nil)
         }
     }
 
     override func resignFirstResponder() -> Bool { stop(); release(); return super.resignFirstResponder() }
     @objc private func lostFocus() { stop(); release() }
+    @objc private func gainedFocus() { if heartbeat { start() } }
 
     override func mouseDown(with event: NSEvent) {
         if exploring { capture(); return }
@@ -168,7 +175,7 @@ final class FlightView: SCNView {
         start()
     }
 
-    func stop() { suspend(); keys.removeAll(); modifiers = [] }
+    func stop() { suspend(); keys.removeAll(); modifiers = []; isPlaying = false; rendersContinuously = false }
     func clock(_ enabled: Bool) {
         heartbeat = enabled
         if enabled { start() } else { stop() }
@@ -176,10 +183,17 @@ final class FlightView: SCNView {
     private func suspend() { timer?.invalidate(); timer = nil }
 
     private func start() {
-        guard !loading, timer == nil, window?.isKeyWindow == true,
-              heartbeat || exploring && (!keys.isEmpty || moving) else { return }
+        guard !loading, window?.isKeyWindow == true, NSApp.isActive,
+              window?.occlusionState.contains(.visible) == true, !isHiddenOrHasHiddenAncestor,
+              heartbeat || exploring && (!keys.isEmpty || moving) else {
+            isPlaying = false; rendersContinuously = false; return
+        }
+        isPlaying = true; rendersContinuously = true
+        if timer != nil && clockRate != preferredFramesPerSecond {suspend()}
+        guard timer == nil else { return }
+        clockRate = preferredFramesPerSecond
         last = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(timeInterval:1.0/60,target:self,selector:#selector(tick),userInfo:nil,repeats:true)
+        let timer = Timer(timeInterval:1.0/Double(max(1,preferredFramesPerSecond)),target:self,selector:#selector(tick),userInfo:nil,repeats:true)
         self.timer = timer
         RunLoop.main.add(timer,forMode:.common)
     }
@@ -189,6 +203,7 @@ final class FlightView: SCNView {
               NSApp.isActive, !isHiddenOrHasHiddenAncestor else { stop(); release(); return }
         let now = ProcessInfo.processInfo.systemUptime
         let seconds = min(0.1,max(0,now-last)); last = now
+        materials?(now)
         step?(seconds)
         if exploring { advance(seconds:seconds) }
     }
@@ -222,6 +237,23 @@ final class FlightView: SCNView {
         needsDisplay = true
     }
 
+    // Derive yaw and pitch from the forward vector so vertical turns never select an inverted Euler branch
+    static func face(_ camera: SCNNode, toward point: SCNVector3, seconds: Double) {
+        let forward = camera.convertVector(.init(0,0,-1),to:nil)
+        var yaw = atan2(-forward.x,-forward.z)
+        var pitch = atan2(forward.y,hypot(forward.x,forward.z))
+        let eye = camera.worldPosition, dx = point.x-eye.x, dy = point.y-eye.y, dz = point.z-eye.z
+        let horizontal = hypot(dx,dz)
+        guard hypot(horizontal,dy)>0.00001 else {return}
+        let targetYaw = horizontal>0.0001 ? atan2(-dx,-dz) : yaw
+        let targetPitch = min(Double.pi*0.47,max(-Double.pi*0.47,atan2(dy,horizontal)))
+        let dt = max(0,min(0.1,seconds)), blend = 1-exp(-dt*5), limit = dt*Double.pi/2
+        let turn = atan2(sin(targetYaw-yaw),cos(targetYaw-yaw))
+        yaw += max(-limit,min(limit,turn*blend))
+        pitch += max(-limit,min(limit,(targetPitch-pitch)*blend))
+        camera.simdOrientation = simd_quatf(angle:Float(yaw),axis:.init(0,1,0))*simd_quatf(angle:Float(pitch),axis:.init(1,0,0))
+    }
+
     func visit(_ step: Int) {
         if let atlas { atlas.visit(atlas.active+step); return }
         guard !loading else { return }
@@ -229,7 +261,7 @@ final class FlightView: SCNView {
     }
 
     func dispose() {
-        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; sweep = nil; controller.pointOfView = nil
+        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; materials = nil; sweep = nil; controller.pointOfView = nil
         NotificationCenter.default.removeObserver(self)
     }
 }
@@ -763,7 +795,7 @@ struct Adventure: NSViewRepresentable {
         let view = FlightView(frame: .zero)
         view.backgroundColor = .clear
         view.preferredFramesPerSecond = 30
-        view.antialiasingMode = .multisampling4X
+        view.antialiasingMode = .none
         view.allowsCameraControl = false
         view.addGestureRecognizer(NSPanGestureRecognizer(target:context.coordinator,action:#selector(Coordinator.pan(_:))))
         context.coordinator.view = view
@@ -772,6 +804,7 @@ struct Adventure: NSViewRepresentable {
 
     func updateNSView(_ view: FlightView, context: Context) {
         let coordinator = context.coordinator
+        view.materials = moving ? { [weak assets] time in if let assets {assets.animate(at:time-assets.started)} } : nil
         view.preferredFramesPerSecond = exploring ? 60 : 30
         view.travel = travel; view.finish = finish
         view.report = exploring ? report : nil
@@ -846,8 +879,8 @@ struct Adventure: NSViewRepresentable {
         // Deliberate flight still streams terrain when ambient motion is disabled
         (view as? FlightView)?.atlas?.animate(enabled || active && (view as? FlightView)?.exploring == true)
         view.scene?.isPaused = !enabled
-        view.isPlaying = enabled
-        view.rendersContinuously = enabled
+        if let flight = view as? FlightView {flight.clock(enabled || active && flight.exploring)}
+        else {view.isPlaying = enabled; view.rendersContinuously = enabled}
         view.needsDisplay = true
     }
 

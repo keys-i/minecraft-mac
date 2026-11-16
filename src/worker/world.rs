@@ -161,7 +161,7 @@ impl Request {
         );
         ensure!(
             self.dimension < 3
-                && self.chunks.len() <= 1089
+                && self.chunks.len() <= 1225
                 && self.locate.len() <= 64
                 && (!self.chunks.is_empty() || !self.locate.is_empty()),
             "Invalid scenery region"
@@ -186,14 +186,11 @@ impl Request {
                 "Invalid scenery destination"
             );
         }
-        self.chunks.sort_unstable();
-        self.chunks.dedup();
+        let mut unique = BTreeSet::new();
+        self.chunks.retain(|point| unique.insert(*point));
         ensure!(
             self.refresh.len() <= self.chunks.len()
-                && self
-                    .refresh
-                    .iter()
-                    .all(|point| self.chunks.binary_search(point).is_ok()),
+                && self.refresh.iter().all(|point| unique.contains(point)),
             "Invalid scenery repair region"
         );
         Ok(())
@@ -398,7 +395,7 @@ struct Checks {
 }
 
 impl Checks {
-    fn commands(&mut self, count: usize) -> Vec<String> {
+    fn commands(&mut self, window: usize, count: usize) -> Vec<String> {
         if !self.pending.is_empty() {
             return Vec::new();
         }
@@ -408,7 +405,7 @@ impl Checks {
         let group = first / 16;
         self.pending = (group * 16..count.min((group + 1) * 16)).collect();
         vec![
-            format!("function scenery/batch{group}"),
+            format!("function scenery/window{window}/batch{group}"),
             format!(
                 "scoreboard players test progress scenery {} {}",
                 self.pending.len(),
@@ -429,13 +426,62 @@ impl Checks {
 
     fn finish(&mut self, text: &str) {
         // The pinned server's list reply follows every check in this batch
-        if text.contains("There are ") && text.contains(" players online:") {
+        if barrier(text) {
             self.pending.clear();
         }
     }
+
+    fn complete(&self, count: usize) -> bool {
+        self.done.len() == count && self.pending.is_empty()
+    }
 }
 
-fn functions(folder: &Path, dimension: u8, chunks: &[[i32; 2]]) -> Result<()> {
+fn barrier(text: &str) -> bool {
+    text.contains("There are ") && text.contains(" players online:")
+}
+
+struct Window {
+    chunks: Vec<[i32; 2]>,
+    areas: Vec<String>,
+}
+
+fn windows(dimension: u8, chunks: &[[i32; 2]]) -> Result<Vec<Window>> {
+    let mut positions = BTreeMap::new();
+    let mut groups: Vec<Vec<[i32; 2]>> = Vec::new();
+    for &[x, z] in chunks {
+        let next = groups.len();
+        let index = *positions
+            .entry((x.div_euclid(8), z.div_euclid(8)))
+            .or_insert_with(|| {
+                groups.push(Vec::new());
+                next
+            });
+        groups[index].push([x, z]);
+    }
+    let prefix = format!("execute in {} run ", DIMENSIONS[dimension as usize]);
+    groups
+        .chunks(10)
+        .map(|groups| {
+            let mut window = Window {
+                chunks: Vec::new(),
+                areas: Vec::new(),
+            };
+            for (index, points) in groups.iter().enumerate() {
+                let x0 = points.iter().map(|p| p[0]).min().context("Empty region")? * 16;
+                let z0 = points.iter().map(|p| p[1]).min().context("Empty region")? * 16;
+                let x1 = points.iter().map(|p| p[0]).max().context("Empty region")? * 16 + 15;
+                let z1 = points.iter().map(|p| p[1]).max().context("Empty region")? * 16 + 15;
+                window.areas.push(format!(
+                    "{prefix}tickingarea add {x0} 64 {z0} {x1} 64 {z1} scenery{index} true"
+                ));
+                window.chunks.extend_from_slice(points);
+            }
+            Ok(window)
+        })
+        .collect()
+}
+
+fn functions(folder: &Path, dimension: u8, windows: &[Window]) -> Result<()> {
     let mut pack = folder.to_path_buf();
     for component in ["behavior_packs", "scenery"] {
         pack.push(component);
@@ -473,26 +519,30 @@ fn functions(folder: &Path, dimension: u8, chunks: &[[i32; 2]]) -> Result<()> {
     } else {
         (255, "air")
     };
-    for (group, points) in chunks.chunks(16).enumerate() {
-        let mut batch = String::from("scoreboard players set progress scenery 0\n");
-        for (offset, &[x, z]) in points.iter().enumerate() {
-            let index = group * 16 + offset;
-            let position = format!("{} {y} {}", x * 16, z * 16);
-            for block in [original, "barrier"] {
-                batch.push_str(&format!("{prefix}execute if block {position} {block} run function scenery/chunk{index}\n"));
+    for (window, region) in windows.iter().enumerate() {
+        let directory = pack.join(format!("window{window}"));
+        private_directory(&directory)?;
+        for (group, points) in region.chunks.chunks(16).enumerate() {
+            let mut batch = String::from("scoreboard players set progress scenery 0\n");
+            for (offset, &[x, z]) in points.iter().enumerate() {
+                let index = group * 16 + offset;
+                let position = format!("{} {y} {}", x * 16, z * 16);
+                for block in [original, "barrier"] {
+                    batch.push_str(&format!("{prefix}execute if block {position} {block} run function scenery/window{window}/chunk{index}\n"));
+                }
+                let text = format!(
+                    "{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run setblock {position} barrier\n{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run scoreboard players add progress scenery 1\n"
+                );
+                atomic_bytes(
+                    &directory.join(format!("chunk{index}.mcfunction")),
+                    text.as_bytes(),
+                )?;
             }
-            let text = format!(
-                "{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run setblock {position} barrier\n{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run scoreboard players add progress scenery 1\n"
-            );
             atomic_bytes(
-                &pack.join(format!("chunk{index}.mcfunction")),
-                text.as_bytes(),
+                &directory.join(format!("batch{group}.mcfunction")),
+                batch.as_bytes(),
             )?;
         }
-        atomic_bytes(
-            &pack.join(format!("batch{group}.mcfunction")),
-            batch.as_bytes(),
-        )?;
     }
     Ok(())
 }
@@ -517,6 +567,15 @@ fn acquire(lock: &File, cancelled: &AtomicBool) -> Result<()> {
     }
 }
 
+enum Phase {
+    Starting,
+    Clearing,
+    Settling(Instant),
+    Configuring,
+    Checking,
+    Stopping,
+}
+
 fn generate(
     paths: &Paths,
     root: &Path,
@@ -526,20 +585,19 @@ fn generate(
     locators: &[Locator],
     cancelled: &AtomicBool,
 ) -> Result<Vec<Destination>> {
-    functions(folder, dimension, chunks)?;
+    let mut windows = windows(dimension, chunks)?;
+    if windows.is_empty() {
+        windows.push(Window {
+            chunks: Vec::new(),
+            areas: Vec::new(),
+        });
+    }
+    functions(folder, dimension, &windows)?;
     let prefix = if dimension == 0 {
         String::new()
     } else {
         format!("execute in {} run ", DIMENSIONS[dimension as usize])
     };
-    let mut groups: BTreeMap<(i32, i32), Vec<[i32; 2]>> = BTreeMap::new();
-    for &[x, z] in chunks {
-        groups
-            .entry((x.div_euclid(8), z.div_euclid(8)))
-            .or_default()
-            .push([x, z]);
-    }
-    ensure!(groups.len() <= 10, "Generate nearby chunks together");
     let mut commands: Vec<String> = [
         "doMobSpawning false",
         "doDaylightCycle false",
@@ -549,19 +607,13 @@ fn generate(
     .map(|rule| format!("gamerule {rule}"))
     .into();
     commands.push("scoreboard objectives add scenery dummy".into());
-    for (index, points) in groups.values().enumerate() {
-        let x0 = points.iter().map(|p| p[0]).min().context("Empty region")? * 16;
-        let z0 = points.iter().map(|p| p[1]).min().context("Empty region")? * 16;
-        let x1 = points.iter().map(|p| p[0]).max().context("Empty region")? * 16 + 15;
-        let z1 = points.iter().map(|p| p[1]).max().context("Empty region")? * 16 + 15;
-        commands.push(format!(
-            "{prefix}tickingarea add {x0} 64 {z0} {x1} 64 {z1} scenery{index} true"
-        ));
-    }
-    commands.extend(
-        locators
-            .iter()
-            .map(|locator| format!("{prefix}locate {} {}", locator.kind, locator.id)),
+    let discoveries: Vec<_> = locators
+        .iter()
+        .map(|locator| format!("{prefix}locate {} {}", locator.kind, locator.id))
+        .collect();
+    ensure!(
+        !cancelled.load(Ordering::Relaxed),
+        "World generation was cancelled"
     );
     let mut child = command(Path::new("/usr/bin/nice"), root, &paths.network)
         .args(["-n", "10", "/usr/bin/sandbox-exec", "-f"])
@@ -608,9 +660,10 @@ fn generate(
     )?;
     let ansi = Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]")?;
     let deadline = Instant::now()
-        + Duration::from_secs(180)
+        + Duration::from_secs(180 + windows.len() as u64)
         + Duration::from_millis(chunks.len() as u64 * 500);
-    let (mut ready, mut configured, mut stopping) = (None, false, false);
+    let mut phase = Phase::Starting;
+    let (mut window, mut completed, mut saved) = (0, 0, false);
     let mut polled = Instant::now();
     event(
         json!({"state":"progress", "detail":"Starting Minecraft’s world generator", "progress":0}),
@@ -635,7 +688,11 @@ fn generate(
         if available > 0 {
             let count = output.read(&mut block)?;
             if count == 0 {
-                break;
+                if engine.child.try_wait()?.is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
             }
             log.write_all(&block[..count])?;
             log.flush()?;
@@ -648,25 +705,35 @@ fn generate(
                 let bytes: Vec<_> = buffer.drain(..=end).collect();
                 let line = String::from_utf8_lossy(&bytes);
                 let text = ansi.replace_all(&line, "");
-                if text.contains("Server started.") {
+                if matches!(phase, Phase::Starting) && text.contains("Server started.") {
                     let mut cleanup = DIMENSIONS
                         .map(|name| format!("execute in {name} run tickingarea remove_all"))
                         .to_vec();
                     cleanup.push("list".into());
                     engine.send(&cleanup)?;
-                }
-                // Ticking-area removal finishes after console processing, before areas can be reused
-                if ready.is_none() && !configured && text.contains(" players online:") {
-                    ready = Some(Instant::now());
+                    phase = Phase::Clearing;
                 }
                 if let Some(capture) = loaded.captures(&text)
                     && checks.completed(capture[1].parse()?)
                 {
                     event(
-                        json!({"state":"progress", "detail":format!("{} / {} chunks", checks.done.len(), chunks.len()), "progress":checks.done.len() as f64 / chunks.len() as f64}),
+                        json!({"state":"progress", "detail":format!("{} / {} chunks", completed + checks.done.len(), chunks.len()), "progress":(completed + checks.done.len()) as f64 / chunks.len() as f64}),
                     );
                 }
                 checks.finish(&text);
+                if barrier(&text) {
+                    match &phase {
+                        Phase::Clearing if window == windows.len() => {
+                            event(json!({"state":"progress", "detail":"Saving your world"}));
+                            engine.send(&["stop".into()])?;
+                            phase = Phase::Stopping;
+                        }
+                        Phase::Clearing => phase = Phase::Settling(Instant::now()),
+                        Phase::Configuring => phase = Phase::Checking,
+                        _ => {}
+                    }
+                }
+                saved |= text.contains("Quit correctly");
                 if let Some(capture) = nearest.captures(&text) {
                     destinations.push(Destination {
                         id: capture[1].into(),
@@ -682,25 +749,45 @@ fn generate(
                 }
             }
         }
-        if ready.is_some_and(|time| time.elapsed() >= Duration::from_secs(1)) && !configured {
-            engine.send(&commands)?;
-            configured = true;
+        // Area removal settles after its ordered console reply, before slots are reused
+        if let Phase::Settling(time) = &phase
+            && time.elapsed() >= Duration::from_secs(1)
+        {
+            if window == 0 {
+                engine.send(&commands)?;
+            }
+            engine.send(&windows[window].areas)?;
+            if window == 0 {
+                engine.send(&discoveries)?;
+            }
+            engine.send(&["list".into()])?;
+            phase = Phase::Configuring;
         }
-        if configured && polled.elapsed() >= Duration::from_millis(100) && !stopping {
-            engine.send(&checks.commands(chunks.len()))?;
-            polled = Instant::now();
-        }
-        if configured && checks.done.len() == chunks.len() && !stopping {
-            event(json!({"state":"progress", "detail":"Saving your world"}));
-            engine.send(&["stop".into()])?;
-            stopping = true;
+        if matches!(phase, Phase::Checking) {
+            let count = windows[window].chunks.len();
+            if checks.complete(count) {
+                completed += count;
+                window += 1;
+                checks = Checks::default();
+                engine.send(&[format!("{prefix}tickingarea remove_all"), "list".into()])?;
+                phase = Phase::Clearing;
+            } else if polled.elapsed() >= Duration::from_millis(100) {
+                engine.send(&checks.commands(window, count))?;
+                polled = Instant::now();
+            }
         }
         if engine.child.try_wait()?.is_some() && available == 0 {
             break;
         }
     }
+    saved |= ansi
+        .replace_all(&String::from_utf8_lossy(&buffer), "")
+        .contains("Quit correctly");
     ensure!(
-        engine.child.wait()?.success() && checks.done.len() == chunks.len(),
+        engine.child.wait()?.success()
+            && matches!(phase, Phase::Stopping)
+            && saved
+            && completed == chunks.len(),
         "World generation stopped before all chunks were saved; try Generate again"
     );
     Ok(destinations)
@@ -799,13 +886,10 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
         ));
     }
     fs::write(generator.join("sandbox.sb"), sandbox)?;
-    let mut groups: BTreeMap<(i32, i32), Vec<[i32; 2]>> = BTreeMap::new();
+    let mut chunks = Vec::new();
     for &[x, z] in &request.chunks {
         if !cache.region(request.dimension, x, z)?.contains(&[x, z]) {
-            groups
-                .entry((x.div_euclid(8), z.div_euclid(8)))
-                .or_default()
-                .push([x, z]);
+            chunks.push([x, z]);
         }
     }
     request.locate.retain(|locator| {
@@ -814,34 +898,20 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
             .iter()
             .any(|point| point.dimension == request.dimension && point.id == locator.id)
     });
-    let grouped: Vec<_> = groups.into_values().collect();
-    if grouped.is_empty() && !request.locate.is_empty() {
-        manifest.destinations.extend(generate(
-            &paths,
-            &generator,
-            &folder,
-            request.dimension,
-            &[],
-            &request.locate,
-            &cancelled,
-        )?);
-    }
-    for (index, group) in grouped.chunks(10).enumerate() {
-        let chunks: Vec<_> = group.iter().flatten().copied().collect();
+    if !chunks.is_empty() || !request.locate.is_empty() {
         manifest.destinations.extend(generate(
             &paths,
             &generator,
             &folder,
             request.dimension,
             &chunks,
-            if index == 0 { &request.locate } else { &[] },
+            &request.locate,
             &cancelled,
         )?);
         for &[x, z] in &chunks {
             cache.region(request.dimension, x, z)?.insert([x, z]);
         }
         cache.save()?;
-        atomic(&marker, &manifest)?;
     }
     atomic(&marker, &manifest)?;
     event(
@@ -886,6 +956,13 @@ mod tests {
         assert!(!reopened.region(2, -1, 32).unwrap().contains(&[-1, 32]));
         reopened.region(0, -1, 32).unwrap().remove(&[-1, 32]);
         assert!(reopened.region(1, -1, 32).unwrap().contains(&[-1, 32]));
+        reopened.save().unwrap();
+        let mut repaired = Cache {
+            folder: folder.path().into(),
+            regions: BTreeMap::new(),
+        };
+        assert!(!repaired.region(0, -1, 32).unwrap().contains(&[-1, 32]));
+        assert!(repaired.region(1, -1, 32).unwrap().contains(&[-1, 32]));
         assert!(reopened.region(0, i32::MIN, 0).is_err());
         let mut request: Request = serde_json::from_value(
             json!({"seed":"0","dimension":0,"chunks":[[0,0]],"refresh":[[1,1]]}),
@@ -899,21 +976,46 @@ mod tests {
     #[test]
     fn checks_wait_for_console_drain_and_retry_only_unfinished_chunks() {
         let mut checks = Checks::default();
-        assert_eq!(checks.commands(330).len(), 3);
+        assert_eq!(checks.commands(2, 330).len(), 3);
         for _ in 0..100 {
-            assert!(checks.commands(330).is_empty());
+            assert!(checks.commands(2, 330).is_empty());
         }
         assert!(!checks.completed(15));
         checks.finish("[INFO] There are 0/1 players online:");
-        assert_eq!(checks.commands(330)[0], "function scenery/batch0");
+        assert_eq!(
+            checks.commands(2, 330)[0],
+            "function scenery/window2/batch0"
+        );
         assert!(checks.pending.contains(&15));
         while checks.done.len() < 330 {
             assert!(checks.completed(checks.pending.len()));
             assert!(!checks.completed(checks.pending.len()));
+            assert!(!checks.complete(checks.done.len()));
             checks.finish("[INFO] There are 0/1 players online:");
-            assert!(checks.commands(330).len() <= 3);
+            assert!(checks.commands(2, 330).len() <= 3);
         }
-        assert!(checks.commands(330).is_empty());
+        assert!(checks.complete(330));
+        assert!(checks.commands(2, 330).is_empty());
+    }
+
+    #[test]
+    fn windows_keep_requested_group_order_and_reuse_only_ten_area_slots() {
+        let mut chunks: Vec<_> = (0..21).map(|index| [(10 - index) * 8, -1]).collect();
+        chunks.push([81, -1]);
+        let windows = windows(1, &chunks).unwrap();
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0].areas.len(), 10);
+        assert_eq!(windows[1].areas.len(), 10);
+        assert_eq!(windows[2].areas.len(), 1);
+        assert_eq!(&windows[0].chunks[..3], &[[80, -1], [81, -1], [72, -1]]);
+        assert_eq!(windows[1].chunks[0], [0, -1]);
+        assert!(windows[2].areas[0].starts_with("execute in nether run tickingarea add"));
+        assert!(windows[2].areas[0].ends_with("scenery0 true"));
+        let retained: BTreeSet<_> = windows
+            .iter()
+            .flat_map(|window| window.chunks.iter().copied())
+            .collect();
+        assert_eq!(retained, chunks.into_iter().collect());
     }
 
     #[test]
@@ -925,16 +1027,33 @@ mod tests {
             &vec![&retained],
         )
         .unwrap();
-        functions(folder.path(), 1, &[[2, -3]; 17]).unwrap();
+        functions(
+            folder.path(),
+            1,
+            &[
+                Window {
+                    chunks: vec![[2, -3]; 17],
+                    areas: Vec::new(),
+                },
+                Window {
+                    chunks: vec![[4, 5]],
+                    areas: Vec::new(),
+                },
+            ],
+        )
+        .unwrap();
         let pack = folder
             .path()
             .join("behavior_packs/scenery/functions/scenery");
-        let first = fs::read_to_string(pack.join("batch0.mcfunction")).unwrap();
+        let first = fs::read_to_string(pack.join("window0/batch0.mcfunction")).unwrap();
         assert_eq!(first.lines().count(), 33);
         assert!(first.contains("execute in nether run execute if block 32 0 -48 bedrock"));
-        let chunk = fs::read_to_string(pack.join("chunk16.mcfunction")).unwrap();
+        let chunk = fs::read_to_string(pack.join("window0/chunk16.mcfunction")).unwrap();
         assert!(chunk.contains("barrier run setblock 32 0 -48 bedrock"));
         assert!(chunk.ends_with("run scoreboard players add progress scenery 1\n"));
+        let last = fs::read_to_string(pack.join("window1/batch0.mcfunction")).unwrap();
+        assert_eq!(last.lines().count(), 3);
+        assert!(last.contains("run function scenery/window1/chunk0"));
         let entries: Vec<serde_json::Value> =
             read_json(&folder.path().join("world_behavior_packs.json"), 65536).unwrap();
         assert_eq!(entries.len(), 2);
@@ -972,6 +1091,38 @@ mod tests {
             request.seed = seed.into();
             assert!(request.validate().is_err());
         }
+    }
+
+    #[test]
+    fn accepts_the_full_near_radius_with_a_halo_and_preserves_near_first_order() {
+        let mut chunks: Vec<_> = (-17_i32..=17)
+            .flat_map(|x| (-17_i32..=17).map(move |z| [x, z]))
+            .collect();
+        chunks.sort_by_key(|[x, z]| (x.abs().max(z.abs()), x * x + z * z, *x, *z));
+        let mut request: Request = serde_json::from_value(
+            json!({"seed":"0","dimension":0,"chunks":chunks,"refresh":[[17,17],[0,0]]}),
+        )
+        .unwrap();
+        request.validate().unwrap();
+        assert_eq!(request.chunks.len(), 1225);
+        assert_eq!(request.chunks[0], [0, 0]);
+        let windows = windows(0, &request.chunks).unwrap();
+        assert!(windows.len() > 1);
+        assert!(windows.iter().all(|window| window.areas.len() <= 10));
+        assert!(windows.iter().all(|window| window.chunks.len() <= 640));
+        assert_eq!(
+            windows
+                .iter()
+                .map(|window| window.chunks.len())
+                .sum::<usize>(),
+            1225
+        );
+        request.chunks.push([18, 18]);
+        assert!(request.validate().is_err());
+        request.chunks = vec![[3, 2], [0, 0], [3, 2], [-1, -1]];
+        request.refresh.clear();
+        request.validate().unwrap();
+        assert_eq!(request.chunks, [[3, 2], [0, 0], [-1, -1]]);
     }
 
     #[test]

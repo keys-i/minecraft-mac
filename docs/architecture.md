@@ -60,17 +60,23 @@ It never opens the player's worlds or account helper
 One serial generation queue prevents concurrent server writes and LevelDB reads
 A seed/version hash chooses the private scenery database; its manifest records completed dimension/chunk coordinates and located destinations
 Private behaviour-pack functions check at most 16 chunks together, with a scoreboard result and an ordered console barrier before the next batch
-The launcher requests the nearest 81 chunks at a time after its initial nine, so completed scenery can become visible without waiting for the whole render distance
+The launcher requests up to 1,225 nearby chunks in distance order, including the data-only neighbour halo
+One official-server lifecycle rotates bounded windows with at most ten ticking areas; readiness follows saved data, final cleanup and a normal server exit
 Brief generator-lock contention waits for owned cleanup, with a 30-second deadline and cancellation
 
 Immutable `WorldData` snapshots feed rendering, movement, resident clearance and the minimap
 The native decoder validates little-endian NBT palettes, packed storage, dimension heights and biome sections
 Meshes omit buried faces and share original materials from the installed game
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
-The fog horizon follows the nearest unfinished mesh boundary, including the initial static frame; flight waits for rendered terrain
+The previous scene or installed panorama stays visible while nearby meshes prepare; Look around becomes available after the core scene is ready
+The normal horizon stays at the prepared chunk distance instead of collapsing into nearby fog; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
+Menu scenery targets 30 FPS and active Look around/journeys target 60 FPS, with a 30 FPS low-power limit
+Hidden, unfocused or game-covered views stop continuous rendering; inactive streaming cancels owned generation, reads and mesh work
 The requested chunk radius is 8–512 in the three generated dimensions
 The nearest 8–16 chunks retain full voxel geometry and collision; farther terrain uses progressively coarser vertical solid bands from those same official chunks
+The default is 16 chunks; stored choices remain intact
+One extra data ring supports shared-face invalidation and bounded skylight/blocklight propagation without overlapping near and distant meshes
 One outer ring is queued at a time, and low-priority page meshes leave buried interiors on disk
 Distant bands preserve canopy gaps, cavern voids and End-island undersides, including the Nether
 Only completed page meshes advance the fog horizon; cancelled pages return to the pending set
@@ -96,6 +102,8 @@ Tours target 165 seconds of movement; Space and Skip journey share the coordinat
 
 Residents use original installed geometry and textures, swept support/medium checks, displacement-based facing/gait and independent head glances
 Streamed and authored models share leg phases and the installed bat timing profile
+Native rabbit adult/baby tracks own crouching, takeoff and landing, with collision checked across each hop
+Declared geometry identifiers, calm visibility and native rest transforms are resolved before shared rigs and attention pivots are attached
 Drowned remain bottom walkers in ambient scenery; amphibious pose selection distinguishes wet support from free water
 Authored species awareness selects a 10–40% chance per eight-second attention interval
 This is scenery AI, not a reproduction of the complete Minecraft behaviour/combat engine
@@ -108,6 +116,9 @@ The earlier `Adventure`, `Terrain` and `Passage` implementation remains for cust
 Archive readers are bounded; newer versioned packs override older entries across PNG/TGA formats and geometry filenames
 Loose same-pack files take precedence, partial catalog definitions inherit unchanged fields, and path arrays support dictionary entries
 Grass colour-mask alpha selects tint while preserving opaque dirt, shortened path sides use cropped UVs, and plants use cutout geometry
+Block families share opaque, cutout, blend and fluid policies; waterlogged cells retain secondary water and complete-cell edits clear it
+Installed flipbook metadata drives cached square frames through one active scene clock
+Chunk vertices carry occluded skylight and blocklight; daylight updates material uniforms rather than rebuilding geometry
 No Minecraft art, music, game payload or account data is included in source exports
 `Music.swift` owns one native player, bounded on-demand loading, focus/visibility pauses and the settings master-volume control
 The asset queue releases archive buffers after each completed build/load

@@ -350,12 +350,9 @@ enum Structures {
             mesh.cube(.init(1,1,1),at:.init(Double(x)+0.5,Double(y)+0.5,0),material:tiles[0],faceMaterials:tiles)
         } }
         let frame = mesh.node(sift ? "artistic-rift" : "nether-portal"); frame.position = p; root.addChildNode(frame)
-        let material = try assets.texture("textures/blocks/portal",animated:true).copy() as! SCNMaterial
-        material.lightingModel = .constant
-        if sift { material.multiply.contents = NSColor.cyan }
+        let material = try assets.texture("textures/blocks/portal",tint:sift ? 0x00FFFF : nil,animated:true,layer:.fluid)
         let plane = SCNPlane(width:2,height:3); plane.firstMaterial = material
         let surface = SCNNode(geometry:plane); surface.name = "portal-surface"; surface.position = .init(0,2.5,0)
-        Landscape.animate(surface,material:material)
         frame.addChildNode(surface)
     }
 
@@ -370,17 +367,15 @@ enum Structures {
             }
         } }
         let frame = mesh.node("end-frames"); frame.position = p; root.addChildNode(frame)
-        let stars = try assets.texture("textures/entity/end_portal").copy() as! SCNMaterial
-        stars.lightingModel = .constant
+        let stars = try assets.texture("textures/entity/end_portal",animated:true,layer:.fluid)
         let plane = SCNPlane(width:3,height:3); plane.firstMaterial = stars
         let surface = SCNNode(geometry:plane); surface.name = "end-portal"
         surface.position = .init(p.x,p.y+0.75,p.z); surface.eulerAngles.x = -.pi/2
-        stars.diffuse.contentsTransform = SCNMatrix4MakeScale(4,4,1)
-        surface.runAction(.repeatForever(.customAction(duration:96) { node,time in
-            var transform = SCNMatrix4MakeScale(4,4,1); transform.m41 = time/96; transform.m42 = time/128
-            node.geometry?.firstMaterial?.diffuse.contentsTransform = transform
-        }))
         root.addChildNode(surface)
+        let base = SCNPlane(width:3,height:3); base.firstMaterial = assets.void()
+        let void = SCNNode(geometry:base); void.name = "end-void"
+        void.position = .init(p.x,p.y+0.742,p.z); void.eulerAngles.x = -.pi/2
+        root.addChildNode(void)
     }
 }
 
@@ -629,23 +624,32 @@ extension Structures {
     }
 
     static func volume(_ name: String, size: [Int], palette: [[String:Any]], blocks: [Int:Int],
-                       tags: [Int:[String:Any]] = [:], assets: Assets, interior: Bool = false) throws -> SCNNode {
+                       fluids fluidBlocks: [Int:Int] = [:], tags: [Int:[String:Any]] = [:], assets: Assets, interior: Bool = false,
+                       biome: ((Int,Int,Int) -> Biome)? = nil, cancelled: () -> Bool = {false}) throws -> SCNNode {
         guard size.count == 3, size[0]>0, size[0]<=128, size[1]>0, size[1]<=384, size[2]>0, size[2]<=128,
-              palette.count<4096, blocks.count<=250_000,
-              blocks.allSatisfy({ (0..<size[0]*size[1]*size[2]).contains($0.key) && palette.indices.contains($0.value) }) else { throw AssetError.model }
-        let names = palette.map { ($0["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"") }
+              palette.count<4096, blocks.count<=250_000, fluidBlocks.count<=250_000,
+              [blocks,fluidBlocks].allSatisfy({ $0.allSatisfy { (0..<size[0]*size[1]*size[2]).contains($0.key) && palette.indices.contains($0.value) } }) else { throw AssetError.model }
+        let names = palette.map { value -> String in
+            let name = (value["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"")
+            return Block(name:name).liquid ?? name
+        }
+        var blocks = blocks, fluidCells = fluidBlocks
+        for (cell,state) in blocks where Block(name:names[state]).fluid {
+            fluidCells[cell] = state; blocks.removeValue(forKey:cell)
+        }
+        guard fluidCells.values.allSatisfy({Block(name:names[$0]).fluid}) else { throw AssetError.model }
         func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
         func position(_ index: Int) -> [Int] { [index%size[0],index/(size[0]*size[2]),index/size[0]%size[2]] }
-        func partial(_ name: String) -> Bool {
-            Block.plant(name) || name == "pointed_dripstone" || name.hasSuffix("_bed") || ["portal","stairs","slab","door","pane","fence","wall","torch","plate","flower","glass","leaves","water","lava","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","vine","ladder","composter","chest","chain"].contains { name.contains($0) }
-        }
-        let opaque = names.map { !partial($0) }
-        var mesh = Voxels(), liquid = Voxels(), surfaces: [Int: [SCNMaterial]] = [:]
+        let opaque = names.indices.map { Block(name:names[$0],states:palette[$0]["Properties"] as? [String:String] ?? [:]).opaque }
+        let supports = names.indices.map { opaque[$0] || ["farmland","grass_path","dirt_path"].contains(names[$0]) || names[$0].hasSuffix("_slab") || names[$0].hasSuffix("_stairs") }
+        var mesh = Voxels(), liquid = Voxels(), surfaces: [String: [SCNMaterial]] = [:]
         var fluids: [String:[SCNMaterial]] = [:], doors: [Door] = []
-        var portals: [String:SCNMaterial] = [:]
         var sites: [SCNNode] = [], beds = Set<Int>()
         func lookup(_ p: [Int]) -> Int? {
             (0..<3).allSatisfy { (0..<size[$0]).contains(p[$0]) } ? blocks[key(p)] : nil
+        }
+        func fluid(_ p: [Int]) -> Int? {
+            (0..<3).allSatisfy { (0..<size[$0]).contains(p[$0]) } ? fluidCells[key(p)] : nil
         }
         func direction(_ facing: String?) -> (Int,Int) {
             facing == "east" ? (1,0) : facing == "west" ? (-1,0) : facing == "south" ? (0,1) : (0,-1)
@@ -658,7 +662,7 @@ extension Structures {
             }
             for y in [cell[1],cell[1]-1,cell[1]+1,cell[1]-2] where y>=0 && y<size[1] {
                 guard free([cell[0],y,cell[2]]), free([cell[0],y+1,cell[2]]) else { continue }
-                if let floor = lookup([cell[0],y-1,cell[2]]), opaque[floor] || names[floor].hasSuffix("_stairs") || names[floor].hasSuffix("_slab") {
+                if let floor = lookup([cell[0],y-1,cell[2]]), supports[floor] {
                     let carpet = lookup([cell[0],y,cell[2]]).map { names[$0].contains("carpet") } ?? false
                     let name = names[floor], states = palette[floor]["Properties"] as? [String:String] ?? [:]
                     let inset = ["farmland","grass_path","dirt_path"].contains(name) ? 0.0625 : name.hasSuffix("_slab") && states["type"] == "bottom" ? 0.5 : 0
@@ -680,7 +684,55 @@ extension Structures {
             return node
         }
         let fullUV = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
+        for index in fluidCells.keys.sorted() {
+            if cancelled() { throw CancellationError() }
+            let p = position(index), state = fluidCells[index]!, name = names[state]
+            if interior && (p[0] == 0 || p[0] == size[0]-1 || p[2] == 0 || p[2] == size[2]-1) { continue }
+            let properties = palette[state]["Properties"] as? [String:String] ?? [:]
+            let area = biome?(p[0],p[1],p[2]) ?? .meadow, family = name+":"+area.rawValue
+            let materials: [SCNMaterial]
+            if let cached = fluids[family] { materials = cached }
+            else {
+                let still = try assets.fluid(lava:name == "lava",biome:area)
+                let flow = try assets.fluid(lava:name == "lava",biome:area,flowing:true)
+                materials = [flow,flow,flow,flow,still,still]; fluids[family] = materials
+            }
+            var tiles = materials
+            let level = Int(properties["level"] ?? "0") ?? 0
+            if level != 0 { tiles[4] = tiles[0] }
+            var mask = 63
+            for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
+                let neighbour = [p[0]+d[0],p[1]+d[1],p[2]+d[2]]
+                if fluid(neighbour).map({ names[$0] == name }) == true || lookup(neighbour).map({opaque[$0]}) == true { mask &= ~(1 << face) }
+            }
+            guard mask != 0 else { continue }
+            func height(_ x: Int, _ z: Int) -> Double {
+                guard let other = fluid([x,p[1],z]), names[other] == name else {
+                    return lookup([x,p[1],z]).map({opaque[$0]}) == true ? -1 : 0
+                }
+                if fluid([x,p[1]+1,z]).map({names[$0] == name}) == true { return 1 }
+                let states = palette[other]["Properties"] as? [String:String] ?? [:]
+                let depth = Int(states["level"] ?? "0") ?? 0
+                return Double(8-(depth&7))/9
+            }
+            func corner(_ x: Int, _ z: Int) -> Double {
+                var sum = 0.0, weight = 0.0
+                for dx in [0,x] {for dz in [0,z] {
+                    let h = height(p[0]+dx,p[2]+dz)
+                    if h == 1 { return 1 }
+                    if h>=0 { let w = h>=0.8 ? 10.0 : 1; sum += h*w; weight += w }
+                } }
+                return weight>0 ? sum/weight : 0
+            }
+            let first = liquid.vertices.count
+            liquid.cube(.init(1,1,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5),material:tiles[0],faces:mask,faceMaterials:tiles)
+            for index in first..<liquid.vertices.count where liquid.vertices[index].y>Double(p[1])+0.5 {
+                let point = liquid.vertices[index]
+                liquid.vertices[index].y = Double(p[1])+corner(point.x>Double(p[0])+0.5 ? 1 : -1,point.z>Double(p[2])+0.5 ? 1 : -1)
+            }
+        }
         for index in blocks.keys.sorted() {
+            if cancelled() { throw CancellationError() }
             let p = position(index)
             if interior && (p[0] == 0 || p[0] == size[0]-1 || p[2] == 0 || p[2] == size[2]-1) { continue }
             guard let state = blocks[key(p)] else { continue }
@@ -746,6 +798,9 @@ extension Structures {
                 continue
             }
             var resolved = properties
+            if name == "kelp" || name == "kelp_plant" {
+                resolved["tip"] = lookup([p[0],p[1]+1,p[2]]).map { ["kelp","kelp_plant"].contains(names[$0]) } == true ? "false" : "true"
+            }
             if name == "iron_bars" {
                 // Structure templates acquire their bar connections after neighbouring blocks are placed
                 for (edge,dx,dz) in [("north",0,-1),("south",0,1),("west",-1,0),("east",1,0)] {
@@ -753,13 +808,11 @@ extension Structures {
                 }
             }
             if ["portal","nether_portal","end_portal"].contains(name) {
-                let material: SCNMaterial
-                if let cached = portals[name] {material = cached}
-                else {
-                    material = try assets.texture(name == "end_portal" ? "textures/entity/end_portal" : "textures/blocks/portal",animated:true).copy() as! SCNMaterial
-                    material.lightingModel = .constant; material.writesToDepthBuffer = false; portals[name] = material
-                }
+                let material = try assets.texture(name == "end_portal" ? "textures/entity/end_portal" : "textures/blocks/portal",animated:true,layer:.fluid)
                 let horizontal = name == "end_portal", across = properties["axis"] != "z"
+                if horizontal {
+                    mesh.cube(.init(1,0,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.742,Double(p[2])+0.5),material:assets.void(),faces:16)
+                }
                 liquid.cube(horizontal ? .init(1,0,1) : across ? .init(1,1,0) : .init(0,1,1),
                     at:.init(Double(p[0])+0.5,Double(p[1])+(horizontal ? 0.75 : 0.5),Double(p[2])+0.5),material:material,
                     faces:horizontal ? 16 : across ? 1 : 2,textureUV:Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6))
@@ -767,7 +820,7 @@ extension Structures {
             }
             if try fixture(name,states:resolved,data:tags[index] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
             var faces = 63, lips: [Int] = []
-            if opaque[state] || name == "glass" || name == "tinted_glass" || name.contains("stained_glass") && !name.contains("pane") {
+            if opaque[state] || Block(name:name).render == .blend && !name.contains("pane") {
                 for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
                     let neighbour = [p[0]+d[0],p[1]+d[1],p[2]+d[2]]
                     if (0..<3).allSatisfy({ (0..<size[$0]).contains(neighbour[$0]) }),
@@ -779,23 +832,11 @@ extension Structures {
             }
             guard faces != 0 || !lips.isEmpty else { continue }
             let materials: [SCNMaterial]
-            if let found = surfaces[state] { materials = found }
+            let surface = String(state)+"-"+(resolved["tip"] ?? "")
+            if let found = surfaces[surface] { materials = found }
             else {
-                if name == "water" || name == "lava" {
-                    if fluids[name] == nil {
-                        let still = try Landscape.flow(assets:assets,lava:name == "lava",biome:.meadow)
-                        let path = "textures/blocks/"+(name == "lava" ? "lava_flow" : "water_flow_grey")
-                        let flow = still.copy() as! SCNMaterial
-                        flow.name = path
-                        flow.diffuse.contents = try assets.texture(path,tint:name == "water" ? assets.water(.meadow).colour : nil,animated:true).diffuse.contents
-                        if flow.emission.contents != nil { flow.emission.contents = flow.diffuse.contents }
-                        fluids[name] = [flow,flow,flow,flow,still,still]
-                    }
-                    var tiles = fluids[name]!
-                    if properties["level"] != "0" { tiles[4] = tiles[0] }
-                    materials = tiles
-                } else { materials = try assets.tiles(name,states:properties) }
-                surfaces[state] = materials
+                materials = try assets.tiles(name,states:resolved)
+                surfaces[surface] = materials
             }
             for face in lips {
                 mesh.cube(.init(1,0.0625,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.96875,Double(p[2])+0.5),
@@ -805,36 +846,7 @@ extension Structures {
                 mesh.cube(dimensions,at:.init(Double(p[0])+centre.x,Double(p[1])+centre.y,Double(p[2])+centre.z),
                     material:materials[0],faces:mask,textureUV:sprite ? fullUV : nil,faceMaterials:materials)
             }
-            if name == "water" || name == "lava" {
-                var mask = 63
-                for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
-                    if let other = lookup([p[0]+d[0],p[1]+d[1],p[2]+d[2]]), names[other] == name || opaque[other] { mask &= ~(1 << face) }
-                }
-                func height(_ x: Int, _ z: Int) -> Double {
-                    guard let other = lookup([x,p[1],z]) else { return 0 }
-                    guard names[other] == name else { return opaque[other] ? -1 : 0 }
-                    if let above = lookup([x,p[1]+1,z]), names[above] == name { return 1 }
-                    let properties = palette[other]["Properties"] as? [String:String] ?? [:]
-                    let level = Int(properties["level"] ?? "0") ?? 0
-                    return Double(8-(level&7))/9
-                }
-                func corner(_ x: Int, _ z: Int) -> Double {
-                    var sum = 0.0, weight = 0.0
-                    for dx in [0,x] { for dz in [0,z] {
-                        let h = height(p[0]+dx,p[2]+dz)
-                        if h == 1 { return 1 }
-                        if h >= 0 { let w = h>=0.8 ? 10.0 : 1; sum += h*w; weight += w }
-                    } }
-                    return weight>0 ? sum/weight : 0
-                }
-                let first = liquid.vertices.count
-                liquid.cube(.init(1,1,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5),
-                    material:materials[0],faces:mask,faceMaterials:materials)
-                for index in first..<liquid.vertices.count where liquid.vertices[index].y>Double(p[1])+0.5 {
-                    let point = liquid.vertices[index]
-                    liquid.vertices[index].y = Double(p[1])+corner(point.x>Double(p[0])+0.5 ? 1 : -1,point.z>Double(p[2])+0.5 ? 1 : -1)
-                }
-            } else if name == "farmland" || name == "grass_path" || name == "dirt_path" {
+            if name == "farmland" || name == "grass_path" || name == "dirt_path" {
                 let side = CGRect(x:0,y:1,width:1,height:-0.9375)
                 mesh.cube(.init(1,0.9375,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.46875,Double(p[2])+0.5),
                     material:materials[0],textureUV:[side,side,side,side,fullUV[4],fullUV[5]],faceMaterials:materials)
@@ -852,7 +864,7 @@ extension Structures {
                 transform.eulerAngles.y = facing == "east" ? -.pi/2 : facing == "south" ? .pi : facing == "west" ? .pi/2 : 0
                 mesh.transform(from:first,origin:transform.position,by:transform)
             } else if name.hasSuffix("_slab") {
-                cube(.init(1,properties["type"] == "double" ? 1 : 0.5,1),.init(0.5,properties["type"] == "top" ? 0.75 : 0.25,0.5))
+                cube(.init(1,properties["type"] == "double" ? 1 : 0.5,1),.init(0.5,properties["type"] == "double" ? 0.5 : properties["type"] == "top" ? 0.75 : 0.25,0.5))
             } else if name.contains("glass_pane") {
                 // Arms share block-space UVs and meet the two-pixel post without overlap
                 let directions = [("south",[0,0,1],0),("east",[1,0,0],1),("north",[0,0,-1],2),("west",[-1,0,0],3)]
@@ -948,13 +960,25 @@ extension Structures {
             }
             sites.append(marker)
         }
+        func part(_ source: SCNGeometry, _ slots: [Int]) -> SCNGeometry {
+            let result = SCNGeometry(sources:source.sources,elements:slots.map {source.elements[$0]})
+            result.materials = slots.map {source.materials[$0]}
+            return result
+        }
         let geometry = mesh.node("template-"+name), root = Footprint()
-        root.geometry = geometry.geometry; root.name = geometry.name; root.categoryBitMask = geometry.categoryBitMask
+        if let source = geometry.geometry {
+            root.geometry = part(source,source.materials.indices.filter {source.materials[$0].writesToDepthBuffer})
+            let slots = source.materials.indices.filter {!source.materials[$0].writesToDepthBuffer}
+            if !slots.isEmpty {
+                let glass = SCNNode(geometry:part(source,slots)); glass.name = "template-translucent"; glass.categoryBitMask = 2; glass.castsShadow = false
+                root.addChildNode(glass)
+            }
+        }
+        root.name = geometry.name; root.categoryBitMask = geometry.categoryBitMask
         let foundations = blocks.keys.compactMap { cell -> SCNVector3? in
             let p = position(cell)
             guard p[1] == 0, let state = blocks[key(p)] else { return nil }
-            let name = names[state]
-            guard opaque[state] || ["farmland","grass_path","dirt_path"].contains(name) || name.hasSuffix("_slab") || name.hasSuffix("_stairs") else { return nil }
+            guard supports[state] else { return nil }
             return .init(Double(p[0])+0.5,1,Double(p[2])+0.5)
         }
         root.points = foundations
@@ -962,14 +986,10 @@ extension Structures {
         for site in sites { root.addChildNode(site) }
         if !liquid.vertices.isEmpty {
             let node = liquid.node("template-fluids"); node.categoryBitMask = 1; root.addChildNode(node)
-            for materials in fluids.values { for index in [0,4] { Landscape.animate(node,material:materials[index]) } }
-            for (name,material) in portals {
-                if name == "end_portal" {
-                    node.runAction(.repeatForever(.customAction(duration:96) { _,time in
-                        var transform = SCNMatrix4MakeScale(4,4,1); transform.m41 = time/96; transform.m42 = time/128
-                        material.diffuse.contentsTransform = transform
-                    }))
-                } else {Landscape.animate(node,material:material)}
+            if let source = node.geometry, source.materials.contains(where:{$0.writesToDepthBuffer}), source.materials.contains(where:{!$0.writesToDepthBuffer}) {
+                node.geometry = part(source,source.materials.indices.filter {!source.materials[$0].writesToDepthBuffer})
+                let lava = SCNNode(geometry:part(source,source.materials.indices.filter {source.materials[$0].writesToDepthBuffer}))
+                lava.name = "template-lava"; lava.categoryBitMask = 1; root.addChildNode(lava)
             }
         }
         root.position = .init(-Double(size[0]/2)-0.5,0,-Double(size[2]/2)-0.5)

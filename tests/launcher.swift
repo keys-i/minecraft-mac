@@ -7,6 +7,18 @@ import SwiftUI
 @main
 struct LauncherChecks {
     @MainActor static func main() throws {
+        setbuf(stdout,nil)
+        try LightChecks.run()
+        let upright = SCNNode(), cameraRoot = SCNNode()
+        cameraRoot.addChildNode(upright)
+        for target in [SCNVector3(0,100,0),.init(-0.001,-100,0.001),.init(0,-1,-0.001),.init(10,0,0),.init(0,100,0)] {
+            for _ in 0..<240 {
+                FlightView.face(upright,toward:target,seconds:1.0/60)
+                precondition(upright.worldUp.y>0.05 && abs(upright.worldRight.y)<0.0001,"Cinematic aiming must stay upright through vertical turns")
+            }
+        }
+        let detached = FlightView(); detached.clock(true)
+        precondition(!detached.isPlaying && !detached.rendersContinuously,"A detached or hidden world must stop rendering")
         var assetErrors = Set<String>()
         for kind in ["nether","end"] {
             let record = Trail.Record(kind:kind,x:0,y:70,z:0,seed:42), trail = Trail(record)
@@ -757,6 +769,8 @@ struct LauncherChecks {
             return
         }
         let assets = try Assets(data:URL(fileURLWithPath:data)), factory = Mobs(assets:try Assets(data:URL(fileURLWithPath:data)))
+        try RenderChecks.run(assets:assets)
+        try RigChecks.run(assets:assets)
         for name in ["dandelion","poppy","blue_orchid","allium","azure_bluet","red_tulip","oxeye_daisy","sunflower","lilac","rose_bush","peony"] {
             for half in ["lower","upper"] {
                 let flower = try Structures.volume("flower",source:["size":[1,1,1],"palette":[["Name":"minecraft:"+name,"Properties":["half":half]]],"blocks":[["pos":[0,0,0],"state":0]]],assets:assets)
@@ -773,7 +787,11 @@ struct LauncherChecks {
         }
         let fieldChart = Chart(), fieldView = FlightView()
         let field = Expedition.Coordinator(chart:fieldChart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
-        field.view = fieldView; field.initial = false; field.streaming = false; field.radius = 512; field.world = .overworld
+        field.view = fieldView; field.initial = false
+        let pendingRead = BlockOperation(), pendingMesh = BlockOperation()
+        field.reader = pendingRead; field.mesh = pendingMesh; field.streaming = false
+        precondition(pendingRead.isCancelled && pendingMesh.isCancelled && !field.reading,"Hiding scenery cancels database and mesh work at their owners")
+        field.radius = 512; field.world = .overworld
         field.updateRegion(at:.init(0,100,0))
         precondition(field.radius == 512 && field.wanted.count == 33*33+17*8,"A 512-chunk target must keep its working queue bounded without changing the requested radius")
         field.dispose()
@@ -782,17 +800,18 @@ struct LauncherChecks {
             let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
             coordinator.view = view; coordinator.world = .overworld
             coordinator.home = .init(232.5,320,696.5); coordinator.region = .init(x:14,z:43)
-            coordinator.wanted = Set((6...22).flatMap {x in (35...51).map {Chunk(x:x,z:$0)}})
-            for x in 13...15 {for z in 42...44 {
-                let key = Chunk(x:x,z:z)
+            coordinator.wanted = Set((-2...30).flatMap {x in (27...59).map {Chunk(x:x,z:$0)}})
+            coordinator.halo = Set((-3...31).flatMap {x in (26...60).map {Chunk(x:x,z:$0)}})
+            for key in coordinator.halo {
                 coordinator.data.chunks[key] = try database.chunk(key,dimension:0)!
-                coordinator.wanted.insert(key)
-            } }
+            }
             coordinator.pump()
-            let deadline = Date().addingTimeInterval(20)
+            let deadline = Date().addingTimeInterval(600)
             while coordinator.initial && chart.error == nil && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
-            precondition(!coordinator.initial && view.scene != nil && view.pointOfView!.position.y>50,"The actual first nine generated chunks must install a visible world")
-            precondition(view.scene!.fogEndDistance>view.scene!.fogStartDistance && view.scene!.fogEndDistance<=24,"The first static frame must hide unfinished scenery edges")
+            precondition(!coordinator.initial && chart.visible && view.scene != nil && view.pointOfView!.position.y>50,"A prepared sixteen-chunk scene must install a visible world")
+            precondition(coordinator.wanted.allSatisfy {coordinator.nodes[$0] != nil},"All core meshes must be ready before Look around is enabled")
+            precondition(coordinator.nodes.count == 33*33,"The lighting halo holds data without duplicate full and distant meshes")
+            precondition(view.scene!.fogStartDistance>=256 && view.scene!.fogEndDistance>view.scene!.fogStartDistance,"The first frame must retain the sixteen-chunk horizon")
             if let output = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_CAPTURE"] {
                 let image = view.snapshot(), bitmap = NSBitmapImageRep(data:image.tiffRepresentation!)!
                 try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:output))
@@ -816,7 +835,12 @@ struct LauncherChecks {
             for key in coordinator.wanted {coordinator.nodes[key] = SCNNode()}
             let border = Chunk(x:33,z:32)
             coordinator.nodes.removeValue(forKey:border)
-            precondition(abs(coordinator.visibleDistance(at:camera.position)-6.5)<0.001,"Unfinished terrain must fade before its exposed boundary")
+            precondition(coordinator.visibleDistance(at:camera.position)>=256,"A missing mesh must not collapse the requested horizon into nearby mist")
+            coordinator.invalidate([border])
+            precondition(coordinator.dirty.contains(centre),"Chunk changes invalidate neighbours that share their meshing and lighting halo")
+            let unchangedRevision = coordinator.geometryRevision
+            coordinator.invalidate([])
+            precondition(coordinator.geometryRevision == unchangedRevision,"An empty change set must leave in-flight meshing alone")
             coordinator.nodes[border] = SCNNode()
             coordinator.populated = camera.position; coordinator.home = .init(10,4,10)
             var returned: World?
@@ -861,16 +885,16 @@ struct LauncherChecks {
         chain.apply([Cell(x:0,y:0,z:0):Block(name:"iron_chain",states:["pillar_axis":"y"])])
         precondition(chain.vacant(.init(0.1,0,0.1),radius:0.1) && !chain.vacant(.init(0.5,0,0.5),radius:0.1))
         _ = try chain.node(.init(x:0,z:0),assets:assets)
-        let region = Set((-16...16).flatMap { x in (-16...16).map {Chunk(x:x,z:$0)} })
+        let region = Set((-20...20).flatMap { x in (-20...20).map {Chunk(x:x,z:$0)} })
         let extra = Set((17...25).flatMap {x in (-2...2).map {Chunk(x:x,z:$0)} })
         let requested = region.union(extra), batch = Expedition.Coordinator.batch(requested,near:.init(x:0,z:0))
-        precondition(batch.count == 81 && batch.first == Chunk(x:0,z:0))
+        precondition(batch.count == 1225 && batch.first == Chunk(x:0,z:0))
         let remainder = requested.subtracting(batch)
         precondition(!remainder.isEmpty && Set(batch).union(remainder) == requested)
         var unprepared = remainder
         while !unprepared.isEmpty {
             let next = Expedition.Coordinator.batch(unprepared,near:.init(x:0,z:0))
-            precondition(!next.isEmpty && next.count<=81)
+            precondition(!next.isEmpty && next.count<=1225)
             unprepared.subtract(next)
         }
         for kind in ["nether","end"] {
@@ -1307,7 +1331,7 @@ struct LauncherChecks {
         precondition(Passage.stronghold.pose(at:0).eye.y-Passage.stronghold.pose(at:28).eye.y > 40)
         let dragon = try factory.actor("ender_dragon")
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
-        let window = try Structures.template("mansion/wall_window",assets:assets).geometry!
+        let window = try Structures.template("mansion/wall_window",assets:assets).childNode(withName:"template-translucent",recursively:false)!.geometry!
         precondition(zip(window.materials,window.elements).contains { $0.0.name?.contains("glass") == true && $0.1.primitiveCount > 0 })
         let panePositions = window.sources(for:.vertex)[0], paneNormals = window.sources(for:.normal)[0], paneCoordinates = window.sources(for:.texcoord)[0]
         func paneValue(_ source: SCNGeometrySource, _ index: Int, _ axis: Int) -> Double {
@@ -1333,8 +1357,8 @@ struct LauncherChecks {
             let material = try Landscape.flow(assets:assets,lava:lava), node = SCNNode()
             Landscape.animate(node,material:material)
             let image = material.diffuse.contents as! CGImage
-            precondition(image.height > image.width && image.height%image.width == 0)
-            precondition(abs(material.diffuse.contentsTransform.m22-Double(image.width)/Double(image.height)) < 0.0001)
+            precondition(image.height == image.width,"Flipbooks expose one square frame to ordinary block UVs")
+            precondition(material.diffuse.contentsTransform.m22>0 && material.diffuse.contentsTransform.m22<=1)
             precondition(abs(material.transparency-(lava ? 1 : plainsWater.opacity))<0.0001 && material.lightingModel == .constant)
             if lava { precondition(material.emission.contentsTransform.m22 == material.diffuse.contentsTransform.m22) }
         }

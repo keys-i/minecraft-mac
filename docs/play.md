@@ -83,18 +83,19 @@ returns to the menu. Switching windows releases it too; click the scene to recap
 Fly north, south, east or west to enter a neighbouring biome without a scene swap
 The picker and **[ / ]** guide you towards another area; movement keys take control
 Wooden doors open as you approach; Escape returns to the biome picker and hotbar
-These are 43 authored areas with continuous procedural terrain beyond them
-The outskirts can repeat biomes; lakes, winding channels and sand/gravel banks
-break up the terrain. Landmarks appear occasionally outside the showcase core
-Cave-only habitats lie beneath surface cover, with shafts
-used for guided travel. Sulfur Caves uses the installed game’s original assets
+The three normal dimensions use seed-based chunks from the pinned official Bedrock generator
+Biomes can repeat, and generated rivers, lakes, caves and structures share the same world data
+The custom Sift and historical Far Lands use the authored scenery renderer
+Guided underground journeys keep their scenery additions available to explore
 The minimap appears while Look around is open and leaves with spectator mode
 It shows north, terrain and your coordinates. Its historical Far Lands view is
 marked map-unavailable because that 3D wall has no shared heightmap
 Turning off background animation keeps deliberate flight and its map available
 Settings controls **Render distance** in 16 × 16-block chunks, from 8 to 512
+New installations and Reset defaults use 16 chunks; existing choices are preserved
 Nearby terrain keeps full block detail; distant detail is sampled progressively from the same generated chunks
 Large distances need substantial first-time generation and disk space; preparations stay in the background
+The previous scene or installed panorama stays visible until nearby terrain is ready for Look around
 Choose **Far Lands** in the Overworld picker to visit a historical recreation;
 choose another area to return. It is not a current Bedrock biome
 The Overworld village includes pigs, horses, baby animals and a crowned
