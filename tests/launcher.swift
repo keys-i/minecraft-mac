@@ -104,7 +104,8 @@ struct LauncherChecks {
             precondition(Block(name:name).passable && !Block(name:name).opaque,"Flowers must never become solid floating cubes: \(name)")
         }
         let farShell = Horizon.shell(.init(x:-10,z:20),radius:512)
-        precondition(farShell.count == 4096 && farShell.contains(.init(x:-522,z:532)))
+        precondition(farShell.count == 3224 && farShell.contains(.init(x:-522,z:20)) && !farShell.contains(.init(x:-522,z:532)),
+            "Distant generation shells follow radial proximity without square corners")
         precondition(Horizon.page(.init(x:-1,z:-17)) == .init(x:-1,z:-2))
         precondition(Horizon.step(.init(x:512,z:0),near:.init(x:0,z:0)) == 16)
         var bandBytes = Data([9,1,0,0,1,0,0,0,10,0,0,8,4,0])
@@ -501,12 +502,16 @@ struct LauncherChecks {
         rejects { _ = try NBT.read(nbt+Data([0])) }
         rejects { _ = try NBT.read(Data([10,0,0,9,0,1,108,1,255,255,255,255,0])) }
         var mesh = Voxels()
-        let automaticDoor = Door(); automaticDoor.geometry = SCNBox(width:1,height:2,length:0.1875,chamferRadius:0)
+        let automaticDoor = Door(); automaticDoor.name = "door"; automaticDoor.geometry = SCNBox(width:1,height:2,length:0.1875,chamferRadius:0)
         automaticDoor.swing = -.pi/2
         automaticDoor.axis = .init(1,0,0)
         let copy = automaticDoor.clone(); precondition(copy.swing == automaticDoor.swing)
         precondition(copy.axis.x == 1)
-        automaticDoor.approach(.init(0,1,1)); precondition(automaticDoor.action(forKey:"door") != nil)
+        let resident = SCNNode(); resident.position = .init(0,1,1)
+        automaticDoor.register(resident); automaticDoor.approach(); precondition(automaticDoor.action(forKey:"door") != nil)
+        let manualDoor = Door(); manualDoor.toggle(); precondition(manualDoor.action(forKey:"door") != nil)
+        let trapdoor = Door(); trapdoor.name = "trapdoor"; trapdoor.register(resident); trapdoor.approach()
+        precondition(trapdoor.action(forKey:"door") == nil,"Villagers must ignore trapdoors")
         let doorway = SCNScene(); copy.categoryBitMask = 2; doorway.rootNode.addChildNode(copy)
         let doorRenderer = SCNRenderer(device:nil,options:nil); doorRenderer.scene = doorway
         precondition(doorRenderer.prepare(doorway,shouldAbortBlock:nil)); SCNTransaction.flush()
@@ -842,7 +847,8 @@ struct LauncherChecks {
         precondition(pendingRead.isCancelled && pendingMesh.isCancelled && !field.reading,"Hiding scenery cancels database and mesh work at their owners")
         field.radius = 512; field.world = .overworld
         field.updateRegion(at:.init(0,100,0))
-        precondition(field.radius == 512 && field.wanted.count == 33*33+17*8,"A 512-chunk target must keep its working queue bounded without changing the requested radius")
+        precondition(field.radius == 512 && field.wanted.count == 901 && field.halo.count == 933,
+            "A 512-chunk target keeps one complete neighbour halo around radial terrain without changing the requested radius")
         let retainedPage = BlockOperation()
         field.horizonMap.operation = retainedPage; field.horizonMap.pending = .init(x:8,z:8)
         field.updateRegion(at:.init(16.5,100,0.5))
@@ -857,6 +863,8 @@ struct LauncherChecks {
         precondition(!field.entryReady,"Raw collision data alone must not enable Look around")
         for key in field.entry {field.nodes[key] = SCNNode()}
         precondition(field.entryReady,"Look around enables after the playable core and collision halo are ready")
+        precondition(field.visibleDistance(at:.init(32.5,100,0.5)) == 16,
+            "Fog must stop at the complete radial mesh frontier while nearby chunks stream")
         field.dispose()
         if let path = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_WORLD"] {
             let database = try Database(URL(fileURLWithPath:path)), chart = Chart(), view = FlightView(frame:NSRect(x:0,y:0,width:1040,height:760))
@@ -957,13 +965,13 @@ struct LauncherChecks {
         let region = Set((-20...20).flatMap { x in (-20...20).map {Chunk(x:x,z:$0)} })
         let extra = Set((17...25).flatMap {x in (-2...2).map {Chunk(x:x,z:$0)} })
         let requested = region.union(extra), batch = Expedition.Coordinator.batch(requested,near:.init(x:0,z:0))
-        precondition(batch.count == 1225 && batch.first == Chunk(x:0,z:0))
+        precondition(batch.count == 128 && batch.first == Chunk(x:0,z:0))
         let remainder = requested.subtracting(batch)
         precondition(!remainder.isEmpty && Set(batch).union(remainder) == requested)
         var unprepared = remainder
         while !unprepared.isEmpty {
             let next = Expedition.Coordinator.batch(unprepared,near:.init(x:0,z:0))
-            precondition(!next.isEmpty && next.count<=1225)
+            precondition(!next.isEmpty && next.count<=128)
             unprepared.subtract(next)
         }
         for kind in ["nether","end"] {
@@ -1374,6 +1382,11 @@ struct LauncherChecks {
         let door = try placed("oak_door",["facing":"north","open":"false"])
         let opened = try placed("oak_door",["facing":"north","open":"true","hinge":"right"])
         precondition(abs(door.boundingBox.min.z-0.8125)<0.001 && abs(opened.boundingBox.min.x-0.8125)<0.001)
+        let cherryLower = try assets.tiles("cherry_door",states:["half":"lower"])
+        let cherryUpper = try assets.tiles("cherry_door",states:["half":"upper"])
+        precondition(cherryLower.allSatisfy {$0.name == "textures/blocks/cherry_door_bottom"}
+            && cherryUpper.allSatisfy {$0.name == "textures/blocks/cherry_door_top"},
+            "Modern doors keep one matching installed texture on every face of each half")
         let hatch = try placed("spruce_trapdoor",["facing":"east","open":"true"])
         precondition(abs(hatch.boundingBox.max.x-0.1875)<0.001 && hatch.boundingBox.max.y == 1)
         let stand = try placed("brewing_stand",["has_bottle_0":"true","has_bottle_2":"true"])

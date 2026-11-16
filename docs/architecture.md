@@ -60,7 +60,7 @@ It never opens the player's worlds or account helper
 One serial generation queue prevents concurrent server writes and LevelDB reads
 A seed/version hash chooses the private scenery database; its manifest records completed dimension/chunk coordinates and located destinations
 Private behaviour-pack functions check at most 16 chunks together, with a scoreboard result and an ordered console barrier before the next batch
-The launcher requests up to 1,225 nearby chunks in distance order, including the data-only neighbour halo
+The launcher submits at most 128 nearest chunks per generator handoff from a radial working set, then loads that saved wave before requesting more
 One official-server lifecycle rotates bounded windows with at most ten ticking areas; readiness follows saved data, final cleanup and a normal server exit
 Brief generator-lock contention waits for owned cleanup, with a 30-second deadline and cancellation
 
@@ -70,22 +70,23 @@ Meshes omit buried faces and share original materials from the installed game
 Palette solidity is resolved once; opaque and translucent partitions retain only their own vertex buffers
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
 The previous scene or installed panorama stays visible while the nearest 9 meshes and their 25-chunk lighting and collision halo prepare; Look around then becomes available while the selected horizon keeps streaming
-The normal horizon stays at the prepared chunk distance instead of collapsing into nearby fog; flight waits for rendered terrain
+The normal fog horizon expands only through complete radial mesh shells, so unfinished terrain remains covered while flight waits for rendered chunks
 Stale work is cancelled or rejected by its request/revision token
+Near meshes retry one transient construction failure without stopping independent chunks; a repeated entry-mesh failure remains visible instead of silently opening incomplete terrain
 Crossing a chunk retains an in-flight distant page unless that page intersects the changed near boundary or falls outside the new radius
-Menu scenery targets 30 FPS and active Look around/journeys target 60 FPS, with a 30 FPS low-power limit
+Menu scenery targets 30 FPS and active Look around/journeys target at least 60 FPS, including in Low Power Mode
 The native display link drives input; measured submitted-frame intervals adapt only the 3D viewport between 75% and 100% resolution
 Menus and text retain native resolution, with bounded private frame diagnostics in `logs/scenery/frames.json`
 Hidden, unfocused or game-covered views stop continuous rendering; inactive streaming cancels owned generation, reads and mesh work
 The requested chunk radius is 8–512 in the three generated dimensions
-The nearest 8–16 chunks retain full voxel geometry and collision; farther terrain uses progressively coarser vertical solid bands from those same official chunks
+The nearest 8–16 chunk radius retains full voxel geometry and collision; farther terrain uses progressively coarser vertical solid bands from those same official chunks
 The default is 16 chunks; stored choices remain intact
-One extra data ring supports shared-face invalidation and bounded skylight/blocklight propagation without overlapping near and distant meshes
-One outer ring is queued at a time, and low-priority page meshes leave buried interiors on disk
+The detailed set is a Euclidean disc with one complete eight-neighbour data halo for shared-face invalidation and bounded skylight/blocklight propagation
+One radial outer shell is queued at a time, and low-priority page meshes leave buried interiors on disk
 Distant bands preserve canopy gaps, cavern voids and End-island undersides, including the Nether
 Only completed page meshes advance the fog horizon; cancelled pages return to the pending set
-A 512-chunk square can encompass 1,050,625 saved chunks, so first-time preparation can take substantial time and storage
-This is progressive voxel detail at distance, not a million fully detailed chunks resident simultaneously
+A 512-chunk disc can encompass 823,473 saved chunks, so first-time preparation can take substantial time and storage
+This is progressive voxel detail at distance, not hundreds of thousands of fully detailed chunks resident simultaneously
 The authored Sift and historical Far Lands retain their earlier bounded renderer
 The chunk-completion index is split into 32 × 32 region files rather than repeatedly parsing one growing manifest
 Old completion records migrate before their header is rewritten, and the native reader can invalidate and retry a missing saved chunk twice
@@ -106,6 +107,7 @@ Routes share collision/meshing/map data and remain explorable; manual movement c
 Tours target 165 seconds of movement; Space and Skip journey share the coordinator-owned portal handoff
 
 Residents use original installed geometry and textures, swept support/medium checks, home-bounded targets, occupied-target rejection, displacement-based facing/gait and independent head glances
+Right-click toggles the first visible wooden door or trapdoor within five blocks; player proximity never opens either, while villagers register only with doors and reject roaming points they cannot reach directly
 Different hostile residents can occasionally approach and visibly spar without scenery health, drops or permanent deaths
 Held tools reuse the extruded installed-item mesh on the left-hand attachment, and Bedrock's singular beetroot block resolves its plural stage texture as cutout crop geometry
 Streamed and authored models share leg phases and the installed bat timing profile

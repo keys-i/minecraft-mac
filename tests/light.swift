@@ -83,10 +83,12 @@ enum LightChecks {
         catch is CancellationError {}
 
         // A generated two-layer subchunk verifies secondary water and original emitters
-        func section(_ names: [String]) throws -> Subchunk {
+        func section(_ names: [String], implicitSingleton: Bool = false) throws -> Subchunk {
             var bytes = Data([9,UInt8(names.count),0])
             for name in names {
-                bytes.append(contentsOf:[0,1,0,0,0,10,0,0,8,4,0])
+                bytes.append(0)
+                if !implicitSingleton { bytes.append(contentsOf:[1,0,0,0]) }
+                bytes.append(contentsOf:[10,0,0,8,4,0])
                 bytes.append(contentsOf:"name".utf8)
                 let value = Array(("minecraft:"+name).utf8)
                 bytes.append(contentsOf:[UInt8(value.count),0]); bytes.append(contentsOf:value)
@@ -94,6 +96,9 @@ enum LightChecks {
             }
             return try Subchunk(bytes)
         }
+        let uniform = try section(["water"],implicitSingleton:true)
+        precondition(uniform.layers[0].blocks == [Block(name:"water")] && uniform.layers[0].indices.allSatisfy {$0 == 0},
+                     "Implicit singleton palettes must fill all 4096 blocks")
         var secondary = WorldData(dimension:0)
         secondary.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[0:try section(["air","water"])],biomeData:nil)
         let wet = try Light(data:secondary,key:key)

@@ -14,30 +14,39 @@ final class Door: SCNNode {
     var swing = Double.pi/2
     var axis = SCNVector3(0,1,0)
     private var open = false
+    private var manual = false
     private var visitors = NSHashTable<SCNNode>.weakObjects()
 
     override func clone() -> Self {
         let copy = super.clone()
-        copy.swing = swing; copy.axis = axis; copy.open = open; copy.visitors = .weakObjects()
+        copy.swing = swing; copy.axis = axis; copy.open = open; copy.manual = manual; copy.visitors = .weakObjects()
         return copy
     }
 
-    func approach(_ eye: SCNVector3) {
-        let p = convertPosition(.init(0,0,0),to:nil)
-        func nearby(_ eye: SCNVector3) -> Bool { hypot(p.x-eye.x,p.z-eye.z) < (open ? 3.4 : 2.7) && abs(p.y-eye.y)<3 }
-        let near = nearby(eye) || visitors.allObjects.contains { nearby($0.worldPosition) }
-        guard near != open else { return }
-        open = near
+    private func apply(_ value: Bool) {
+        guard value != open else { return }
+        open = value
         removeAction(forKey:"door")
-        let angle = near ? swing : 0
+        let angle = value ? swing : 0
         runAction(.rotateTo(x:axis.x*angle,y:axis.y*angle,z:axis.z*angle,duration:0.18),forKey:"door")
     }
 
-    func register(_ resident: SCNNode) { visitors.add(resident) }
+    func toggle() {
+        manual = !open
+        apply(manual)
+    }
+
+    func approach() {
+        let p = convertPosition(.init(0,0,0),to:nil)
+        func nearby(_ eye: SCNVector3) -> Bool { hypot(p.x-eye.x,p.z-eye.z) < (open ? 3.4 : 2.7) && abs(p.y-eye.y)<3 }
+        apply(manual || visitors.allObjects.contains { nearby($0.worldPosition) })
+    }
+
+    func register(_ resident: SCNNode) { if name == "door" { visitors.add(resident) } }
 
     // Route checks treat only the moving leaves as passable, without altering their visible pose
     static func clearance<T>(_ root: SCNNode, _ check: () throws -> T) rethrows -> T {
-        let leaves = collect(root).filter { $0.categoryBitMask != 0 }.map { ($0,$0.categoryBitMask) }
+        let leaves = collect(root).filter { $0.name == "door" && $0.categoryBitMask != 0 }.map { ($0,$0.categoryBitMask) }
         guard !leaves.isEmpty else { return try check() }
         for (leaf,_) in leaves { leaf.categoryBitMask = 0 }
         SCNTransaction.flush()

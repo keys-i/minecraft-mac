@@ -1301,6 +1301,10 @@ extension Assets {
             let texture = name == "beetroot" ? "beetroots" : name
             return Array(repeating:try self.texture("textures/blocks/"+texture+"_stage_\(stage)"),count:6)
         }
+        if name == "sweet_berry_bush" {
+            let growth = min(7,max(0,Int(states["growth"] ?? states["age"] ?? "0") ?? 0))
+            return Array(repeating:try texture("textures/blocks/sweet_berry_bush_stage\(min(3,growth/2))"),count:6)
+        }
         if name.hasPrefix("waxed_") { name = String(name.dropFirst(6)) }
         if name == "copper" { name = "copper_block" }
         if name == "chain" || name == "iron_chain" { return Array(repeating:try texture("textures/blocks/chain1"),count:6) }
@@ -1370,16 +1374,23 @@ extension Assets {
         let definition = try table("blocks.json")[mapped] as? [String: Any]
         let source = definition?["textures"]
         let catalog = try table("textures/terrain_texture.json")
-        return try ["south","east","north","west","up","down"].map { face in
-            let key: String
-            if let single = source as? String { key = single }
-            else if let faces = source as? [String: String] { key = faces[face] ?? faces["side"] ?? mapped }
-            else { key = mapped }
+        func material(_ key: String) throws -> SCNMaterial {
             let entry = catalog[key] as? [String: Any]
             let value = entry?["textures"]
             let variant = (value as? [Any])?.first ?? value
             let path = variant as? String ?? (variant as? [String:Any])?["path"] as? String ?? (key.hasPrefix("textures/") ? key : "textures/blocks/"+key)
             return try texture(path,tint:name == "mangrove_leaves" ? 0x78A73F : nil)
+        }
+        if name.hasSuffix("_door"), let faces = source as? [String:String] {
+            let key = states["half"] == "upper" ? faces["side"] : faces["down"] ?? faces["up"]
+            return Array(repeating:try material(key ?? mapped),count:6)
+        }
+        return try ["south","east","north","west","up","down"].map { face in
+            let key: String
+            if let single = source as? String { key = single }
+            else if let faces = source as? [String: String] { key = faces[face] ?? faces["side"] ?? mapped }
+            else { key = mapped }
+            return try material(key)
         }
     }
 

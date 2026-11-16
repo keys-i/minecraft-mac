@@ -5,6 +5,25 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 40 chunk, interaction and resident corrections
+
+October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
+Bedrock 1.26.52 implicit singleton block palettes now decode alongside the earlier explicit-count form
+A read-only sweep of the affected seed-243 snapshot decodes all 1,169 saved chunks, while the focused fixture verifies all 4,096 indices
+The focused installed-art sweep passes crossed cutout geometry for red shrubs and all eight sweet-berry growth values, with each berry cell using one matching stage texture
+The optimised whole-module native test build completes and the new manual-door, villager-door and trapdoor-exclusion assertions pass before the unchanged headless SceneKit stop at `tests/launcher.swift:516`
+The modern-door fixture resolves cherry lower and upper halves to their matching installed textures on every face instead of applying the upper texture to both halves
+The radial scheduler fixture measures a 3,224-chunk radius-512 shell, 797 detailed near chunks, a complete 933-chunk neighbour halo and 128 chunks per generator handoff instead of the previous 1,225
+The packaged 588-resource preview verifies direct Nether and End selection plus an immediate End-highlands biome-title update without entering the portal cinematic
+The updated optimised native suite passes its early radial assertions and reaches the unchanged headless SceneKit stop at `tests/launcher.swift:517`
+The focused render run reports a 194.56 ms twelve-fixture horizon reference, 2.44 ms section runs and 5,120 retained spans; these are construction checks rather than a sustained FPS result
+The live submitted-frame diagnostic records 118.99 FPS, 9.64 ms p95, full render scale and normal thermal state before removing the only deliberate 30 FPS Look around fallback
+
+Rustfmt and Clippy with warnings denied pass
+Twenty-four of 25 Rust tests pass, while the unchanged socket-recovery test is denied at its Unix socket operation by the managed filesystem sandbox
+The packaged app verifies 1,583 resources, targets a minimum macOS version of 27.0 and retains the build 39 authorised helper byte-for-byte
+Live right-click targeting, roaming choices, chunk-error recovery and sustained Look around input latency still need checking in the packaged app
+
 ## Build 39 Look around initial readiness
 
 October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1

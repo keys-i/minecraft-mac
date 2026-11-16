@@ -96,16 +96,29 @@ struct Horizon {
         return step
     }
     static func page(_ key: Chunk) -> Chunk { .init(x:Int(floor(Double(key.x)/16)),z:Int(floor(Double(key.z)/16))) }
-    static func within(_ key: Chunk, of centre: Chunk, radius: Int) -> Bool { max(abs(key.x-centre.x),abs(key.z-centre.z))<=radius }
+    static func within(_ key: Chunk, of centre: Chunk, radius: Int) -> Bool {
+        let dx = key.x-centre.x, dz = key.z-centre.z
+        return dx*dx+dz*dz<=radius*radius
+    }
+    static func disc(_ centre: Chunk, radius: Int) -> Set<Chunk> {
+        guard radius>=0 else {return []}
+        var keys = Set<Chunk>()
+        for dx in -radius...radius {
+            let reach = Int(Double(radius*radius-dx*dx).squareRoot())
+            for dz in -reach...reach {keys.insert(.init(x:centre.x+dx,z:centre.z+dz))}
+        }
+        return keys
+    }
     static func shell(_ centre: Chunk, radius: Int) -> Set<Chunk> {
         guard radius>0 else {return [centre]}
         var keys = Set<Chunk>()
-        keys.reserveCapacity(radius*8)
+        keys.reserveCapacity(radius*7)
+        let inner = (radius-1)*(radius-1)
         for dx in -radius...radius {
-            keys.insert(.init(x:centre.x+dx,z:centre.z-radius)); keys.insert(.init(x:centre.x+dx,z:centre.z+radius))
-        }
-        for dz in (-radius+1)..<radius {
-            keys.insert(.init(x:centre.x-radius,z:centre.z+dz)); keys.insert(.init(x:centre.x+radius,z:centre.z+dz))
+            let square = dx*dx
+            let outer = Int(Double(radius*radius-square).squareRoot())
+            let inside = square<=inner ? Int(Double(inner-square).squareRoot()) : -1
+            for dz in -outer...outer where abs(dz)>inside {keys.insert(.init(x:centre.x+dx,z:centre.z+dz))}
         }
         return keys
     }

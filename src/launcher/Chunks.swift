@@ -153,7 +153,7 @@ struct Block: Hashable, Codable {
     static func plant(_ name: String) -> Bool {
         ["short_grass","tall_grass","tallgrass","fern","large_fern","dead_bush","deadbush","brown_mushroom","red_mushroom","cobweb","web",
          "dandelion","poppy","blue_orchid","allium","azure_bluet","oxeye_daisy","cornflower","lily_of_the_valley","wither_rose",
-         "sunflower","lilac","rose_bush","peony","torchflower","pitcher_plant","open_eyeblossom","closed_eyeblossom"].contains(name)
+         "sunflower","lilac","rose_bush","peony","torchflower","pitcher_plant","open_eyeblossom","closed_eyeblossom","red_shrub","sweet_berry_bush"].contains(name)
             || ["reeds","sugar_cane","seagrass","tall_seagrass","kelp","kelp_plant","crimson_roots","warped_roots","nether_sprouts","pink_petals","wildflowers","leaf_litter","short_dry_grass","tall_dry_grass","bush","firefly_bush"].contains(name)
             || ["cave_vines","cave_vines_body_with_berries","cave_vines_head_with_berries","weeping_vines","twisting_vines","glow_lichen"].contains(name)
             || name.hasSuffix("_flower") || name.hasSuffix("_sapling") || name.hasSuffix("_tulip")
@@ -234,7 +234,9 @@ struct Subchunk {
         guard count<=2, (-4..<20).contains(y) else { throw ChunkError.format }
         var layers: [Palette] = []
         for _ in 0..<count {
-            let indices = try source.indices(), size = Int(try source.integer())
+            let indices = try source.indices()
+            let implicitSingleton = source.uniform && source.offset<data.count && data[source.offset] == 10
+            let size = implicitSingleton ? 1 : Int(try source.integer())
             guard (1...4096).contains(size) else { throw ChunkError.format }
             var blocks: [Block] = []; blocks.reserveCapacity(size)
             for _ in 0..<size { blocks.append(try Block(NBT.decode(data,offset:&source.offset,littleEndian:true))) }

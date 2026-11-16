@@ -81,9 +81,10 @@ Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by movin
 the mouse. **Control** sprints; **Control + Scroll** changes flight speed. The arrow keys also
 turn the camera. Mouse-look captures the cursor; **Escape** releases it and
 returns to the menu. Switching windows releases it too; click the scene to recapture
+Right-click a wooden door or trapdoor within five blocks to open or close it
 Fly north, south, east or west to enter a neighbouring biome without a scene swap
 The picker and **[ / ]** guide you towards another area; movement keys take control
-Wooden doors open as you approach; Escape returns to the biome picker and hotbar
+Villagers open wooden doors but ignore trapdoors; Escape returns to the biome picker and hotbar
 The three normal dimensions use seed-based chunks from the pinned official Bedrock generator
 Biomes can repeat, and generated rivers, lakes, caves and structures share the same world data
 The custom Sift and historical Far Lands use the authored scenery renderer

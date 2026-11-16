@@ -1266,7 +1266,7 @@ struct LauncherView: View {
         .disabled(map || launcher.settings || launcher.help).accessibilityHidden(map || launcher.settings || launcher.help)
         .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing",controls:controls,changed:{ step in
             let index = (launcher.selection+step+launcher.worlds.count)%launcher.worlds.count
-            launcher.journey.select(launcher.worlds[index],animated:moving)
+            launcher.journey.select(launcher.worlds[index],animated:false)
         },action:{ action in
             switch action {
             case .look: explore(!exploring)
@@ -1277,7 +1277,7 @@ struct LauncherView: View {
             case .next: launcher.journey.travel(1)
             case .overworld,.nether,.end,.sift:
                 let world: World = action == .overworld ? .overworld : action == .nether ? .nether : action == .end ? .end : .sift
-                launcher.journey.select(world,animated:moving)
+                launcher.journey.select(world,animated:false)
             default: break
             }
         },skip:launcher.journey.passage != nil && !exploring ? {
@@ -1296,7 +1296,7 @@ struct LauncherView: View {
                         } else {
                             Biomes(world:launcher.journey.world,selected:launcher.journey.biome,
                                 frames:launcher.frames,stone:launcher.stone,
-                                choose:{ launcher.journey.area($0); map = false },close:{ map = false },
+                                choose:{ sceneryTitle = nil; launcher.journey.area($0); map = false },close:{ map = false },
                                 farLands:{ farLands += 1; map = false; explore(true) })
                                 .frame(width:min(600,geometry.size.width-56),height:min(580,geometry.size.height-56))
                         }
@@ -1347,7 +1347,8 @@ struct LauncherView: View {
         .onChange(of:reduceMotion) { if reduceMotion { launcher.journey.skip() } }
         .onChange(of:lowPower) { if lowPower { launcher.journey.skip() } }
         .onChange(of:available) { if !available { explore(false) } }
-        .onChange(of:launcher.journey.world) { if launcher.journey.passage != nil { explore(false) } }
+        .onChange(of:launcher.journey.world) { sceneryTitle = nil; if launcher.journey.passage != nil { explore(false) } }
+        .onChange(of:launcher.journey.biome) { sceneryTitle = nil }
         .onChange(of:launcher.loading) { if launcher.loading { explore(false); map = false; launcher.settings = false } }
         .task(id:moving && !exploring && !map && (rotateScenery || launcher.journey.passage != nil)) {
             guard moving, !exploring, !map, rotateScenery || launcher.journey.passage != nil else { return }
@@ -1397,13 +1398,13 @@ struct LauncherView: View {
             } else {
                 Button { map = true } label: {
                     HStack(spacing:8) {
-                        Marquee(text:sceneryTitle ?? launcher.journey.title,active:focused && !map,size:type,available:width-22)
+                        Marquee(text:launcher.journey.title,active:focused && !map,size:type,available:width-22)
                         Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
                     }.frame(minHeight:44)
                         .shadow(color:.black.opacity(0.25),radius:2,y:1)
                 }.buttonStyle(.plain).focused($areaFocused)
                     .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(areaFocused ? 1 : 0) }
-                    .accessibilityLabel("Choose biome: " + (sceneryTitle ?? launcher.journey.title))
+                    .accessibilityLabel("Choose biome: " + launcher.journey.title)
                     .help("Choose biome")
                     .disabled(!available)
             }
@@ -1414,7 +1415,7 @@ struct LauncherView: View {
         HStack(spacing:0) {
             ForEach(launcher.worlds.indices,id:\.self) { index in
                 let world = launcher.worlds[index]
-                Button { launcher.journey.select(world,animated:moving) } label: {
+                Button { launcher.journey.select(world,animated:false) } label: {
                     Slot(world:world,image:launcher.items[world],scale:scale)
                 }
                 .buttonStyle(InventoryButton(selected:launcher.selection == index,
@@ -1434,7 +1435,7 @@ struct LauncherView: View {
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone,scale:scale))
             .disabled(!canExplore || launcher.journey.passage == .rift || launcher.status.state == "playing")
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
-            .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
+            .accessibilityHint("WASD flies, mouse movement turns the view, right-click uses doors, Space and Shift change height, Control sprints, Escape returns")
             .help(exploring ? "Return · Esc" : "Look around · \(controls.label(.look))")
     }
 
@@ -1898,7 +1899,7 @@ struct Preferences: View {
             rule
             toggle("Invert camera Y-axis",detail:"Reverse up and down when looking around",value:$invertLook,scale:scale)
             rule
-            Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\n\(controls.label(.map)) · Map\nF3 · Debug screen\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
+            Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\nRight-click · Use doors\n\(controls.label(.map)) · Map\nF3 · Debug screen\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
                 .font(Blocks.type(14*scale)).lineSpacing(10*scale).padding(22*scale)
             rule
             Keymap(data:$controlData,stone:launcher.stone).font(Blocks.type(15*scale)).padding(22*scale)
@@ -1981,7 +1982,7 @@ struct Help: View {
             ScrollView {
                 VStack(alignment:.leading,spacing:20) {
                     guide("Start your game", "Choose Install & play, then sign in with the Microsoft account that owns Minecraft for Windows. Your worlds and account stay on this Mac")
-                    guide("Look around · \(controls.label(.look))", "\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) flies · Mouse looks · \(controls.label(.rise)) rises · \(controls.label(.descend)) descends · \(controls.label(.sprint)) sprints · \(controls.label(.map)) shows the map · F3 shows debug details · Escape returns")
+                    guide("Look around · \(controls.label(.look))", "\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) flies · Mouse looks · Right-click uses doors · \(controls.label(.rise)) rises · \(controls.label(.descend)) descends · \(controls.label(.sprint)) sprints · \(controls.label(.map)) shows the map · F3 shows debug details · Escape returns")
                     guide("Explore another biome", "Choose the biome name in the menu, or fly there. Scroll chooses a realm. \(controls.label(.previous)) and \(controls.label(.next)) start a flight to a neighbouring biome")
                     guide("Your character", "Choose your skin and cape PNGs in Settings → Character. Your paper doll appears in Look around")
                     guide("Music and motion", "Open Settings to change master volume, background animation and automatic travel. macOS Reduced Motion and Low Power Mode also pause the scenery")

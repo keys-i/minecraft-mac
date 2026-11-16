@@ -71,7 +71,6 @@ final class FlightView: SCNView {
     private var loading = false
     private var area: Biome = .meadow
     weak var atlas: Atlas?
-    private var doors: [Door] = []
     var exploring = false {
         didSet {
             guard exploring != oldValue else { return }
@@ -110,6 +109,20 @@ final class FlightView: SCNView {
     override func mouseDown(with event: NSEvent) {
         if exploring { capture(); return }
         super.mouseDown(with:event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard exploring else { super.rightMouseDown(with:event); return }
+        capture()
+        guard let camera = pointOfView, let scene else { return }
+        let start = camera.worldPosition, direction = camera.convertVector(.init(0,0,-1),to:nil)
+        let end = SCNVector3(start.x+direction.x*5,start.y+direction.y*5,start.z+direction.z*5)
+        guard let hit = scene.rootNode.hitTestWithSegment(from:start,to:end,options:nil).first else { return }
+        var node: SCNNode? = hit.node
+        while let current = node {
+            if let door = current as? Door { door.toggle(); needsDisplay = true; return }
+            node = current.parent
+        }
     }
 
     private func capture() {
@@ -175,7 +188,6 @@ final class FlightView: SCNView {
 
     func install(_ camera: SCNNode?, area: Biome) {
         self.area = area
-        doors = scene.map { Door.collect($0.rootNode) } ?? []
         loading = false
         controller.pointOfView = camera
         controller.interactionMode = .fly; controller.inertiaEnabled = false
@@ -238,7 +250,6 @@ final class FlightView: SCNView {
         if simd_length_squared(direction)>0, let scene {
             let next = camera.simdWorldPosition+simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt
             atlas?.cancelTravel()
-            for door in doors { door.approach(camera.worldPosition) }
             var feet = camera.worldPosition
             feet.y -= Self.eyeHeight
             var destination = atlas?.constrain(SCNVector3(next)) ?? SCNVector3(next)
@@ -277,7 +288,7 @@ final class FlightView: SCNView {
     }
 
     func dispose() {
-        stop(); release(); delegate = nil; atlas = nil; doors = []; travel = nil; finish = nil; report = nil; step = nil; materials = nil; sweep = nil; resolution = {_ in}; controller.pointOfView = nil
+        stop(); release(); delegate = nil; atlas = nil; travel = nil; finish = nil; report = nil; step = nil; materials = nil; sweep = nil; resolution = {_ in}; controller.pointOfView = nil
         NotificationCenter.default.removeObserver(self)
     }
 }
@@ -660,7 +671,7 @@ final class Atlas {
                 let start = camera.worldPosition, delta = SIMD3<Double>(target.x-start.x,target.y-start.y,target.z-start.z), distance = simd_length(delta)
                 if distance<0.15 { points.removeFirst() }
                 else if dt>0 {
-                    for door in doors { door.approach(start) }
+                    for door in doors { door.approach() }
                     let targetSpeed = points.count == 1 ? min(12,max(1.5,sqrt(distance*8))) : 12
                     speed += max(-8*dt,min(5*dt,targetSpeed-speed))
                     let p = SIMD3<Double>(start.x,start.y,start.z)+delta/distance*min(distance,speed*dt)
@@ -718,7 +729,7 @@ final class Atlas {
         stream.update(at:logical(camera.worldPosition))
         if prefetched != chunk { prefetched = chunk; prefetch() }
         publish()
-        for door in doors { door.approach(camera.worldPosition) }
+        for door in doors { door.approach() }
         let p = logical(camera.worldPosition), base = region.origin, eye = SCNVector3(p.x-base.x,p.y-world.biomes[region.biome(world)].level,p.z-base.z)
         if time-environment >= 0.1 || environment<0 || time<environment, let tile = tiles[key] {
             let seconds = ProcessInfo.processInfo.systemUptime-assets.started

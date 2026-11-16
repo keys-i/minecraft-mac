@@ -601,7 +601,7 @@ enum Landscape {
             let t = min(32,max(0,Double(time)*4)), index = min(31,Int(t)), fraction = t-Double(index)
             let a = route[index], b = route[index+1]
             node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
-            for door in doors { door.approach(node.worldPosition) }
+            for door in doors { door.approach() }
             node.look(at:node.parent!.convertPosition(preserving ? initial.aim : pose(area,at:Double(time)).aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         }),forKey:"journey")
         if let sky = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight {

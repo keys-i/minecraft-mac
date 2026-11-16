@@ -77,6 +77,17 @@ enum RenderChecks {
             precondition(Block(name:name).passable)
             _ = try assets.tiles(Block(name:name).model)
         }
+        for name in ["red_shrub","sweet_berry_bush"] {
+            precondition(Block(name:name).passable && Block(name:name).render == .cutout,"Shrubs must use passable cutout geometry: \(name)")
+        }
+        let shrub = try Structures.volume("red-shrub",size:[1,1,1],palette:[["Name":"minecraft:red_shrub"]],blocks:[0:0],assets:assets)
+        precondition(shrub.geometry?.sources(for:.vertex).first?.vectorCount == 8,"A shrub must render as crossed leaves rather than a solid cube")
+        for growth in 0...7 {
+            let berry = try Structures.volume("sweet-berry",size:[1,1,1],palette:[["Name":"minecraft:sweet_berry_bush","Properties":["growth":String(growth)]]],blocks:[0:0],assets:assets)
+            precondition(berry.geometry?.sources(for:.vertex).first?.vectorCount == 8,"Every berry stage must use crossed cutout geometry")
+            let stage = min(3,growth/2)
+            precondition(berry.geometry?.materials.allSatisfy {$0.name == "textures/blocks/sweet_berry_bush_stage\(stage)"} == true,"Every berry stage must use one matching texture")
+        }
 
         let palette: [[String:Any]] = [["Name":"minecraft:seagrass"],["Name":"minecraft:water"],["Name":"minecraft:flowing_water"]]
         let plant = try Structures.volume("wet-plant",size:[1,1,1],palette:palette,blocks:[0:0],fluids:[0:1],assets:assets)

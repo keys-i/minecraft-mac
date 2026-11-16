@@ -257,6 +257,10 @@ final class Crowd {
                         if species == .villager && night {target = resident.home}
                         guard let floor = data.standing(at:target,radius:resident.width/2,height:resident.height,lava:species == .strider,water:species.amphibious) else {continue}
                         target = floor
+                        if species == .villager || species == .trader {
+                            let reached = data.walk(from:actor.position,to:target,radius:resident.width/2,height:resident.height,water:species.amphibious)
+                            guard hypot(hypot(reached.x-target.x,reached.z-target.z),reached.y-target.y)<0.15 else {continue}
+                        }
                     }
                     guard residents.allSatisfy({ other in
                         if other === resident || abs(other.actor.position.y-target.y)>=max(resident.height,other.height) {return true}

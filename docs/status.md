@@ -12,6 +12,19 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
+### Build 40 candidate
+
+The 0.17.0/build 40 candidate is prepared in `outputs/0.17.0-build40` from the build 38 source baseline carried through build 39
+Red shrubs and every sweet-berry stage now use passable crossed geometry and one matching installed texture, avoiding the chunk-mesh failure that could halt independent streaming work
+Player proximity no longer opens doors or trapdoors; right-click uses the first visible one within five blocks, while villagers use doors only and reject directly unreachable roaming choices
+Scenery decoding accepts both explicit and implicit singleton block palettes, and all 1,169 saved chunks in the affected seed-243 snapshot pass the corrected reader
+
+Whole-module optimised launcher compilation, the focused installed-art sweep, rustfmt and Clippy with warnings denied pass
+The native checks reach the unchanged headless SceneKit stop only after the new door assertions pass, and 24 of 25 Rust tests pass with the unchanged sandbox-denied socket test
+The package verifies 1,583 resources, targets macOS 27.0 and retains the authorised build 39 helper byte-for-byte
+Live right-click targeting, chunk recovery, resident movement and sustained Look around latency remain unchecked
+See the [build 40 evidence](test.md#build-40-chunk-interaction-and-resident-corrections) for methods and remaining limits
+
 ### Build 39 candidate
 
 The 0.17.0/build 39 candidate is prepared in `outputs/0.17.0-build39` from the build 38 source baseline
