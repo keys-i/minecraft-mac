@@ -23,7 +23,7 @@ jobs:
       - run: cargo +1.97.1 fmt --manifest-path stream/Cargo.toml --check
       - run: cargo +1.97.1 clippy --locked --manifest-path stream/Cargo.toml --all-targets -- -D warnings
       - run: cargo +1.97.1 test --locked --manifest-path stream/Cargo.toml
-      - run: rustup target add aarch64-unknown-linux-gnu riscv64gc-unknown-linux-gnu
+      - run: rustup target add --toolchain 1.97.1 aarch64-unknown-linux-gnu riscv64gc-unknown-linux-gnu
       - run: cargo +1.97.1 check --locked --manifest-path stream/Cargo.toml --target aarch64-unknown-linux-gnu
       - run: cargo +1.97.1 check --locked --manifest-path stream/Cargo.toml --target riscv64gc-unknown-linux-gnu
       - run: ./minecraft source check
