@@ -16,7 +16,7 @@ UPSTREAM_SHA = '3d50d7f39c64778c71d0af2fce1cde818d09ffbce7c4f7b8ae24ae1df567c0ca
 FILES = ('winemetal.so', 'winemetal-upstream.so')
 HEADERS = ('src/winemetal/winemetal_thunks.h', 'src/winemetal/winemetal.h',
            'src/winemetal/airconv_thunks.h', 'src/airconv/airconv_public.h')
-SOURCE_FIELDS = ('source_commit', 'patch_sha256', 'trace_source_sha256',
+SOURCE_FIELDS = ('source_commit', 'patch_sha256', 'handoff_patch_sha256', 'trace_source_sha256',
                  'input_header_sha256', 'upstream_source_sha256', 'patched_source_sha256')
 PROBES = {
     'standalone-graphics-probe': ('HardwareDeviceAndSwapChain=0x00000000',
@@ -45,9 +45,12 @@ def source_metadata():
     text = patched.read_text()
     if text.count('CFRelease(tag_data);') != 3 or 'bool got_gamut' not in text or text.count('@autoreleasepool') != 2:
         raise RuntimeError('Expected memory-lifetime fixes are absent')
+    if text.count('launcher_present(') != 3 or '[buffer addCompletedHandler:' not in text:
+        raise RuntimeError('Expected rendered-frame handoff is absent')
     return {
         'source_commit': COMMIT,
         'patch_sha256': digest(ROOT / 'vendor/patches/standalone-dxmt-memory-lifetime.patch'),
+        'handoff_patch_sha256': digest(ROOT / 'vendor/patches/standalone-dxmt-handoff.patch'),
         'trace_source_sha256': digest(ROOT / 'tools/probes/standalone-dxmt-display-trace.c'),
         'input_header_sha256': {name: digest(tree / name) for name in HEADERS},
         'upstream_source_sha256': digest(tree / source),
@@ -62,7 +65,7 @@ def write_json(path, data):
 def manifest():
     data = {'version': 'v0.80', 'status': 'Experimental Unix-only rebuild; not installed.',
         'fixes': ['display query autorelease pool', 'output description autorelease pool',
-                  'ColorSync profile/tag releases'],
+                  'ColorSync profile/tag releases', 'rendered-frame launcher handoff'],
         'excluded_fixes': ['C++ finish-thread autorelease pool'],
         'files': {name: digest(OUTPUT / name) for name in FILES}, **source_metadata()}
     if data['files']['winemetal-upstream.so'] != UPSTREAM_SHA:

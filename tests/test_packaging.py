@@ -179,6 +179,7 @@ class PackagingTests(unittest.TestCase):
                 'source_commit': '589adb780354b461645b29999cefaf533594ee99',
                 'files': {name: digest(libraries / name) for name in ('winemetal.so', 'winemetal-upstream.so')},
                 'patch_sha256': digest(packager.ROOT / 'vendor/patches/standalone-dxmt-memory-lifetime.patch'),
+                'handoff_patch_sha256': digest(packager.ROOT / 'vendor/patches/standalone-dxmt-handoff.patch'),
                 'trace_source_sha256': digest(packager.ROOT / 'tools/probes/standalone-dxmt-display-trace.c'),
             }
             (wine / 'dxmt-unix-bridge.json').write_text(json.dumps(metadata))
@@ -187,7 +188,8 @@ class PackagingTests(unittest.TestCase):
             resources = root / 'app/Contents/Resources'
             shutil.copytree(wine, resources / 'runtime/wine')
             shutil.copytree(dxmt, resources / 'runtime/dxmt')
-            for name in ('vendor/patches/standalone-dxmt-memory-lifetime.patch', 'tools/probes/standalone-dxmt-display-trace.c'):
+            for name in ('vendor/patches/standalone-dxmt-memory-lifetime.patch',
+                         'vendor/patches/standalone-dxmt-handoff.patch', 'tools/probes/standalone-dxmt-display-trace.c'):
                 target = resources / 'scripts' / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(packager.ROOT / name, target)
@@ -198,6 +200,7 @@ class PackagingTests(unittest.TestCase):
             packager.record_packaged_bridge(resources, metadata)
             recorded = json.loads((resources / 'runtime/wine/dxmt-unix-bridge.json').read_text())
             self.assertEqual(recorded['source_files'], metadata['files'])
+            self.assertEqual(recorded['handoff_patch_sha256'], metadata['handoff_patch_sha256'])
             spec = importlib.util.spec_from_file_location('bridge_runtime', packager.ROOT / 'src/standalone.py')
             runtime = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(runtime)
@@ -206,9 +209,70 @@ class PackagingTests(unittest.TestCase):
             runtime.DXMT = resources / 'runtime/dxmt'
             with patch.dict(os.environ, {'BEDROCK_BUNDLE': str(resources)}):
                 runtime.verify_unix_bridge()
+                handoff = resources / 'scripts/vendor/patches/standalone-dxmt-handoff.patch'
+                original = handoff.read_bytes()
+                handoff.write_bytes(b'altered packaged patch')
+                with self.assertRaises(RuntimeError):
+                    runtime.verify_unix_bridge()
+                handoff.write_bytes(original)
                 (packaged_libs / 'winemetal.so').write_bytes(b'changed after signing')
                 with self.assertRaises(RuntimeError):
                     runtime.verify_unix_bridge()
+
+    def test_assembly_copies_only_recorded_handoff_provenance(self):
+        for handoff in (False, True):
+            with self.subTest(handoff=handoff), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                names = (
+                    'runtime/standalone/wine/build-manifest.json',
+                    'runtime/standalone/wine/bin/wine', 'runtime/standalone/wine/bin/wineserver',
+                    'runtime/standalone/dxmt/manifest.json',
+                    'sources/xodus/target/release/examples/standalone_helper',
+                    'build/packaging-env/bin/pyinstaller', 'build/frozen/BedrockWorker/fixture',
+                    'src/standalone.py', 'src/standalone-setup.py', 'src/standalone-gameinput.py', 'src/winrt.reg',
+                    'vendor/patches/standalone-dxmt-memory-lifetime.patch',
+                    'vendor/patches/standalone-dxmt-handoff.patch', 'tools/probes/standalone-dxmt-display-trace.c',
+                    'vendor/licenses/fixture.txt', 'vendor/README.md', 'LICENSE',
+                )
+                for name in names:
+                    path = root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(name)
+                for name in ('wine/lib', 'wine/share/wine', 'dxmt/x86_64-windows', 'dxmt/x86_64-unix', 'dxmt/licenses'):
+                    (root / 'runtime/standalone' / name).mkdir(parents=True, exist_ok=True)
+                launcher = root / 'launcher.app'
+                (launcher / 'Contents/Resources').mkdir(parents=True)
+                with (launcher / 'Contents/Info.plist').open('wb') as file:
+                    plistlib.dump({'CFBundleIdentifier': 'local.bedrock.mac.launcher'}, file)
+                metadata = {'version': 'v0.80'}
+                if handoff:
+                    metadata['handoff_patch_sha256'] = hashlib.sha256(
+                        (root / 'vendor/patches/standalone-dxmt-handoff.patch').read_bytes()).hexdigest()
+                output = root / 'result.app'
+                with patch.object(packager, 'ROOT', root), \
+                        patch.object(packager, 'build_launcher', return_value=launcher), \
+                        patch.object(packager, 'verify_source_bridge', return_value=metadata), \
+                        patch.object(packager, 'link_graphics'), patch.object(packager, 'record_packaged_bridge'), \
+                        patch.object(packager, 'minimum_macos', return_value='15.0'), \
+                        patch.object(packager.subprocess, 'run') as run, contextlib.redirect_stdout(io.StringIO()):
+                    packager.main(['app', '--output', str(output)])
+                resources = output / 'Contents/Resources'
+                commands = [call.args[0] for call in run.call_args_list]
+                bundle_signing = commands.index(['codesign', '--force', '--deep', '--sign', '-', str(output)])
+                for executable in ('wine', 'wineserver'):
+                    path = str(resources / 'runtime/wine/bin' / executable)
+                    self.assertLess(commands.index(['codesign', '--force', '--sign', '-', path]), bundle_signing)
+                    self.assertIn(['codesign', '--verify', '--strict', path], commands)
+                for name in ('vendor/patches/standalone-dxmt-memory-lifetime.patch',
+                             'tools/probes/standalone-dxmt-display-trace.c'):
+                    self.assertEqual((resources / 'scripts' / name).read_bytes(), (root / name).read_bytes())
+                name = 'scripts/vendor/patches/standalone-dxmt-handoff.patch'
+                self.assertEqual((resources / name).is_file(), handoff)
+                inventory = json.loads((resources / 'payload-sha256.json').read_text())
+                if handoff:
+                    self.assertEqual(inventory[name], metadata['handoff_patch_sha256'])
+                else:
+                    self.assertNotIn(name, inventory)
 
     def test_runtime_dependency_can_raise_minimum_above_python(self):
         with tempfile.TemporaryDirectory() as temporary:

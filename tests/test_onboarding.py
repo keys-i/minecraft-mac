@@ -158,6 +158,23 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(states[0]['state'], 'playing')
         self.assertEqual(states[0]['game_pid'], 42)
 
+    def test_worker_children_discard_runtime_overrides_and_keep_launch_state(self):
+        inherited = {'CX_BOTTLE': 'fixture', 'WINEPREFIX': '/fixture/prefix',
+                     'WINEDLLOVERRIDES': 'fixture=n', 'DYLD_INSERT_LIBRARIES': '/fixture/library',
+                     'BEDROCK_HOME': '/fixture/home', 'BEDROCK_BUNDLE': '/fixture/bundle',
+                     'BEDROCK_LAUNCH_TOKEN': 'fixture-token', 'BEDROCK_WINDOW_FRAME': '1 2 640 360',
+                     'BEDROCK_WINDOW_FULLSCREEN': '0'}
+        code = "import json,os;print(json.dumps({k:v for k,v in os.environ.items() if k.startswith(('CX_','WINE','DYLD_','BEDROCK_'))}))"
+        with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'ROOT', Path(folder)), \
+                patch.dict(os.environ, inherited), tempfile.TemporaryFile() as log:
+            worker.run([sys.executable, '-c', code], log, 'Fixture failed')
+            log.seek(0)
+            env = json.loads(log.read().splitlines()[-1])
+        self.assertFalse(any(key.startswith(('CX_', 'WINE', 'DYLD_')) for key in env))
+        for key, value in inherited.items():
+            if key.startswith('BEDROCK_'):
+                self.assertEqual(env[key], value)
+
     def test_pid_is_reported_after_real_spawn(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -244,6 +261,30 @@ class OnboardingTests(unittest.TestCase):
                 worker.initialize_bundle()
             self.assertEqual(world.read_text(), 'existing world')
             self.assertEqual((home / 'runtime/standalone/wine').resolve(), (moved / 'runtime/wine').resolve())
+
+    def test_script_replacement_preserves_stale_symlinks_and_cleans_failed_temporary_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, bundle = Path(folder) / 'data', Path(folder) / 'app'
+            root.mkdir()
+            (bundle / 'scripts').mkdir(parents=True)
+            for name in ('standalone.py', 'standalone-setup.py', 'standalone-gameinput.py', 'winrt.reg'):
+                (bundle / 'scripts' / name).write_text('bundled script')
+            preserved = Path(folder) / 'preserved'
+            preserved.write_text('unrelated data')
+            stale = root / 'standalone.py.new'
+            stale.symlink_to(preserved)
+            with patch.object(worker, 'ROOT', root), patch.object(worker, 'BUNDLE', bundle):
+                worker.initialize_bundle()
+                self.assertEqual(preserved.read_text(), 'unrelated data')
+                self.assertTrue(stale.is_symlink())
+                self.assertEqual((root / 'standalone.py').read_text(), 'bundled script')
+                (bundle / 'scripts/standalone.py').write_text('updated script')
+                with patch.object(worker.os, 'replace', side_effect=OSError('fixture failure')):
+                    with self.assertRaisesRegex(OSError, 'fixture failure'):
+                        worker.initialize_bundle()
+                self.assertEqual((root / 'standalone.py').read_text(), 'bundled script')
+                self.assertEqual(preserved.read_text(), 'unrelated data')
+                self.assertEqual(list(root.glob('.standalone.py-*')), [])
 
     def test_first_install_uses_only_bundled_components(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'ROOT', Path(folder)), \

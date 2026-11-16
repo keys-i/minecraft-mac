@@ -18,6 +18,7 @@ import zipfile
 import zlib
 import datetime
 import signal
+import tempfile
 
 FROZEN = getattr(sys, 'frozen', False)
 BUNDLE = Path(os.environ['BEDROCK_BUNDLE']) if os.environ.get('BEDROCK_BUNDLE') else None
@@ -80,6 +81,12 @@ def load(name, filename):
     return module
 
 
+def environment():
+    """Keep child executables independent of inherited runtime overrides"""
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith(('CX_', 'WINE', 'DYLD_'))}
+
+
 def initialize_bundle():
     if not BUNDLE:
         return
@@ -90,9 +97,15 @@ def initialize_bundle():
         if target.is_symlink():
             raise RuntimeError('An unexpected file blocks app setup: ' + filename)
         if not target.exists() or target.read_bytes() != source.read_bytes():
-            temporary = target.with_suffix(target.suffix + '.new')
-            temporary.write_bytes(source.read_bytes())
-            os.replace(temporary, target)
+            with tempfile.NamedTemporaryFile(prefix='.' + filename + '-', dir=ROOT, delete=False) as temporary:
+                path = Path(temporary.name)
+                try:
+                    temporary.write(source.read_bytes())
+                    temporary.flush()
+                    os.fsync(temporary.fileno())
+                    os.replace(path, target)
+                finally:
+                    path.unlink(missing_ok=True)
     links = {
         'runtime/standalone/wine': 'runtime/wine',
         'runtime/standalone/dxmt': 'runtime/dxmt',
@@ -165,7 +178,7 @@ def run(command, log, failure, account_progress=False, game_progress=False):
     helper_error = None
     process = subprocess.Popen(list(map(str, command)), cwd=ROOT,
                                stdout=subprocess.PIPE if account_progress or game_progress else log,
-                               stderr=subprocess.STDOUT, start_new_session=True)
+                               stderr=subprocess.STDOUT, start_new_session=True, env=environment())
     try:
         if account_progress or game_progress:
             # Never forward arbitrary helper output to the UI.
@@ -198,7 +211,8 @@ def validate_install():
     version = lambda text: tuple(int(part) for part in text.split('.'))
     if platform.machine() != 'arm64' or version(platform.mac_ver()[0] or '0') < version(minimum):
         raise RuntimeError(f'This build requires an Apple Silicon Mac with macOS {minimum} or later.')
-    if subprocess.run(['/usr/bin/arch', '-x86_64', '/usr/bin/true'], capture_output=True).returncode:
+    if subprocess.run(['/usr/bin/arch', '-x86_64', '/usr/bin/true'], capture_output=True,
+                      env=environment()).returncode:
         raise RuntimeError('Rosetta is required to run Minecraft. See Minecraft Launcher Help in the Help menu for Apple’s setup instructions.')
     required = (ROOT / 'runtime/standalone/wine/build-manifest.json',
                 ROOT / 'runtime/standalone/dxmt/manifest.json',

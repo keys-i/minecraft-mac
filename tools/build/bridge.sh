@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rebuild only DXMT's Cocoa/Metal bridge, using the pinned upstream shader compiler.
+# Rebuild DXMT's Cocoa/Metal bridge for display lifetime and launcher handoff
 # Does not install into a runtime. The C++ finish-thread patch is not built here.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -47,9 +47,13 @@ patch=(root/'vendor/patches/standalone-dxmt-memory-lifetime.patch').read_text()
 unix_patch=patch.split('--- a/src/dxmt/dxmt_command_queue.cpp\n',1)[0]
 subprocess.run(['git','apply','--unsafe-paths','--directory='+str(tree)],
                input=unix_patch,text=True,check=True)
+subprocess.run(['git','apply','--unsafe-paths','--directory='+str(tree)],
+               input=(root/'vendor/patches/standalone-dxmt-handoff.patch').read_text(),text=True,check=True)
 patched=target.read_text()
 if patched.count('CFRelease(tag_data);')!=3 or 'bool got_gamut' not in patched or patched.count('@autoreleasepool')!=2:
     raise SystemExit('Expected memory-lifetime fixes were not applied')
+if patched.count('launcher_present(')!=3 or '[buffer addCompletedHandler:' not in patched:
+    raise SystemExit('Expected rendered-frame handoff was not applied')
 shutil.copy2(upstream,output/'winemetal-upstream.so')
 for name in ('ntdll.so','winemac.so'):
     link=output/name

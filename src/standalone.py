@@ -29,10 +29,14 @@ THREADING_HASH = 'aa611155057ebd01cf315ad702a4b5725aa9d5e6fad87732c956fe0a1e5fcf
 OVERRIDES = 'xgameruntime,windows.web,twinapi.appcore,windows.ui.core.textinput,wintypes=b;d3d11,dxgi,d3d10core,winemetal=b;d3d12,d3d12core,mscoree,mshtml='
 
 
+def inherited_environment():
+    """Keep bundled executables independent of inherited runtime overrides"""
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith(('CX_', 'WINE', 'DYLD_'))}
+
+
 def environment(*, network_diagnostics=False):
-    # Keep the selected runtime independent of a shell's existing Wine/CrossOver session.
-    env = {k: v for k, v in os.environ.items()
-           if not k.startswith(('CX_', 'WINE', 'DYLD_'))}
+    env = inherited_environment()
     env.update(WINEPREFIX=str(PREFIX), WINEARCH='win64', WINEDEBUG='-all',
                WINEDLLPATH=str(DXMT), WINEDLLOVERRIDES=OVERRIDES,
                LC_ALL='en_US.UTF-8')
@@ -162,7 +166,8 @@ def account(game, market='CA', *, download=False, progress=None, timeout=None):
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with log_path.open('ab') as log:
                 position = log.tell()
-                env = dict(os.environ, XODUS_LOG='off', RUST_LOG='off')
+                env = inherited_environment()
+                env.update(XODUS_LOG='off', RUST_LOG='off')
                 command = [str(HELPER.resolve()), '--download' if download else '--serve', str(game), '--market', market]
                 if download:
                     command.append('--serve-after')
@@ -316,6 +321,9 @@ def verify_unix_bridge():
         sources = Path(os.environ['BEDROCK_BUNDLE']) / 'scripts' if os.environ.get('BEDROCK_BUNDLE') else ROOT
         if metadata['patch_sha256'] != sha256(sources / 'vendor/patches/standalone-dxmt-memory-lifetime.patch'):
             raise ValueError('bridge patch changed')
+        if 'handoff_patch_sha256' in metadata and metadata['handoff_patch_sha256'] != sha256(
+                sources / 'vendor/patches/standalone-dxmt-handoff.patch'):
+            raise ValueError('bridge handoff patch changed')
         if metadata['trace_source_sha256'] != sha256(sources / 'tools/probes/standalone-dxmt-display-trace.c'):
             raise ValueError('bridge source changed')
         for name, expected in files.items():

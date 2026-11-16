@@ -269,12 +269,16 @@ final class Assets {
         return (mask,blend)
     }
 
-    func actor(_ name: String, texture key: String = "default", variant: Int = 0) throws -> SCNNode {
+    func actor(_ name: String, texture key: String = "default", variant: Int = 0, baby: Bool = false) throws -> SCNNode {
         let document = try json("entity/"+name+".entity.json")
         guard let entity = document["minecraft:client_entity"] as? [String: Any],
               let description = entity["description"] as? [String: Any],
-              let geometries = description["geometry"] as? [String: String], let identifier = geometries[key] ?? geometries["default"],
-              let textures = description["textures"] as? [String: String], let image = textures[name == "villager_v2" ? "base" : key] else { throw AssetError.model }
+              let geometries = description["geometry"] as? [String: String],
+              let textures = description["textures"] as? [String: String] else { throw AssetError.model }
+        if baby && geometries["baby"] == nil { throw AssetError.missing("baby geometry for "+name) }
+        let skinKey = name == "villager_v2" ? (baby ? "baby_base" : "base") : baby ? (textures["baby_"+key] != nil ? "baby_"+key : "baby") : key
+        guard let identifier = baby ? geometries["baby"] : geometries[key] ?? geometries["default"],
+              let image = textures[skinKey] else { throw AssetError.model }
         var definition = try geometry(identifier, entity: name)
         if name == "cat", var bones = definition["bones"] as? [[String:Any]] {
             for index in bones.indices where ["body","tail1","tail2"].contains(bones[index]["name"] as? String ?? "") && bones[index]["bind_pose_rotation"] == nil {
@@ -306,10 +310,10 @@ final class Assets {
             let bitmap = skin.diffuse.contents as! CGImage
             guard let context = CGContext(data:nil,width:bitmap.width,height:bitmap.height,bitsPerComponent:8,bytesPerRow:bitmap.width*4,
                 space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
-            let profession = ["farmer","librarian","cleric","armorer","butcher"][variant%5]
+            let profession = ["farmer","librarian","cleric","weapon_smith","butcher"][variant%5]
             context.interpolationQuality = .none
             context.draw(bitmap,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
-            for layer in [key,profession,"level_stone"] {
+            for layer in baby ? ["baby_"+key] : [key,profession,"level_stone"] {
                 guard let path = textures[layer] else { throw AssetError.model }
                 let image = try texture(path).diffuse.contents as! CGImage
                 guard image.width == bitmap.width, image.height == bitmap.height else { throw AssetError.image }
@@ -317,7 +321,7 @@ final class Assets {
             }
             guard let composite = context.makeImage() else { throw AssetError.image }
             material.diffuse.contents = composite
-            material.name = "villager-"+key+"-"+profession
+            material.name = "villager-"+key+"-"+(baby ? "baby" : profession)
         }
         if name == "enderman" {
             let source = NSBitmapImageRep(cgImage:skin.diffuse.contents as! CGImage)
@@ -353,7 +357,7 @@ final class Assets {
             layer.name = "stray-clothes"; model.addChildNode(layer)
         }
         if name == "horse_v3" {
-            let key = ["markings_none","markings_white","markings_whitefield","markings_whitedots","markings_blackdots"][variant%5]
+            let key = (baby ? "baby_" : "")+["markings_none","markings_white","markings_whitefield","markings_whitedots","markings_blackdots"][variant%5]
             if variant%5 != 0 {
                 guard let path = textures[key] else { throw AssetError.model }
                 let layer = try node(definition,material:texture(path))
@@ -484,7 +488,7 @@ final class Assets {
         let prefix = entity.replacingOccurrences(of:"_",with:"")
         let candidates = try names("models/entity").filter {
             let name = $0.replacingOccurrences(of:"_",with:"")
-            return name.hasPrefix(stem) || name.hasPrefix(prefix)
+            return name.hasPrefix(stem) || name.hasPrefix(prefix) || name.hasPrefix("baby"+stem)
         }
             .map { "models/entity/"+$0 } + ["models/mobs.json"]
         for candidate in candidates {

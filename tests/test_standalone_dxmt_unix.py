@@ -2,7 +2,10 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -10,6 +13,9 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location('dxmt_unix', Path(__file__).resolve().parent.parent / 'tools/graphics.py')
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
+runtime_spec = importlib.util.spec_from_file_location('bridge_runtime', Path(__file__).resolve().parent.parent / 'src/standalone.py')
+runtime = importlib.util.module_from_spec(runtime_spec)
+runtime_spec.loader.exec_module(runtime)
 
 
 class StageTests(unittest.TestCase):
@@ -76,6 +82,92 @@ class StageTests(unittest.TestCase):
             bridge.stage(self.runtime)
         self.assertEqual((self.lib / 'winemetal.so').read_bytes(), b'original library')
         self.assertFalse((self.runtime / 'dxmt-unix-bridge-backups').exists())
+
+
+class VerificationTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        self.wine, self.dxmt = self.root / 'wine', self.root / 'dxmt'
+        libraries = self.wine / 'lib/wine/x86_64-unix'
+        for path, data in ((libraries / 'winemetal.so', b'bridge'),
+                           (libraries / 'winemetal-upstream.so', b'upstream'),
+                           (self.dxmt / 'x86_64-unix/winemetal.so', b'upstream')):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        self.handoff = self.root / 'vendor/patches/standalone-dxmt-handoff.patch'
+        self.metadata = {
+            'version': 'v0.80', 'source_commit': bridge.COMMIT,
+            'files': {name: bridge.digest(libraries / name) for name in bridge.FILES},
+        }
+        for field, name in (
+            ('patch_sha256', 'vendor/patches/standalone-dxmt-memory-lifetime.patch'),
+            ('handoff_patch_sha256', 'vendor/patches/standalone-dxmt-handoff.patch'),
+            ('trace_source_sha256', 'tools/probes/standalone-dxmt-display-trace.c'),
+        ):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(name)
+            self.metadata[field] = bridge.digest(path)
+        for patch in (mock.patch.object(runtime, 'ROOT', self.root),
+                      mock.patch.object(runtime, 'WINE', self.wine),
+                      mock.patch.object(runtime, 'DXMT', self.dxmt),
+                      mock.patch.dict(os.environ, {}, clear=True)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def verify(self):
+        (self.wine / 'dxmt-unix-bridge.json').write_text(json.dumps(self.metadata))
+        runtime.verify_unix_bridge()
+
+    def test_recorded_handoff_patch_is_required_and_verified(self):
+        self.verify()
+        self.handoff.write_text('altered patch')
+        with self.assertRaises(RuntimeError) as failure:
+            self.verify()
+        self.assertIn('handoff patch changed', str(failure.exception.__cause__))
+        self.handoff.unlink()
+        with self.assertRaises(RuntimeError):
+            self.verify()
+
+    def test_older_metadata_needs_no_handoff_patch(self):
+        del self.metadata['handoff_patch_sha256']
+        self.handoff.unlink()
+        self.verify()
+
+
+@unittest.skipUnless(sys.platform == 'darwin', 'Native Cocoa/Metal handoff checks')
+class HandoffTests(unittest.TestCase):
+    def test_rendered_frame_validation_and_cleanup(self):
+        root = Path(__file__).resolve().parent.parent
+        lines = (root / 'vendor/patches/standalone-dxmt-handoff.patch').read_text().splitlines()
+        start = lines.index('+static struct {')
+        helper = []
+        for line in lines[start:]:
+            if not line.startswith('+'):
+                break
+            helper.append(line[1:])
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            (folder / 'handoff.inc').write_text('\n'.join(helper) + '\n')
+            executable = folder / 'handoff'
+            compiled = subprocess.run([
+                '/usr/bin/clang', '-std=gnu2x', '-fno-objc-arc', '-O2', '-Wall', '-Wextra',
+                '-Wno-unused-parameter', '-I', str(folder), str(root / 'tests/handoff.m'),
+                '-framework', 'Cocoa', '-framework', 'QuartzCore', '-framework', 'Metal',
+                '-o', str(executable),
+            ], capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            for scenario in ('absent', 'invalid-token', 'valid', 'tiny-view', 'tiny-window',
+                             'child-window', 'invalid-frame', 'trailing-frame', 'offscreen',
+                             'huge-frame', 'long-frame', 'fullscreen', 'register-failure',
+                             'publish-retry', 'publish-terminal', 'post-retry', 'order-retry',
+                             'order-terminal', 'recreated'):
+                with self.subTest(scenario=scenario):
+                    result = subprocess.run([str(executable), scenario], capture_output=True,
+                                            text=True, timeout=5)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CoreText
+import notify
 
 private let launcherName = "Minecraft Launcher"
 
@@ -72,6 +73,7 @@ final class Launcher: ObservableObject {
     private var buffer = Data()
     private var windowTask: Task<Void,Never>?
     private weak var hiddenWindow: NSWindow?
+    private var presentationToken: Int32 = -1
     let root: URL
     let worlds = World.allCases
 
@@ -113,10 +115,11 @@ final class Launcher: ObservableObject {
         task.currentDirectoryURL = packaged ? resources : root
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
-        var env = ProcessInfo.processInfo.environment
+        var env = Self.environment()
         env["PYTHONUNBUFFERED"] = "1"
         if packaged { env["BEDROCK_BUNDLE"] = resources.path }
         task.environment = env
+        if opening { preparePresentation(task,resources:resources) }
         do {
             process = task
             if !check { status = Status(state: "busy", title: "Getting ready", detail: "Checking your Mac…", progress: nil) }
@@ -140,6 +143,7 @@ final class Launcher: ObservableObject {
                     if !self.buffer.isEmpty { self.receive(Data([10])) }
                     self.running = false
                     self.opening = false
+                    self.clearPresentation()
                     self.process = nil
                     if task.terminationStatus != 0 && self.status.state != "error" {
                         self.status = Status(state: "error", title: "Couldn’t finish setup", detail: "Try again. If it happens again, open the setup log.", progress: nil)
@@ -149,6 +153,7 @@ final class Launcher: ObservableObject {
                 }
             }
         } catch {
+            clearPresentation()
             running = false
             opening = false
             process = nil
@@ -177,7 +182,11 @@ final class Launcher: ObservableObject {
         }
     }
 
-    static func gameVisible(_ pid: Int, windows: [[String:Any]]) -> Bool {
+    static func environment(_ inherited: [String:String] = ProcessInfo.processInfo.environment) -> [String:String] {
+        inherited.filter { key, _ in !["CX_", "WINE", "DYLD_"].contains(where:key.hasPrefix) }
+    }
+
+    static func gameWindow(_ pid: Int, windows: [[String:Any]]) -> Bool {
         guard pid > 1 && pid <= Int(Int32.max) else { return false }
         return windows.contains { window in
             guard (window[kCGWindowOwnerPID as String] as? NSNumber)?.intValue == pid,
@@ -188,19 +197,56 @@ final class Launcher: ObservableObject {
         }
     }
 
+    static func frameReady(_ pid: Int, state: UInt64) -> Bool {
+        pid>1 && pid<=Int(Int32.max) && state == UInt64(pid)
+    }
+
+    private func clearPresentation() {
+        if presentationToken >= 0 { notify_cancel(presentationToken); presentationToken = -1 }
+    }
+
+    func preparePresentation(_ task: Process, resources: URL) {
+        clearPresentation()
+        let path = resources.appendingPathComponent("runtime/wine/dxmt-unix-bridge.json")
+        guard let data = try? Data(contentsOf:path), data.count<64*1024,
+              let metadata = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+              let digest = metadata["handoff_patch_sha256"] as? String,
+              digest.count == 64, digest.allSatisfy({ $0.isHexDigit && $0.isASCII }) else { return }
+        let nonce = UUID().uuidString
+        guard notify_register_check("local.keys-i.minecraft.present."+nonce,&presentationToken) == NOTIFY_STATUS_OK else {
+            presentationToken = -1; return
+        }
+        var environment = Self.environment(task.environment ?? ProcessInfo.processInfo.environment)
+        environment["BEDROCK_LAUNCH_TOKEN"] = nonce
+        if let window = NSApplication.shared.windows.first(where:{ $0.title == launcherName }) {
+            let frame = window.frame
+            environment["BEDROCK_WINDOW_FRAME"] = String(format:"%.6f %.6f %.6f %.6f",locale:Locale(identifier:"en_US_POSIX"),
+                Double(frame.origin.x),Double(frame.origin.y),Double(frame.width),Double(frame.height))
+            environment["BEDROCK_WINDOW_FULLSCREEN"] = window.styleMask.contains(.fullScreen) ? "1" : "0"
+        }
+        task.environment = environment
+    }
+
     private func handoff(_ pid: Int?) {
         windowTask?.cancel(); windowTask = nil
         if let window = hiddenWindow {
             NSApp.unhide(nil); window.makeKeyAndOrderFront(nil); hiddenWindow = nil
         }
-        guard let pid, pid > 1 && pid <= Int(Int32.max) else { return }
+        guard let pid, pid > 1 && pid <= Int(Int32.max) else { clearPresentation(); return }
         windowTask = Task { [weak self] in
+            let started = ProcessInfo.processInfo.systemUptime
             while let self, !Task.isCancelled, self.status.gamePID == pid {
-                let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
-                if Self.gameVisible(pid,windows:windows) {
+                var state: UInt64 = 0
+                let observed = self.presentationToken>=0 && notify_get_state(self.presentationToken,&state) == NOTIFY_STATUS_OK && Self.frameReady(pid,state:state)
+                // A failed runtime notification must not trap an already visible game behind the loader
+                let expired = ProcessInfo.processInfo.systemUptime-started>=20
+                let options: CGWindowListOption = observed || expired ? [.optionAll,.excludeDesktopElements] : [.optionOnScreenOnly,.excludeDesktopElements]
+                let windows = CGWindowListCopyWindowInfo(options,kCGNullWindowID) as? [[String:Any]] ?? []
+                if Self.gameWindow(pid,windows:windows) && (self.presentationToken<0 || observed || expired) {
                     let window = NSApp.windows.first { $0.title == launcherName }
-                    NSRunningApplication(processIdentifier:pid_t(pid))?.activate(options:[])
+                    NSRunningApplication(processIdentifier:pid_t(pid))?.activate(options:[.activateAllWindows])
                     self.hiddenWindow = window; NSApp.hide(nil)
+                    self.clearPresentation()
                     return
                 }
                 do { try await Task.sleep(for:.milliseconds(150)) } catch { return }
@@ -328,7 +374,8 @@ struct ShortcutHint {
 private enum Blocks {
     static let grass = Color(red:0.48,green:0.78,blue:0.22)
     static let play = Color(red:0.12,green:0.47,blue:0.03)
-    static let stone = Color(red:0.20,green:0.21,blue:0.19)
+    static let stone = Color(white:0.72)
+    static let ink = Color(white:0.12)
     static let gold = Color(red:1,green:0.83,blue:0.37)
 
     static func type(_ size: CGFloat) -> Font { .custom("Monocraft",size:size,relativeTo:.body) }
@@ -367,12 +414,12 @@ private struct BlockButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Hover { hovered in
             configuration.label
-                .foregroundStyle(.white)
+                .foregroundStyle(hovered ? .white : Blocks.ink)
                 .background {
                     (hovered ? Blocks.play : Blocks.stone)
                         .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3*scale)
                     if let texture {
-                        Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.28)
+                        Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.14)
                     }
                 }
                 .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2*scale) }
@@ -447,6 +494,9 @@ private struct Scenery: View {
     let exploring: Bool
     let travel: (Int) -> Void
     let finish: () -> Void
+    let renderDistance: Int
+    let farLands: Int
+    let location: (String?) -> Void
     @ObservedObject var launcher: Launcher
 
     var body: some View {
@@ -469,7 +519,8 @@ private struct Scenery: View {
     @ViewBuilder private var world: some View {
         if let assets = launcher.assets, !launcher.sceneryFailed {
             Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
-                travel:travel,arrived:{ launcher.journey.area($0) },finish:finish) { launcher.sceneryFailed = true }
+                travel:travel,arrived:{ launcher.journey.area($0) },finish:finish,
+                renderDistance:renderDistance,farLands:farLands,location:location) { launcher.sceneryFailed = true }
         }
     }
 }
@@ -654,6 +705,9 @@ struct LauncherView: View {
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @StateObject private var music = Music()
+    @AppStorage("renderDistance") private var renderDistance = 8
+    @State private var farLands = 0
+    @State private var sceneryTitle: String?
     @State private var visible = true
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var exploring = false
@@ -717,7 +771,8 @@ struct LauncherView: View {
                 } else {
                 ZStack {
                     Scenery(journey:launcher.journey,moving:moving,exploring:exploring,
-                        travel:{ launcher.journey.travel($0) },finish:{ explore(false) },launcher:launcher)
+                        travel:{ launcher.journey.travel($0) },finish:{ explore(false) },
+                        renderDistance:renderDistance,farLands:farLands,location:{ sceneryTitle = $0 },launcher:launcher)
                         .frame(width:geometry.size.width,height:geometry.size.height).clipped().ignoresSafeArea().allowsHitTesting(exploring)
                     if exploring {
                         ZStack {
@@ -781,7 +836,8 @@ struct LauncherView: View {
                         } else {
                             Biomes(world:launcher.journey.world,selected:launcher.journey.biome,
                                 frames:launcher.frames,stone:launcher.stone,
-                                choose:{ launcher.journey.area($0); map = false },close:{ map = false })
+                                choose:{ launcher.journey.area($0); map = false },close:{ map = false },
+                                farLands:{ farLands += 1; map = false; explore(true) })
                                 .frame(width:min(600,geometry.size.width-56),height:min(580,geometry.size.height-56))
                         }
                     }.frame(maxWidth:.infinity,maxHeight:.infinity)
@@ -870,14 +926,14 @@ struct LauncherView: View {
             } else {
                 Button { map = true } label: {
                     HStack(spacing:8) {
-                        Marquee(text:launcher.journey.title,active:moving && focused && !map)
+                        Marquee(text:sceneryTitle ?? launcher.journey.title,active:moving && focused && !map)
                         Image(systemName:"chevron.down").font(.system(size:10,weight:.bold))
                     }.frame(minHeight:44)
                         .shadow(color:.black.opacity(0.25),radius:2,y:1)
                 }.buttonStyle(.plain).focused($areaFocused)
                     .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(areaFocused ? 1 : 0) }
-                    .accessibilityLabel("Choose biome: " + launcher.journey.title)
-                    .help(launcher.journey.world == .sift ? "Sift interpretation · Choose biome" : "Choose biome or landmark")
+                    .accessibilityLabel("Choose biome: " + (sceneryTitle ?? launcher.journey.title))
+                    .help("Choose biome")
                     .disabled(!available)
             }
         }
@@ -896,7 +952,7 @@ struct LauncherView: View {
                 .disabled(!available)
                 .accessibilityLabel("\(world.title) scenery")
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
-                .help(world == .sift ? "Sift interpretation · 4" : "\(world.title) · \(index+1)")
+                .help(world.title)
             }
         }.padding(6*scale)
             .accessibilityElement(children:.contain).accessibilityLabel("Realm hotbar")
@@ -910,7 +966,7 @@ struct LauncherView: View {
             .keyboardShortcut("l",modifiers:.command)
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
             .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
-            .help(exploring ? "WASD fly · Mouse look · Space/Shift height · Control sprint · Scroll speed · Escape returns" : "Look around (⌘L) · Spectator flight")
+            .help(exploring ? "Return · Esc" : "Look around · ⌘L")
     }
 
     private func explore(_ enabled: Bool) {
@@ -964,7 +1020,7 @@ struct LauncherView: View {
         Button { launcher.start() } label: {
             Text(primaryTitle).font(Blocks.type((width>200 ? 24 : 18)*scale))
                 .frame(width:width*scale,height:62*scale)
-        }.buttonStyle(BlockButton(scale:scale)).keyboardShortcut(.defaultAction)
+        }.buttonStyle(BlockButton(scale:scale)).keyboardShortcut(.defaultAction).help(primaryTitle)
     }
 
     private var setupSteps: some View {
@@ -989,11 +1045,11 @@ struct LauncherView: View {
                     if !detail.isEmpty {
                         if detail.count > 240 {
                             ScrollView {
-                                Text(detail).font(.system(size:13)).foregroundStyle(.white.opacity(0.83))
+                                Text(detail).font(.system(size:13)).foregroundStyle(Blocks.ink)
                                     .frame(maxWidth:.infinity,alignment:.leading).textSelection(.enabled)
                             }.frame(height:80)
                         } else {
-                            Text(detail).font(.system(size:13)).foregroundStyle(.white.opacity(0.83))
+                            Text(detail).font(.system(size:13)).foregroundStyle(Blocks.ink)
                                 .fixedSize(horizontal:false,vertical:true).textSelection(.enabled)
                         }
                     }
@@ -1014,7 +1070,7 @@ struct LauncherView: View {
                     Text(launcher.status.stage.map { ["Microsoft sign-in","Downloading your game","Preparing Minecraft","Ready"][min(3,$0)] } ?? "Getting ready")
                     Spacer()
                     Text(fraction,format:.percent.precision(.fractionLength(0))).monospacedDigit()
-                }.font(.system(size:12,weight:.medium)).foregroundStyle(.white.opacity(0.85))
+                }.font(.system(size:12,weight:.medium)).foregroundStyle(Blocks.ink)
                 ProgressView(value:fraction).progressViewStyle(Experience()).accessibilityLabel("Overall setup")
             }
             if fresh || launcher.status.state == "busy" || launcher.status.state == "cancelled" {
@@ -1045,14 +1101,14 @@ struct Biomes: View {
     let stone: NSImage?
     let choose: (Int) -> Void
     let close: () -> Void
+    var farLands: () -> Void = {}
     @State private var search = ""
     @FocusState private var searching: Bool
     @FocusState private var focused: Int?
 
-    private var matches: [Int] {
-        let query = search.trimmingCharacters(in:.whitespacesAndNewlines)
-        return world.biomes.indices.filter { query.isEmpty || world.biomes[$0].rawValue.localizedCaseInsensitiveContains(query) }
-    }
+    private var query: String { search.trimmingCharacters(in:.whitespacesAndNewlines) }
+    private var matches: [Int] { world.biomes.indices.filter { query.isEmpty || world.biomes[$0].rawValue.localizedCaseInsensitiveContains(query) } }
+    private var farLandsMatch: Bool { world == .overworld && (query.isEmpty || "Far Lands historical recreation".localizedCaseInsensitiveContains(query)) }
 
     var body: some View {
         VStack(spacing:0) {
@@ -1067,14 +1123,14 @@ struct Biomes: View {
                 TextField("Find a biome or landmark",text:$search).textFieldStyle(.plain)
                     .font(Blocks.type(13)).focused($searching)
                     .accessibilityLabel("Find a biome or landmark")
-                    .onSubmit { if let first = matches.first { choose(first) } }
-                    .onKeyPress(.downArrow) { focused = matches.first; return .handled }
+                    .onSubmit { if let first = matches.first { choose(first) } else if farLandsMatch { farLands() } }
+                    .onKeyPress(.downArrow) { focused = matches.first ?? (farLandsMatch ? -1 : nil); return .handled }
                 if !search.isEmpty {
                     Button { search = ""; searching = true } label: { Image(systemName:"xmark").frame(width:28,height:28) }
                         .buttonStyle(.plain).accessibilityLabel("Clear search")
                 }
-            }.padding(12).background(.black.opacity(0.7))
-                .overlay { Rectangle().strokeBorder(searching ? Blocks.gold : .white.opacity(0.35),lineWidth:2) }
+            }.padding(12).background(.white.opacity(0.32))
+                .overlay { Rectangle().strokeBorder(searching ? Blocks.ink : .black.opacity(0.35),lineWidth:2) }
                 .padding(.horizontal,20).padding(.bottom,16)
             ScrollViewReader { scroll in
                 ScrollView {
@@ -1090,7 +1146,7 @@ struct Biomes: View {
                                     Text(area.rawValue).font(Blocks.type(14))
                                         .frame(maxWidth:.infinity,alignment:.leading).multilineTextAlignment(.leading)
                                         .fixedSize(horizontal:false,vertical:true)
-                                    if selected == index { Image(systemName:"checkmark").foregroundStyle(Blocks.gold) }
+                                    if selected == index { Image(systemName:"checkmark").foregroundStyle(Blocks.ink) }
                                 }.padding(.horizontal,14).frame(minHeight:58)
                             }.buttonStyle(BlockButton(selected:selected == index,texture:stone))
                                 .focusable().focused($focused,equals:index).id(index)
@@ -1100,32 +1156,46 @@ struct Biomes: View {
                                 .onKeyPress(.downArrow) { move(from:index,by:1); return .handled }
                                 .onKeyPress(.upArrow) { move(from:index,by:-1); return .handled }
                         }
-                        if matches.isEmpty {
+                        if farLandsMatch {
+                            Button(action:farLands) {
+                                VStack(alignment:.leading,spacing:6) {
+                                    Text("Far Lands").font(Blocks.type(18))
+                                    Text("Historical recreation").font(Blocks.type(12))
+                                }.frame(maxWidth:.infinity,alignment:.leading).padding(14)
+                            }.buttonStyle(BlockButton(texture:stone)).focusable().focused($focused,equals:-1).id(-1)
+                                .onKeyPress(.return) { farLands(); return .handled }
+                                .onKeyPress(.upArrow) { move(from:-1,by:-1); return .handled }
+                                .help("Visit Far Lands")
+                        }
+                        if matches.isEmpty && !farLandsMatch {
                             Text("No matching biomes").font(Blocks.type(15)).padding(.vertical,32)
                         }
                     }.padding(12)
-                }.background(.black.opacity(0.45))
+                }.background(.black.opacity(0.06))
                     .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
                     .onChange(of:focused) { if let focused { scroll.scrollTo(focused) } }
                     .onAppear { scroll.scrollTo(selected,anchor:.center) }
             }.padding(.horizontal,20)
             HStack {
-                Text("\(matches.count) \(matches.count == 1 ? "destination" : "destinations")").font(Blocks.type(11))
+                let count = matches.count+(farLandsMatch ? 1 : 0)
+                Text("\(count) \(count == 1 ? "destination" : "destinations")").font(Blocks.type(11))
                 Spacer()
                 if world == .sift { Text("Sift interpretation").font(Blocks.type(11)) }
-            }.foregroundStyle(.white.opacity(0.8)).padding(20)
-        }.foregroundStyle(.white).background(Blocks.stone)
+            }.foregroundStyle(Blocks.ink).padding(20)
+        }.foregroundStyle(Blocks.ink).background(Blocks.stone)
             .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
             .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
-            .environment(\.colorScheme,.dark)
+            .environment(\.colorScheme,.light)
             .task { searching = true }
             .onExitCommand(perform:close)
     }
 
     private func move(from index: Int, by step: Int) {
+        if index == -1 { focused = matches.last; if focused == nil { searching = true }; return }
         guard let position = matches.firstIndex(of:index) else { return }
         let next = position+step
         if matches.indices.contains(next) { focused = matches[next] }
+        else if farLandsMatch && next == matches.count { focused = -1 }
         else if next<0 { searching = true }
     }
 }
@@ -1137,6 +1207,7 @@ struct Preferences: View {
     @AppStorage("rotateScenery") private var rotateScenery = true
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
+    @AppStorage("renderDistance") private var renderDistance = 8
     @Environment(\.accessibilityReduceMotion) private var reduced
     @FocusState private var volumeFocused: Bool
 
@@ -1168,6 +1239,16 @@ struct Preferences: View {
                             }.disabled(!animateScenery)
                         }.toggleStyle(.button).buttonStyle(BlockButton(texture:launcher.stone))
                             .controlSize(.large).font(Blocks.type(20*scale))
+                        HStack(spacing:16*scale) {
+                            Button { renderDistance = max(4,renderDistance-1) } label: {
+                                Image(systemName:"minus").frame(width:48*scale,height:48*scale)
+                            }.disabled(renderDistance<=4).accessibilityLabel("Decrease render distance")
+                            Text("Render distance: \(renderDistance) chunks").font(Blocks.type(18*scale))
+                                .frame(maxWidth:.infinity).lineLimit(1).minimumScaleFactor(0.75)
+                            Button { renderDistance = min(16,renderDistance+1) } label: {
+                                Image(systemName:"plus").frame(width:48*scale,height:48*scale)
+                            }.disabled(renderDistance>=16).accessibilityLabel("Increase render distance")
+                        }.buttonStyle(BlockButton(texture:launcher.stone)).accessibilityElement(children:.contain)
                         VStack(spacing:14*scale) {
                             Text("Master volume: \(musicEnabled ? Int(musicVolume*100) : 0)%").font(Blocks.type(22*scale))
                             GeometryReader { geometry in
@@ -1196,18 +1277,19 @@ struct Preferences: View {
                         }
                         Text(reduced ? "macOS Reduced Motion is on" : "Scenery rests in Low Power Mode, while hidden and while Minecraft runs")
                         Text("Game graphics, sound and controls are in Minecraft’s Settings")
-                    }.font(.system(size:16*scale)).foregroundStyle(.white.opacity(0.85))
+                    }.font(.system(size:16*scale)).foregroundStyle(Blocks.ink)
                         .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
                         .padding(.horizontal,24*scale).padding(.bottom,24*scale)
                 }
-            }.foregroundStyle(.white)
+            }.foregroundStyle(Blocks.ink)
                 .background {
                     Blocks.stone
                     if let stone = launcher.stone { Image(nsImage:stone).resizable(resizingMode:.tile).interpolation(.none).opacity(0.12) }
                 }
                 .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
                 .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
-        }.environment(\.colorScheme,.dark).onExitCommand(perform:close)
+        }.environment(\.colorScheme,.light).onExitCommand(perform:close)
+            .onAppear { renderDistance = min(16,max(4,renderDistance)) }
     }
 }
 
@@ -1231,12 +1313,12 @@ struct Help: View {
                 Button { launcher.showLog() } label: { Text("Open setup logs").frame(maxWidth:.infinity,minHeight:44) }
                 Button { dismiss() } label: { Text("Done").frame(maxWidth:.infinity,minHeight:44) }.keyboardShortcut(.defaultAction)
             }.font(Blocks.type(14)).buttonStyle(BlockButton(texture:launcher.stone))
-        }.padding(28).frame(width:600).foregroundStyle(.white).background(Blocks.stone).environment(\.colorScheme,.dark)
+        }.padding(28).frame(width:600).foregroundStyle(Blocks.ink).background(Blocks.stone).environment(\.colorScheme,.light)
     }
 
     private func guide(_ title: String, _ text: String) -> some View {
         VStack(alignment:.leading,spacing:8) {
-            Text(title).font(Blocks.type(15)).foregroundStyle(Blocks.gold).accessibilityAddTraits(.isHeader)
+            Text(title).font(Blocks.type(15)).foregroundStyle(Blocks.ink).accessibilityAddTraits(.isHeader)
             Text(text).font(.system(size:14)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
         }
     }

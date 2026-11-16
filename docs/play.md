@@ -22,6 +22,11 @@ The current launcher verifies the account on each Play action. It has no
 supported offline-launch mode. The native UI currently uses Store market `CA`;
 developers can select a different two-letter market through the CLI.
 
+Rosetta-free execution is not supported by this build
+Apple provides general Rosetta support through macOS 27 and limits it to certain
+older games in macOS 28; this launcher's eligibility has not been established
+The native launcher alone does not remove the x64 game's translation requirement
+
 ## Install, sign in, and play
 
 1. Open your locally built `.dmg` and drag **Minecraft Launcher** onto its
@@ -57,13 +62,16 @@ Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by movin
 the mouse. **Control** sprints; scroll changes flight speed. The arrow keys also
 turn the camera. Mouse-look captures the cursor; **Escape** releases it and
 returns to the menu. Switching windows releases it too; click the scene to recapture
-Fly east or west to enter a neighbouring biome without a scene swap
+Fly north, south, east or west to enter a neighbouring biome without a scene swap
 The picker and **[ / ]** guide you towards another area; movement keys take control
 Wooden doors open as you approach. The biome name and hotbar remain available
-These are 42 authored areas on finite maps, with neighbouring areas loaded on demand
-The Overworld village includes pigs, horses, five villager professions and one crowned
-Technoblade tribute pig. The woodland mansion also contains a chicken jockey
-Use the same spyglass button, **⌘L** or **Escape** to return to the camera route
+These are 42 authored areas with continuous procedural terrain beyond them
+Settings controls **Render distance** in 16 × 16-block chunks, from 4 to 16
+Choose **Far Lands** in the Overworld picker to visit a historical recreation;
+choose another area to return. It is not a current Bedrock biome
+The Overworld village includes pigs, horses, baby animals and a crowned
+Technoblade tribute pig with a red cape. The woodland mansion contains a chicken jockey
+Use the same spyglass button, **⌘L** or **Escape** to return to a hover where you are
 
 The achievement-style shortcut hint stays for one minute, then returns after
 70 uninterrupted seconds of launcher-window focus. Settings and other apps
@@ -85,16 +93,25 @@ found in the tested installation
 
 The Overworld follows a twenty-minute day/night cycle with original sun/moon
 art, stars, dusk colours, changing shadows and darker water at night
+Rain or snow follows the biome, with emission suppressed indoors and underwater
+The meadow's four adult villagers visit distinct jobs, gather and return to beds
+at night. Copper golems gradually oxidise; fully oxidised scenery golems stop
 Nether and End lighting stays specific to those realms
-Idle cameras follow a continuous twelve-second hovering route instead of
+Idle cameras follow a continuous eight-second hovering route instead of
 slowing to a stop at each endpoint
 
-Water uses the installed biome’s colour and the original atlas alpha once
+Water combines the installed biome’s colour and opacity with the original atlas alpha
 Lava stays self-lit with its original orange detail. Both advance original frames
 Mob skins use their matching geometry, including current warm/cold variants
 Ambient residents wander, graze, swim or hop with unsynchronised pauses and
 correct diagonal leg timing. This is scenery behaviour rather than complete
-Minecraft combat, breeding, job or navigation AI
+Minecraft combat, breeding or navigation AI
+
+Cherry groves include Toast, a pink sheep and a named rainbow sheep
+A named upside-down chicken, a skeleton horse and a brief custom Herobrine
+cameo are authored scenery surprises. Herobrine is folklore, not a vanilla mob
+`jeb_` changes sheep wool; it does not make cat or wolf collars cycle colours
+Java seasonal chests and Halloween mobs are not claimed as Bedrock features
 
 Eligible pigs, cows, chickens and wolves can use the installation’s older base
 model/skin. The launcher-only nostalgia chance is 10% in daylight, rising to 15%

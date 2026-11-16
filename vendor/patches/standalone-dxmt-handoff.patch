@@ -1,0 +1,208 @@
+--- a/src/winemetal/unix/winemetal_unix.c
++++ b/src/winemetal/unix/winemetal_unix.c
+@@ -1,4 +1,12 @@
+ #include <stdatomic.h>
++#include <math.h>
++#include <notify.h>
++#include <os/lock.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <uuid/uuid.h>
+ #include <dlfcn.h>
+ #import <Cocoa/Cocoa.h>
+ #import <ColorSync/ColorSync.h>
+@@ -1223,9 +1231,176 @@
+   return STATUS_SUCCESS;
+ }
+ 
++static struct {
++  os_unfair_lock lock;
++  CAMetalLayer *layer;
++  NSWindow *window;
++  int token;
++  bool ready, pending, positioned;
++  unsigned failures;
++  uint64_t generation;
++  char name[sizeof("local.keys-i.minecraft.present.") + 36];
++} launcher = {.lock = OS_UNFAIR_LOCK_INIT, .token = -1};
++
++static void
++launcher_view(NSView *view, CAMetalLayer *layer) {
++  execute_on_main(^{
++    static dispatch_once_t once;
++    NSWindow *window = view.window;
++    NSSize size = view.bounds.size;
++    if (!window || window.parentWindow || !layer || !(size.width >= 320 && size.height >= 200) ||
++        !(window.frame.size.width >= 320 && window.frame.size.height >= 200))
++      return;
++    os_unfair_lock_lock(&launcher.lock);
++    dispatch_once(&once, ^{
++      const char *nonce = getenv("BEDROCK_LAUNCH_TOKEN");
++      uuid_t parsed;
++      if (!nonce || strnlen(nonce, 37) != 36 || uuid_parse(nonce, parsed))
++        return;
++      snprintf(launcher.name, sizeof(launcher.name), "local.keys-i.minecraft.present.%s", nonce);
++      uint32_t status = notify_register_check(launcher.name, &launcher.token);
++      if (status != NOTIFY_STATUS_OK) {
++        fprintf(stderr, "BEDROCK_HANDOFF_REGISTER_ERROR:%u\n", status);
++        launcher.token = -1;
++      }
++    });
++    if (launcher.token < 0 || launcher.ready) {
++      os_unfair_lock_unlock(&launcher.lock);
++      return;
++    }
++    CAMetalLayer *previous = nil;
++    NSWindow *previousWindow = nil;
++    if (launcher.layer != layer || launcher.window != window) {
++      previous = launcher.layer;
++      previousWindow = launcher.window;
++      if (launcher.window != window)
++        launcher.positioned = false;
++      launcher.layer = [layer retain];
++      launcher.window = [window retain];
++      launcher.generation++;
++      launcher.pending = false;
++    }
++    bool position = !launcher.positioned;
++    launcher.positioned = true;
++    os_unfair_lock_unlock(&launcher.lock);
++    [previous release];
++    [previousWindow release];
++    if (!position)
++      return;
++    const char *text = getenv("BEDROCK_WINDOW_FRAME");
++    double x, y, width, height;
++    char tail;
++    if (!text)
++      return;
++    if (strnlen(text, 257) > 256 || sscanf(text, "%lf %lf %lf %lf %c", &x, &y, &width, &height, &tail) != 4 ||
++        !isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) ||
++        width < 320 || height < 200 || width > 32768 || height > 32768) {
++      fprintf(stderr, "BEDROCK_HANDOFF_FRAME_INVALID\n");
++      return;
++    }
++    NSRect frame = NSMakeRect(x, y, width, height);
++    NSScreen *target = nil;
++    double largest = 0;
++    for (NSScreen *screen in [NSScreen screens]) {
++      NSRect intersection = NSIntersectionRect(frame, screen.frame);
++      double area = intersection.size.width * intersection.size.height;
++      if (area > largest) {
++        largest = area;
++        target = screen;
++      }
++    }
++    if (!target) {
++      fprintf(stderr, "BEDROCK_HANDOFF_SCREEN_UNAVAILABLE\n");
++      return;
++    }
++    const char *mode = getenv("BEDROCK_WINDOW_FULLSCREEN");
++    bool fullscreen = mode && !strcmp(mode, "1");
++    NSRect bounds = fullscreen ? target.frame : target.visibleFrame;
++    frame.size.width = fmin(width, bounds.size.width);
++    frame.size.height = fmin(height, bounds.size.height);
++    frame.origin.x = fmax(NSMinX(bounds), fmin(x, NSMaxX(bounds) - frame.size.width));
++    frame.origin.y = fmax(NSMinY(bounds), fmin(y, NSMaxY(bounds) - frame.size.height));
++    if (fullscreen)
++      frame = bounds;
++    [window setFrame:frame display:NO];
++    if (fullscreen && !(window.styleMask & NSWindowStyleMaskFullScreen))
++      [window toggleFullScreen:nil];
++  });
++}
++
++static void
++launcher_present(id<MTLCommandBuffer> buffer, id<CAMetalDrawable> drawable) {
++  os_unfair_lock_lock(&launcher.lock);
++  void *layer = (void *)launcher.layer;
++  if (!layer || (void *)drawable.layer != layer || launcher.ready || launcher.pending) {
++    os_unfair_lock_unlock(&launcher.lock);
++    return;
++  }
++  launcher.pending = true;
++  uint64_t generation = launcher.generation;
++  os_unfair_lock_unlock(&launcher.lock);
++  [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
++    bool rendered = completed.status == MTLCommandBufferStatusCompleted && !completed.error;
++    dispatch_async(dispatch_get_main_queue(), ^{
++      os_unfair_lock_lock(&launcher.lock);
++      // A recreated swapchain must not clear the current layer's pending callback
++      if (generation != launcher.generation || layer != (void *)launcher.layer || !launcher.pending) {
++        os_unfair_lock_unlock(&launcher.lock);
++        return;
++      }
++      NSWindow *window = rendered ? [launcher.window retain] : nil;
++      if (!window) {
++        launcher.pending = false;
++        os_unfair_lock_unlock(&launcher.lock);
++        return;
++      }
++      os_unfair_lock_unlock(&launcher.lock);
++      // Order the rendered window in-process before the launcher activates its app
++      [window makeKeyAndOrderFront:nil];
++      bool visible = window.isVisible && !window.parentWindow;
++      os_unfair_lock_lock(&launcher.lock);
++      if (generation != launcher.generation || layer != (void *)launcher.layer ||
++          window != launcher.window || !launcher.pending) {
++        os_unfair_lock_unlock(&launcher.lock);
++        [window release];
++        return;
++      }
++      launcher.pending = false;
++      uint32_t status = visible ? notify_set_state(launcher.token, (uint64_t)getpid()) : NOTIFY_STATUS_FAILED;
++      if (status == NOTIFY_STATUS_OK)
++        status = notify_post(launcher.name);
++      int token = -1;
++      CAMetalLayer *previous = nil;
++      NSWindow *previousWindow = nil;
++      if (status == NOTIFY_STATUS_OK || ++launcher.failures >= 3) {
++        launcher.ready = status == NOTIFY_STATUS_OK;
++        token = launcher.token;
++        launcher.token = -1;
++        previous = launcher.layer;
++        previousWindow = launcher.window;
++        launcher.layer = nil;
++        launcher.window = nil;
++        launcher.generation++;
++      }
++      os_unfair_lock_unlock(&launcher.lock);
++      [window release];
++      if (status != NOTIFY_STATUS_OK)
++        fprintf(stderr, "BEDROCK_HANDOFF_FRAME_ERROR:%u\n", status);
++      if (token >= 0) {
++        status = notify_cancel(token);
++        if (status != NOTIFY_STATUS_OK)
++          fprintf(stderr, "BEDROCK_HANDOFF_CANCEL_ERROR:%u\n", status);
++        [previous release];
++        [previousWindow release];
++      }
++    });
++  }];
++}
++
+ static NTSTATUS
+ _MTLCommandBuffer_presentDrawable(void *obj) {
+   struct unixcall_generic_obj_obj_noret *params = obj;
++  launcher_present((id<MTLCommandBuffer>)params->handle, (id<CAMetalDrawable>)params->arg);
+   [(id<MTLCommandBuffer>)params->handle presentDrawable:(id<MTLDrawable>)params->arg];
+   return STATUS_SUCCESS;
+ }
+@@ -1233,6 +1408,7 @@
+ static NTSTATUS
+ _MTLCommandBuffer_presentDrawableAfterMinimumDuration(void *obj) {
+   struct unixcall_generic_obj_obj_double_noret *params = obj;
++  launcher_present((id<MTLCommandBuffer>)params->handle, (id<CAMetalDrawable>)params->arg0);
+   [(id<MTLCommandBuffer>)params->handle presentDrawable:(id<MTLDrawable>)params->arg0
+                                    afterMinimumDuration:params->arg1];
+   return STATUS_SUCCESS;
+@@ -1602,6 +1778,7 @@
+     params->ret_view = (obj_handle_t)view;
+     if (view) {
+       params->ret_layer = (obj_handle_t)pfn_macdrv_view_get_metal_layer(view);
++      launcher_view((NSView *)view, (CAMetalLayer *)params->ret_layer);
+     }
+     pfn_release_win_data(win_data);
+   }

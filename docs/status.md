@@ -12,32 +12,37 @@ inventories and exports
 
 ## Minecraft Launcher 0.16.0
 
-The current local preview is **0.16.0/build 26**
-It includes the original-asset, connected-map, loading-screen and resident fixes
-described below. Water now combines the installed texture alpha with the biome's
-surface opacity; guided map climbs and descents keep scenery in view
+The current local preview is **0.16.0/build 27**
+It adds 16 × 16-block terrain streaming beyond the authored core, a 4–16 chunk
+render radius, bounded caches, floating origin and a historical Far Lands visit
+Moving residents face their final displacement; clouds are translucent and non-solid
+Original baby models, village work/bed routes, water opacity, hinged doors,
+weather and the requested named cameos are covered by native checks
 
-Computer Use opened the installed app, confirmed its 0.16.0 version, inspected
-the translucent village fountain and exercised spectator mode and keyboard flight
-Play replaced the entire menu with the original dirt/loading animation
-The game process started, but its Wine-hosted window was unavailable to Computer
-Use. That session ended and an older mounted-disk app started another session
-No complete game-window handoff, first rendered frame, exit restoration or
-startup speedup is claimed. Launch the installed app rather than an older DMG copy
+Runtime launch boundaries filter inherited overrides, script updates use private
+atomic replacement, and bare Wine executables are individually ad-hoc signed
+The rebuilt worker and final GPU-completion handoff bridge are installed
+The authorised account helper is byte-identical to the preceding build
 
-All 101 Python checks and native synthetic/installed-art checks pass for 75
-species, 42 areas and three passages. All 1,053 preserved resource hashes and
-strict deep signature checks pass. The account helper and runtime are unchanged
-from build 25. The verified DMG is 128,664,927 bytes with SHA-256
+All 107 Python checks and native synthetic/installed-art checks pass for 75
+species, 42 areas and three passages. The candidate and installed app pass all
+1,054 resource hashes, internal symlink, graphics bridge and strict signature checks
+At 1040 × 760, the fully loaded default map measured 7.67 ms wall-time p95 in a
+short local offscreen sample. This does not establish game or startup performance
 
-```text
-30655370cad9ad3c66378d2e2f346ff74d26a29b00f68b7df3e568a4dbff11a6
-```
+Computer Use started the final installed app but could not locate its window
+Final-build visual inspection and the actual game-window handoff remain unverified
+The game still owns a separate native window; the bridge does not embed it in SwiftUI
+Launch the installed app rather than an older mounted DMG copy
 
-The bundle requires macOS 27 and is ad-hoc signed, without notarisation
-macOS controls permission labels; true game-window embedding, full game-engine
-parity, VoiceOver, clean-Mac installation and sustained performance remain unverified
-See [the 0.16 test record](test.md#water-and-guided-travel-in-016)
+The bundle requires macOS 27 and Rosetta and is ad-hoc signed without notarisation
+Rosetta-free execution and macOS 28 compatibility have not been established
+An ARM64 Wine build alone cannot run the installed x64 game and dependencies
+macOS controls permission labels; game-engine parity, VoiceOver, clean-Mac
+installation and sustained thermal/battery performance remain unverified
+The verified local DMG is 127,469,429 bytes, SHA-256
+`8823268a9fb11f6d8fb861331d3d28ef347247a386bd4d1612bd33a79b099d8e`
+See [the build 27 test record](test.md#map-resident-and-presentation-checks-in-build-27)
 
 ## Launcher handoff and original asset layers in 0.15
 

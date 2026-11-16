@@ -114,17 +114,27 @@ class IsolationTests(unittest.TestCase):
             helper.touch()
             child = unittest.mock.Mock(pid=43210)
             child.poll.return_value = None
+            inherited = {'CX_BOTTLE': 'fixture', 'WINEPREFIX': '/fixture/prefix',
+                         'WINEDLLOVERRIDES': 'fixture=n', 'DYLD_INSERT_LIBRARIES': '/fixture/library',
+                         'BEDROCK_LAUNCH_TOKEN': 'fixture-token', 'BEDROCK_WINDOW_FRAME': '1 2 640 360',
+                         'BEDROCK_WINDOW_FULLSCREEN': '0', 'BEDROCK_BUNDLE': '/fixture/bundle'}
             with patch.object(standalone, 'ROOT', root), patch.object(standalone, 'HELPER', helper), \
                     patch.object(standalone, 'STATE', root / 'state.json'), \
                     patch.object(standalone, 'account_ready', return_value=False), \
                     patch.object(standalone, 'account_pid', side_effect=lambda: 43210 if (root / 'state.json').exists() else None), \
                     patch.object(standalone, 'SOCKET', root / 'account.sock'), \
-                    patch.object(standalone.subprocess, 'Popen', return_value=child), \
+                    patch.dict(os.environ, inherited), \
+                    patch.object(standalone.subprocess, 'Popen', return_value=child) as start, \
                     patch.object(standalone.time, 'monotonic', side_effect=[0, 2000]):
                 with self.assertRaises(standalone.AccountError) as raised:
                     with standalone.account(root / 'game', timeout=10):
                         self.fail('A helper without a ready socket must not launch Minecraft')
                 self.assertEqual(raised.exception.code, 'account_timeout')
+                env = start.call_args.kwargs['env']
+                self.assertFalse(any(key.startswith(('CX_', 'WINE', 'DYLD_')) for key in env))
+                for key, value in inherited.items():
+                    if key.startswith('BEDROCK_'):
+                        self.assertEqual(env[key], value)
             child.send_signal.assert_called_once()
             self.assertFalse((root / 'state.json').exists())
 

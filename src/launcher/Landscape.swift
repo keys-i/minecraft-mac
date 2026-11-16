@@ -364,16 +364,11 @@ enum Landscape {
             }
         }
         if world == .overworld && !area.underground || world == .sift {
-            let material = try assets.texture("textures/environment/clouds").copy() as! SCNMaterial
-            material.lightingModel = .constant
-            let plane = SCNPlane(width:512,height:512); plane.firstMaterial = material
-            let cloud = SCNNode(geometry:plane); cloud.name = "drifting-cloud"; cloud.castsShadow = false
-            cloud.position = .init(0,60,-20); cloud.eulerAngles.x = -.pi/2
-            cloud.runAction(.repeatForever(.sequence([.moveBy(x:32,y:0,z:0,duration:120),.moveBy(x:-32,y:0,z:0,duration:120)])))
-            scene.rootNode.addChildNode(cloud)
+            try clouds(scene,assets:assets,origin:Atlas.offset(world.index(biome),count:world.biomes.count))
         }
-        if area.underground || world == .nether || world == .sift || area == .snow || area == .pale {
-            let material = SCNMaterial(); material.diffuse.contents = colour(world == .nether ? 0xF4BE8F : area == .cherry ? 0xFFD9E7 : 0xBDDBDB)
+        if area.underground || world == .nether || world == .sift || area == .pale {
+            let tint: UInt32 = area == .warped ? 0x36B8AD : area == .crimson ? 0xB83B46 : area == .soul || area == .basalt ? 0xB0AAA3 : world == .nether ? 0xF4BE8F : area == .lush ? 0xA6C75D : 0xBDDBDB
+            let material = SCNMaterial(); material.diffuse.contents = colour(tint)
             material.lightingModel = .constant
             let geometry = SCNBox(width:0.04,height:0.04,length:0.04,chamferRadius:0); geometry.firstMaterial = material
             for index in 0..<24 {
@@ -390,7 +385,7 @@ enum Landscape {
             material.diffuse.contents = atlas.cropping(to:CGRect(x:0,y:0,width:8,height:8))
             material.lightingModel = .constant; material.writesToDepthBuffer = false
             let plane = SCNPlane(width:0.18,height:0.18); plane.firstMaterial = material
-            for (index,tree) in scene.rootNode.childNodes.filter({ $0.name == "wind-canopy" }).prefix(36).enumerated() {
+            for (index,tree) in scene.rootNode.childNodes.filter({ $0.name == "wind-canopy" }).prefix(64).enumerated() {
                 let petal = SCNNode(geometry:plane); petal.name = "falling-cherry-petal"
                 let start = SCNVector3(tree.position.x+Double(index%3)-1,tree.position.y,tree.position.z)
                 let ground = terrain.height(start.x,start.z)+0.05, duration = 5+Double(index%4)
@@ -430,6 +425,39 @@ enum Landscape {
             scene.background.contents = Array(repeating:sky,count:6)
         }
         return scene
+    }
+
+    static func clouds(_ scene: SCNScene, assets: Assets, origin: SCNVector3) throws {
+        let source = try assets.texture("textures/environment/clouds").diffuse.contents as! CGImage
+        let bitmap = NSBitmapImageRep(cgImage:source)
+        let startX = Int(origin.x/16), startZ = Int(origin.z/16)
+        func filled(_ x: Int, _ z: Int) -> Bool {
+            let px = ((x+startX+128)%bitmap.pixelsWide+bitmap.pixelsWide)%bitmap.pixelsWide
+            let pz = ((z+startZ+128)%bitmap.pixelsHigh+bitmap.pixelsHigh)%bitmap.pixelsHigh
+            return (bitmap.colorAt(x:px,y:pz)?.alphaComponent ?? 0)>0.5
+        }
+        let material = SCNMaterial(); material.name = "cloud-volume"
+        material.diffuse.contents = NSColor.white; material.lightingModel = .lambert
+        material.transparency = 0.65; material.blendMode = .alpha
+        material.transparencyMode = .singleLayer; material.writesToDepthBuffer = false
+        var mesh = Voxels()
+        for x in -18..<18 { for z in -18..<18 where filled(x,z) {
+            var faces = 48
+            for (face,dx,dz) in [(0,0,1),(1,1,0),(2,0,-1),(3,-1,0)] where !filled(x+dx,z+dz) { faces |= 1 << face }
+            mesh.cube(.init(16,4,16),at:.init(Double(x)*16,0,Double(z)*16),material:material,faces:faces)
+        } }
+        let cloud = mesh.node("drifting-cloud"); cloud.castsShadow = false; cloud.categoryBitMask = 1
+        for x in [-576.0,576.0] {
+            let repeatCloud = SCNNode(geometry:cloud.geometry); repeatCloud.position.x = x
+            repeatCloud.castsShadow = false; repeatCloud.categoryBitMask = 1
+            cloud.addChildNode(repeatCloud)
+        }
+        cloud.position = .init(0,96,0)
+        let epoch = assets.started
+        cloud.runAction(.repeatForever(.customAction(duration:240) { node,_ in
+            node.position.x = -max(0,ProcessInfo.processInfo.systemUptime-epoch).truncatingRemainder(dividingBy:1152)*0.5
+        }))
+        scene.rootNode.addChildNode(cloud)
     }
 
     static func flow(assets: Assets, lava: Bool, biome: Biome = .meadow) throws -> SCNMaterial {
@@ -483,7 +511,7 @@ enum Landscape {
         case .islands: x = 5-phase*2; z = -8-phase*2; target = .init(28,5,-55); elevation = nil
         case .mansion: x = 7-phase*3; z = 35-phase*3; target = .init(0,12,-7); elevation = nil
         case .deep: x = 8-phase*3; z = 9-phase*3; target = .init(-1,12,-27); elevation = nil
-        case .lush: x = -6+phase*2; z = 15-phase*3; target = .init(5,7,-24); elevation = nil
+        case .lush: x = 1+phase*2; z = 15-phase*2; target = .init(9,1,-6); elevation = 2.2
         case .badlands: x = 1+phase; z = 5-phase*2; target = .init(0,7,-23); elevation = nil
         case .river: x = 11-phase*2; z = 20-phase*3; target = .init(-6,4,-25); elevation = nil
         case .mangrove,.swamp: x = 3+phase*2; z = 20-phase*3; target = .init(-2,5,-20); elevation = nil
@@ -497,11 +525,11 @@ enum Landscape {
         if min(height(area,x:px,z:pz),height(area,x:px.rounded(),z:pz.rounded())) < -90 { px = x; pz = z }
         if min(height(area,x:px,z:pz),height(area,x:px.rounded(),z:pz.rounded())) < -90 { px = 0; pz = -17 }
         let surface = height(area,x:px.rounded(),z:pz.rounded())
-        let level = elevation ?? max(max(0.9,ground),surface)+2.8
+        let level = max(elevation ?? max(max(0.9,ground),surface)+2.8,surface+1.6)
         return (.init(px,level+sin(phase * .pi)*0.35,pz),target)
     }
 
-    static func focus(_ scene: SCNScene, world: World, biome: Int, animated: Bool) {
+    static func focus(_ scene: SCNScene, world: World, biome: Int, animated: Bool, preserving: Bool = false) {
         let area = world.biomes[world.index(biome)], camera = scene.rootNode.childNode(withName:"camera",recursively:false)!
         let underwater = area == .reef || area == .monument
         if area.passage == nil && world != .end { scene.background.contents = colour(underwater ? 0x245A78 : area.sky) }
@@ -513,15 +541,16 @@ enum Landscape {
             if light.type == .directional { light.intensity = area.underground ? 300 : area == .pale ? 450 : 900 }
         }
         camera.removeAction(forKey:"passage"); camera.removeAction(forKey:"journey")
-        let initial = pose(area,at:0)
-        let eye = Collision.nearby(scene.rootNode,at:initial.eye,toward:initial.aim)
+        let initial = preserving ? (eye:camera.position,aim:camera.convertPosition(.init(0,0,-24),to:scene.rootNode)) : pose(area,at:0)
+        let eye = preserving ? initial.eye : Collision.nearby(scene.rootNode,at:initial.eye,toward:initial.aim)
             ?? Collision.nearby(scene.rootNode,at:initial.eye) ?? initial.eye
         camera.position = eye; camera.look(at:scene.rootNode.convertPosition(initial.aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         let offset = SCNVector3(eye.x-initial.eye.x,eye.y-initial.eye.y,eye.z-initial.eye.z)
         let doors = Door.collect(scene.rootNode)
         var route = [eye]
         for index in 1...32 {
-            let target = pose(area,at:Double(index)/4).eye
+            let angle = Double(index)/32*2 * .pi
+            let target = preserving ? SCNVector3(eye.x+sin(angle)*0.9,eye.y+(1-cos(angle))*0.15,eye.z+(1-cos(angle))*0.5) : pose(area,at:Double(index)/4).eye
             let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:.init(target.x+offset.x,target.y+offset.y,target.z+offset.z),radius:0.35)
             route.append(Collision.vacant(scene.rootNode,at:next) && Collision.clear(scene.rootNode,from:start,to:next,radius:0.35) ? next : start)
         }
@@ -530,7 +559,7 @@ enum Landscape {
             let a = route[index], b = route[index+1]
             node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
             for door in doors { door.approach(node.worldPosition) }
-            node.look(at:node.parent!.convertPosition(pose(area,at:Double(time)).aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
+            node.look(at:node.parent!.convertPosition(preserving ? initial.aim : pose(area,at:Double(time)).aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         }),forKey:"journey")
         if let sky = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight {
             Daylight.apply(scene,area:area,seconds:ProcessInfo.processInfo.systemUptime-sky.epoch)
@@ -578,17 +607,37 @@ enum Landscape {
 
     private static func populate(_ scene: SCNScene, world: World, area: Biome, factory: Mobs) throws {
         let terrain = Terrain(biome:area)
+        let jobs = Structures.sites(in:scene.rootNode).filter { $0.kind == .work && !$0.standing.isEmpty }
         for (kind,species) in area.residents.enumerated() {
             let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem].contains(species)
-            let count = solitary || species == .cat && area == .swamp ? 1 : species == .villager ? 5 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
+            let fallback = solitary || species == .cat && area == .swamp ? 1 : species == .villager ? 5 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
+            let count = try factory.group(species,biome:area,seed:terrain.seed+kind) ?? fallback
+            let coat = min(6,Int(Terrain.random(kind,0,seed:terrain.seed)*7))
             for index in 0..<count {
-                let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"
+                let baby = count>2 && index>=max(2,count-1) && [.cow,.pig,.sheep,.chicken,.wolf,.horse,.cat,.axolotl,.villager].contains(species)
+                let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"+(baby ? "-baby" : "")
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)
                 let classic = Terrain.random(kind,index,seed:terrain.seed+227) < Mobs.classicChance(daylight:daylight)
+                let profession = area == .meadow && species == .villager && jobs.indices.contains(index)
+                    ? ["farmer":0,"librarian":1,"cleric":2,"weaponsmith":3,"butcher":4][jobs[index].profession ?? ""] ?? index : index
+                let named = area == .cherry && species == .rabbit && index == 0 ? "Toast"
+                    : area == .cherry && species == .sheep && index == 1 ? "jeb_"
+                    : area == .meadow && species == .chicken && index == 1 ? "Dinnerbone" : nil
                 let model: SCNNode
-                do { model = try factory.make(species,biome:area,variant:index,classic:classic) }
+                do {
+                    model = area == .forest && species == .creeper && index == 0 ? try factory.charged()
+                        : try factory.make(species,biome:area,variant:species == .horse ? coat+7*index : profession,classic:classic,baby:baby,named:named)
+                }
                 catch AssetError.missing where [.camelHusk,.parched,.nautilus,.zombieNautilus,.happyGhast].contains(species) { continue }
                 if area == .meadow && species == .pig && index == 0 { try factory.crown(model) }
+                if area == .cherry && species == .sheep && index == 0 { try factory.pink(model,baby:baby) }
+                if let aura = model.childNode(withName:"charged-aura",recursively:false) {
+                    aura.isHidden = true
+                    let epoch = factory.assets.started
+                    aura.runAction(.repeatForever(.sequence([.run { node in
+                        if ProcessInfo.processInfo.systemUptime-epoch>=205 { node.isHidden = false; node.removeAllActions() }
+                    },.wait(duration:1)])))
+                }
                 actor.addChildNode(model)
                 if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y) }
                 let a = Terrain.random(kind,index,seed:3)*Double.pi*2
@@ -600,7 +649,7 @@ enum Landscape {
                 }
                 if area == .trial { x = -9+Double(kind%3)*7+cos(a)*1.5; z = -21+Double(kind/3)*7+sin(a)*2 }
                 if species.swimming {
-                    if area == .lush { x = 6+Double(index%3)*3; z = 4+Double(index/3)*3 }
+                    if area == .lush { x = 4+Double(index%3)*2; z = 6+Double(index/3)*3 }
                     else if area == .river {
                         z = -5+Double(index)*3
                         x = 4+Terrain.noise(0,z,scale:32,seed:9)*9+cos(a)*2
@@ -624,7 +673,7 @@ enum Landscape {
                 }
                 func point(_ x: Double, _ z: Double) -> SCNVector3 {
                     let h = terrain.height(x.rounded(),z.rounded())
-                    let y = species.swimming ? (area == .monument ? -5 : -1.8) : species == .strider ? 0.9 : [.blaze,.witherSkeleton].contains(species) ? 12 : species == .shulker ? 8+Double(index)*3 : max(0.9,h)
+                    let y = species.swimming ? (species == .axolotl ? 0.15 : area == .monument ? -5 : -1.8) : species == .strider ? 0.9 : [.blaze,.witherSkeleton].contains(species) ? 12 : species == .shulker ? 8+Double(index)*3 : max(0.9,h)
                     return .init(x,y+(species.flying ? (species == .breeze ? 1.2 : 3) : 0),z)
                 }
                 let start = point(x,z)
@@ -632,7 +681,26 @@ enum Landscape {
                 if species != .shulker && species != .warden && species != .snowGolem {
                     try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,root:scene.rootNode,point:point)
                 }
+                if species == .golem { try factory.oxidation(actor,model:model,stage:index%3,seed:kind*17+index) }
                 scene.rootNode.addChildNode(actor)
+            }
+        }
+        if area == .meadow { try village(scene,factory:factory) }
+        if area == .pale || area == .ice {
+            let actor = SCNNode(), model = area == .pale ? try factory.herobrine() : try factory.skeletonHorse()
+            actor.name = area == .pale ? "cameo-herobrine" : "cameo-skeleton-horse"
+            actor.position = .init(8,terrain.height(8,10),10); actor.addChildNode(model); scene.rootNode.addChildNode(actor)
+            if area == .pale {
+                actor.isHidden = true
+                let epoch = factory.assets.started
+                actor.runAction(.repeatForever(.sequence([.run { node in
+                    let phase = (ProcessInfo.processInfo.systemUptime-epoch).truncatingRemainder(dividingBy:180)
+                    node.isHidden = phase<150 || phase>158
+                },.wait(duration:1)])))
+            } else {
+                try factory.wander(actor,model:model,species:.horse,area:area,seed:512,root:scene.rootNode) { x,z in
+                    .init(x,terrain.height(x.rounded(),z.rounded()),z)
+                }
             }
         }
         if area == .mansion {
@@ -657,17 +725,66 @@ enum Landscape {
             }
             group.position = route[0]
             scene.rootNode.addChildNode(group)
+            Mobs.face(group)
             let healing: (@Sendable (CGFloat) -> Void)?
             if area == .central { healing = try heal(group,root:scene.rootNode,assets:factory.assets) }
             else { healing = nil }
             group.runAction(.repeatForever(.customAction(duration:duration) { node,time in
-                let phase = Double(time)/duration*64, t = phase<=32 ? phase : 64-phase
+                let t = min(32,Double(time)/duration*32)
                 let index = min(31,max(0,Int(t))), fraction = min(1,max(0,t-Double(index)))
                 let a = route[index], b = route[index+1]
                 node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
-                node.eulerAngles.y = atan2(b.x-a.x,b.z-a.z)+(phase>32 ? .pi : 0)
+                node.eulerAngles = .init(0,atan2(b.x-a.x,b.z-a.z),0)
                 healing?(time)
             }))
+        }
+    }
+
+    private static func village(_ scene: SCNScene, factory: Mobs) throws {
+        let root = scene.rootNode, sites = Structures.sites(in:root), terrain = Terrain(biome:.meadow)
+        let jobs = sites.filter { $0.kind == .work && !$0.standing.isEmpty }
+        let beds = sites.filter { $0.kind == .bed && !$0.standing.isEmpty }
+        var streets = [SCNVector3]()
+        for x in stride(from:-24.0,through:24,by:3) { for z in stride(from:-51.0,through:9,by:3) where terrain.paved(x,z) {
+            streets.append(.init(x,terrain.height(x,z)+0.02,z))
+        } }
+        let bell = sites.first { $0.kind == .gather }
+        let meeting = bell.flatMap { site in streets.min { hypot($0.x-site.point.x,$0.z-site.point.z)<hypot($1.x-site.point.x,$1.z-site.point.z) } }
+        let waypoints = streets+sites.flatMap(\.standing)
+        let doors = Door.collect(root)
+        var occupied = Set<Int>()
+        for (index,job) in jobs.enumerated() {
+            guard let actor = root.childNode(withName:"resident-villager-\(index)",recursively:false), let model = actor.childNodes.first else { continue }
+            let original = actor.position
+            var installed = false
+            for start in job.standing where !installed {
+                let first: [SCNVector3]
+                if let meeting {
+                    guard let route = Structures.route(from:start,to:meeting,via:waypoints,in:root) else { continue }
+                    first = route
+                } else { first = [start] }
+                let gather = first.count-1
+                for bedIndex in beds.indices where !occupied.contains(bedIndex) && !installed {
+                    let bed = beds[bedIndex]
+                    for end in bed.standing where !installed {
+                        guard let second = Structures.route(from:first.last!,to:end,via:waypoints,in:root) else { continue }
+                        let route = first+second.dropFirst()
+                        actor.position = start
+                        actor.eulerAngles = .init(0,atan2(job.point.x-start.x,job.point.z-start.z),0)
+                        installed = try Door.clearance(root) {
+                            try bed.clearance {
+                                try factory.routine(actor,model:model,route:route,bed:bed.point,facing:bed.facing,
+                                    gather:gather,root:root,seed:index)
+                            }
+                        }
+                        if installed {
+                            occupied.insert(bedIndex)
+                            for door in doors { door.register(actor) }
+                        }
+                    }
+                }
+            }
+            if !installed { actor.position = original }
         }
     }
 
@@ -709,6 +826,7 @@ enum Landscape {
 final class Daylight: SCNNode {
     var epoch = 0.0
     var water: [SCNMaterial] = []
+    var weather: SCNParticleSystem?
     static let period = 1200.0
 
     static func light(at seconds: Double) -> Double {
@@ -716,9 +834,15 @@ final class Daylight: SCNNode {
         return min(1,max(0,(height+0.12)/0.35))
     }
 
+    static func rain(at seconds: Double) -> Double {
+        guard seconds.isFinite else { return 0 }
+        let phase = seconds.truncatingRemainder(dividingBy:period)
+        return min(1,max(0,(phase-180)/25))*min(1,max(0,(360-phase)/25))
+    }
+
     static func install(_ scene: SCNScene, area: Biome, assets: Assets) throws {
         let rig = Daylight(); rig.name = "daylight"
-        for (name,width) in [("sun",18.0),("moon_phases",12.0)] {
+        for (name,width) in [("sun",11.2),("moon_phases",7.5)] {
             let material = try assets.texture("textures/environment/"+name).copy() as! SCNMaterial
             material.lightingModel = .constant; material.writesToDepthBuffer = false
             if name == "moon_phases" {
@@ -734,10 +858,31 @@ final class Daylight: SCNNode {
         for i in 0..<96 {
             let azimuth = Terrain.random(i,0,seed:91)*2 * .pi
             let altitude = 0.15+Terrain.random(i,1,seed:91)*1.3
-            let r = 160.0
+            let r = 100.0
             stars.cube(.init(0.15,0.15,0.15),at:.init(cos(azimuth)*cos(altitude)*r,sin(altitude)*r,sin(azimuth)*cos(altitude)*r),material:white)
         }
         let field = stars.node("stars"); field.castsShadow = false; rig.addChildNode(field)
+        if ![Biome.desert,.badlands,.savanna].contains(area) {
+            let snow = [Biome.snow,.ice,.peaks].contains(area)
+            let image = try assets.texture("textures/environment/weather").diffuse.contents as! CGImage
+            guard image.width>=3 && image.height>=19,
+                  let particle = image.cropping(to:snow ? CGRect(x:0,y:0,width:3,height:3) : CGRect(x:1,y:5,width:1,height:14)) else { throw AssetError.image }
+            let system = SCNParticleSystem()
+            system.particleImage = particle; system.birthRate = 0
+            system.particleLifeSpan = snow ? 5 : 1.5
+            system.particleSize = snow ? 0.12 : 0.04
+            system.particleVelocity = snow ? 2.5 : 14
+            system.particleVelocityVariation = snow ? 0.8 : 2
+            system.emittingDirection = .init(0,-1,0)
+            system.spreadingAngle = snow ? 12 : 2
+            system.stretchFactor = snow ? 0 : 0.06
+            system.orientationMode = .billboardYAligned; system.blendMode = .alpha
+            system.isLocal = false; system.isLightingEnabled = false
+            system.emitterShape = SCNBox(width:30,height:1,length:30,chamferRadius:0)
+            let emitter = SCNNode(); emitter.name = snow ? "snowfall" : "rainfall"
+            emitter.position.y = 12; emitter.addParticleSystem(system); rig.addChildNode(emitter)
+            rig.weather = system
+        }
         scene.rootNode.addChildNode(rig)
         scene.rootNode.enumerateChildNodes { node,_ in
             for material in node.geometry?.materials ?? [] where material.name?.contains("water_still") == true {
@@ -757,29 +902,40 @@ final class Daylight: SCNNode {
         }))
     }
 
-    static func apply(_ scene: SCNScene, area: Biome, seconds: Double) {
+    static func apply(_ scene: SCNScene, area: Biome, seconds: Double, eye: SCNVector3? = nil) {
         guard let rig = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight else { return }
+        let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
+            ?? scene.rootNode.parent?.childNode(withName:"camera",recursively:false)
+        let eye = eye ?? camera.map { scene.rootNode.convertPosition($0.worldPosition,from:nil) }
         let daylight = light(at:seconds), angle = (seconds/period+0.25)*2 * .pi
+        let rain = rain(at:seconds)
         let underwater = area == .reef || area == .monument
         let day = Landscape.colour(underwater ? 0x245A78 : area.sky)
         let night = Landscape.colour(underwater ? 0x07182E : 0x050B23)
         var sky = night.blended(withFraction:daylight,of:day)!
         let dusk = max(0,1-abs(sin(angle))/0.20)
         if !underwater { sky = sky.blended(withFraction:dusk*0.6,of:Landscape.colour(0xC46751))! }
+        if !underwater { sky = sky.blended(withFraction:rain*0.65,of:Landscape.colour(0x626D80))! }
         scene.background.contents = sky; scene.fogColor = sky
         let sun = scene.rootNode.childNode(withName:"sunlight",recursively:false)!
         sun.eulerAngles = .init(-(daylight>0.05 ? angle : angle + .pi),-0.6,0)
-        sun.light?.intensity = 55+845*daylight
+        sun.light?.intensity = (55+845*daylight)*(1-rain*0.45)
         sun.light?.color = Landscape.colour(daylight>0.1 ? 0xFFF2DD : 0x9AAFE8)
         scene.rootNode.childNode(withName:"skylight",recursively:false)?.light?.intensity = 120+330*daylight
-        rig.position = scene.rootNode.childNode(withName:"camera",recursively:false)?.position ?? .init(0,0,0)
-        rig.childNode(withName:"sun",recursively:false)?.position = .init(cos(angle)*145,sin(angle)*145,-45)
-        rig.childNode(withName:"sun",recursively:false)?.opacity = daylight
-        rig.childNode(withName:"moon_phases",recursively:false)?.position = .init(-cos(angle)*145,-sin(angle)*145,-45)
-        rig.childNode(withName:"moon_phases",recursively:false)?.opacity = 1-daylight
+        rig.position = eye ?? .init(0,0,0)
+        rig.childNode(withName:"sun",recursively:false)?.position = .init(cos(angle)*90,sin(angle)*90,-28)
+        rig.childNode(withName:"sun",recursively:false)?.opacity = daylight*(1-rain)
+        rig.childNode(withName:"moon_phases",recursively:false)?.position = .init(-cos(angle)*90,-sin(angle)*90,-28)
+        rig.childNode(withName:"moon_phases",recursively:false)?.opacity = (1-daylight)*(1-rain)
         rig.childNode(withName:"stars",recursively:false)?.opacity = 1-daylight
         for material in rig.water { material.diffuse.intensity = 0.2+0.8*daylight }
-        scene.rootNode.childNode(withName:"drifting-cloud",recursively:false)?.geometry?.firstMaterial?.diffuse.intensity = 0.25+0.75*daylight
-        if let camera = scene.rootNode.childNode(withName:"camera",recursively:false) { Landscape.medium(scene,area:area,eye:camera.position) }
+        scene.rootNode.childNode(withName:"drifting-cloud",recursively:false)?.geometry?.firstMaterial?.diffuse.intensity = (0.25+0.75*daylight)*(1-rain*0.25)
+        if let weather = rig.weather {
+            if let eye, !rig.isHidden {
+                let outside = rain>0 && !underwater && eye.y>0.9 && Collision.clear(scene.rootNode,from:eye,to:.init(eye.x,eye.y+50,eye.z),radius:0.02)
+                weather.birthRate = outside ? rain*([Biome.snow,.ice,.peaks].contains(area) ? 160 : 700) : 0
+            } else { weather.birthRate = 0 }
+        }
+        if let eye { Landscape.medium(scene,area:area,eye:eye) }
     }
 }

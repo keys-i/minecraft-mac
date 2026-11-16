@@ -5,6 +5,76 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Map, resident and presentation checks in build 27
+
+The 0.16.0/build 27 source passes 107 Python tests and both native suites
+The installed-art sweep covers 75 species, 42 areas and three passages in
+35,833 ms, which is test execution time rather than app startup time
+
+New checks exercise four-direction map crossings and bounded scene retention,
+Escape position/direction preservation, guided travel, faster flight controls,
+native baby models, adult cat scale, original herd declarations, horse heading
+and diagonal gait, continuous bat flight, crystal levitation and dragon beams
+Bat flight is sampled for a full minute so several random route segments run
+Habitat minimums allow solitary native spawns rather than requiring two of every mob
+Ground-clearance samples now run without installed art as well as in the scene sweep
+Every species is checked against its visible presentation heading while moving
+Horse, bat, dragon and outward/returning villager routes also have focused checks
+
+A focused streaming probe checks signed chunk coordinates, 144 authored terrain
+sections, complete 81-chunk loading at radius 4, the 1,089-chunk maximum,
+distance changes, cancellation, pause/resume and disposal
+It also checks both-axis crossings, guided travel, negative outskirts, floating
+origin, historical Far Lands arrival/return and no late attachments after disposal
+
+The final optimised renderer was sampled locally on an M3 Pro, macOS 27.0.1,
+with Minecraft and compilers stopped and Chrome for Testing left running
+Each 1040 × 760, 4× MSAA view used ten warm-up frames and sixty recorded frames,
+waiting for GPU completion each time. The connected sample fully loaded all
+289 default-radius chunks and five landmark graphs before recording
+
+| Sample | GPU median / p95 | Wall median / p95 |
+| --- | --- | --- |
+| Single forest | 2.74 / 3.97 ms | 4.38 / 5.87 ms |
+| Streamed forest | 4.55 / 5.10 ms | 6.68 / 7.67 ms |
+
+The connected graph contained 2,562 nodes and 609,844 logical triangles
+This is a short offscreen launcher-rendering sample, not game FPS, startup time,
+a maximum-distance benchmark or a sustained thermal/battery measurement
+The direct clear-sweep path took 7.30 ms for 100 calls versus 61.51 ms for the
+retained axis-step comparison in the same graph
+
+Runtime regressions cover inherited override filtering, helper environment
+isolation, private atomic script updates, stale symlinks and failed-write cleanup
+The native worker boundary preserves session/presentation keys while rejecting
+inherited `CX_`, `WINE` and `DYLD_` keys
+The packager signs and verifies bare Wine executables before bundle signing
+All ten packaging checks pass after this change
+The frozen worker's Python runtime disables bytecode writes, and a post-launch
+resource check found no changed or extra bundle files
+
+All four adult meadow villagers have reachable work, gathering and distinct bed
+routes, including the temple altar stair. Checks cover committed collision-mask
+restoration, hinged doors/trapdoors, bell atlas, irrigated paths, weather emission
+gates, sun/cloud geometry, copper oxidation stages and the requested named cameos
+
+The optional bridge passes seven Python tests with 19 native presentation
+scenarios, ten packaging tests and both original hardware graphics probes
+The final Metal completion orders the retained owning window on the main thread
+and publishes its PID only after `NSWindow.isVisible` succeeds
+The isolated window probe confirms frame, PID and accepted application activation
+Its Core Graphics onscreen flag remains false, so this probe alone does not prove
+Minecraft's visible handoff or fullscreen behaviour
+
+The final candidate and installed build pass all 1,054 resource hashes, internal
+symlink checks, bridge verification and strict deep signature verification
+The account helper retains SHA-256
+`706bba4f8cb08d90b080b0949dfd133e0a47f1122ee90693a54b058a05a280d6`
+Computer Use started the final installed app but returned `cgWindowNotFound`
+Its inventory listed the launcher as running; a Finder fallback was rejected by
+automatic approval review. Final-build Settings/picker/Far Lands visual checks
+and a real game-window handoff remain unverified
+
 ## Water and guided travel in 0.16
 
 Version 0.16.0/build 26 retains the build 25 runtime and authorised account helper
@@ -408,7 +478,7 @@ shasum -a 256 -c tools/SOURCE-SHA256.txt
 git diff --check
 ```
 
-The Python suite currently has 92 tests. Coverage includes source isolation,
+The Python suite currently has 107 tests. Coverage includes source isolation,
 one helper across download/preparation/launch, safe account error messages,
 process cancellation, setup-marker corruption, runtime relinking, reduced
 download verification, and packaged minimum OS detection. The count is a dated

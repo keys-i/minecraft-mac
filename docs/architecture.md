@@ -52,8 +52,8 @@ The title, subtitle and splash scale together with both window dimensions,
 without a fixed fullscreen size cap. The shortcut toast sits below the header
 The yellow splash uses a native repeating scale animation, removed when motion
 is disabled, the launcher loses focus or a game/error/biome picker takes priority
-Monocraft supplies the fallback title and shortcut toast; rounded system type
-identifies actions, and plain system type supplies supporting copy
+Monocraft supplies fallback display text, actions and the shortcut toast
+Plain system type supplies supporting copy
 Original installed item icons and hotbar/selection textures supply the connected
 inventory bar. Play, inventory slots, Look around and corner credits share a
 window-aware scale, reaching 5× their original area at 2016 × 1310 points
@@ -72,22 +72,29 @@ waits while the picker is open; native menus also give direct access
 The corner spyglass control or ⌘L enters spectator flight in `FlightView`
 Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
 arrows turn, captured relative mouse movement aims, and scrolling changes speed
-between 2 and 32 blocks/s. Control doubles travel speed while held
+between 4 and 64 blocks/s, starting at 16. Control doubles travel speed while held
 Capture owns one local event monitor and restores cursor association/visibility
 and the window’s previous mouse-event preference on release. It never installs
 a global monitor, event tap or Input Monitoring service
 A 60 Hz timer exists only while movement/turning keys are held; focus loss,
 responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
-`Atlas` keeps at most three neighbouring habitats in one SceneKit scene, 192 blocks
-apart. It builds neighbours on the existing serial asset queue, cancels obsolete
-requests and evicts distant graphs. Flight crosses east/west boundaries without
-replacing the renderer, wrapping coordinates or resetting direction. Unloaded
-edges and the finite north/south border constrain movement until a neighbour is ready
+`Atlas` keeps at most five landmark graphs in one SceneKit scene, on a 192-block
+grid, while `Stream` owns the visible 16 × 16-block terrain chunks
+Settings selects a 4–16 chunk radius, default 8, with at most 1,089 chunks and
+four outstanding build operations. Nearest chunks build first on the existing
+serial asset queue; obsolete requests cancel and distant chunks leave immediately
+Flight crosses both axes without replacing the renderer or resetting direction
+Procedural outskirts continue beyond the authored core, with logical coordinates
+bounded at ±30 million blocks and a floating origin to retain local precision
+Unloaded terrain constrains movement until its chunk is ready
 The picker and brackets guide the camera through the same geography; input cancels
-that route. These are authored habitats, not Minecraft world generation
+that route. These are authored habitats and local terrain, not Minecraft world generation
+Far Lands visits a historical wall-and-tunnel recreation near 12,550,824 blocks
+It is labelled as a recreation rather than a current Bedrock biome
 A gated main-run-loop timer owns map movement, boundary notifications and environment
 selection; it stops with scenery motion and is invalidated on teardown
-Leaving flight restores the current area route; teardown removes the recogniser
+Leaving flight starts a collision-checked hover at the current position and
+direction; teardown removes the recogniser
 `ShortcutHint` owns the 60-second toast and subsequent 70-second focused wait
 The view uses key-window notifications; the in-window Settings menu suppresses
 shortcut hints, spectator capture and automatic scenery motion while open
@@ -155,6 +162,7 @@ geometry per wood type within each scene. Near-camera placement brings plants,
 fallen logs, roots, fungi, coral fans and ceiling-attached cave growth into view
 Original cloud art moves above the Overworld; the original greyscale End sky is
 darkened in a small native bitmap before it becomes the background cubemap
+Clouds use translucent, non-colliding repeating patches drifting west
 
 `Mobs.swift` shares original geometry/skins within each scene and places 75 types
 in habitat-specific groups. Five newer types are skipped on older installations
@@ -174,6 +182,9 @@ Original behaviour collision boxes bound resident clearance rather than visual
 limbs or Blaze rods. Adult/calm component groups provide movement attributes;
 the midpoint represents original movement ranges in this scenery simulation
 Flying residents turn while travelling instead of inheriting walking waits
+One native transform constraint per moving actor faces its final local displacement
+after animation, avoiding backwards travel at route boundaries or after sharp turns
+Floating-origin parent movement does not change that heading
 End crystal shells follow the original installed bob/rotation formulas; bases stay still
 Four eligible classic species use base-pack models at a daylight-dependent
 10–15% launcher-only chance, selected once during scene construction
@@ -326,16 +337,34 @@ An unchanged prefix uses its existing fast path rather than launching wineboot
 
 After Play, the runtime emits `BEDROCK_GAME_PID:<decimal>` only after spawning Wine
 The worker accepts only exact PID lines in the range 2…2,147,483,647 and sends
-`game_pid` in the playing status. The launcher checks onscreen window metadata
-for that PID, a normal window layer and at least 320 × 200 points before hiding
-the native app through `NSApplication.hide`, which also handles fullscreen spaces. One cancellable task polls at 150 ms until a game window appears
-or the session ends
+`game_pid` in the playing status. A bundled bridge with recorded handoff provenance
+receives a fresh local Darwin notification name and the launcher's Cocoa frame
+The bridge uses public in-process window APIs after the final drawable command
+buffer completes without a Metal error. It orders the retained owning window on
+the main thread and publishes its PID only after that window reports visible
+The launcher accepts only that PID and a normal window of at least 320 × 200 points
+It checks all windows after frame readiness, activates the game and hides the
+native launcher. Requiring onscreen metadata first would deadlock a covered window
+One cancellable task polls at 150 ms; a 20-second compatibility fallback prevents
+a missing runtime notification from holding the loading cover indefinitely
+Older runtimes without the signal retain their onscreen-window check
 A final ready/error state cancels the wait, unhides the app and restores the launcher
 Quitting the launcher during gameplay closes the native app without a blocking
 alert. The worker remains responsible for its game/account session until game
 exit, dropping UI events after the output pipe closes. Setup cancellation keeps
 its existing confirmation and owned-process cleanup
 This hands off between two processes; it does not embed Wine inside SwiftUI
+
+Village residents use original template work, bed, bell and entrance positions
+Small stair routes preserve the original half-block steps; crop and farmland
+occupancy matches the shared collision rules. Paths are checked once while the
+scene builds, then four adults follow work, gathering, shelter and sleep schedules
+Door leaves and only the destination bed are temporarily excluded during route
+validation, with committed collision masks restored before returning
+Doors retain residents weakly, so the camera cannot close an occupied doorway
+Copper golem oxidation uses the installed real-time stage intervals and original
+stage skins, and fully oxidised golems stop moving
+These are authored scenery schedules, without a combat or village economy model
 
 macOS permission prompts identify their requesting signed executable. The app's
 Minecraft Launcher branding does not rename Wine/helper identities or suppress
@@ -384,7 +413,23 @@ CrossOver prefix is `bottles/Bedrock-Mac`; it is not migrated automatically.
 Swift and the pinned DXMT target macOS 15, but the current local Wine/Python
 bundle requires macOS 27. The packager scans native load commands and records
 the highest minimum OS; a UI deployment target alone cannot establish support
-Wine and DXMT are x86-64 and require Rosetta; the native launcher is arm64.
+The launcher, account helper and frozen worker are arm64; the installed game,
+Wine, DXMT and inspected Windows dependencies are x64 and currently require Rosetta
+[Apple's guidance](https://support.apple.com/en-us/102527) provides general Rosetta
+support through macOS 27, with macOS 28 support limited to certain older,
+unmaintained games. This project's eligibility has not been established
+Wine and DXMT contain ARM64 build paths, but an ARM64 Wine build alone cannot
+execute this x64 game. A credible native path first needs a verified official
+ARM64 desktop game and matching dependencies, or a separate CPU translator
+The public Minecraft listing's “ARM, x64” requirement does not establish that
+the required ARM64 desktop/GDK package is available
+
+The native launcher, worker and account-helper launch boundaries discard inherited
+`CX_`, `WINE` and `DYLD_` overrides before adding trusted runtime values
+Bundle script updates use private 0600 temporary files, flush them and atomically
+replace the destination; failed writes remove only their own temporary file
+Existing ownership checks, private directories, locks, cancellation and graphics
+digest verification remain in place. These checks do not create an OS sandbox
 
 Account and license traffic uses verified HTTPS. Game bytes use a separate
 client without account headers/cookies; it currently permits the two catalog

@@ -26,7 +26,7 @@ struct Terrain {
     private static let villagePlots = [CGRect(x:-17,y:-34,width:14,height:12),.init(x:7,y:-33,width:8,height:8),
                 .init(x:-16,y:-15,width:8,height:8),.init(x:6,y:-15,width:14,height:10),
                 .init(x:-5,y:-21,width:10,height:10),.init(x:-23,y:-23,width:6,height:8),
-                .init(x:-20,y:-50,width:10,height:10),.init(x:12,y:-48,width:10,height:10)]
+                .init(x:-20,y:-50,width:10,height:10),.init(x:12,y:-50,width:10,height:14)]
     var plots: [CGRect] { biome == .meadow ? Self.villagePlots : [] }
 
     func path(_ z: Double) -> Double { biome == .meadow ? sin(z/8)*1.5 : 3 }
@@ -38,7 +38,7 @@ struct Terrain {
             let x = Int((sin(Double(z)/8)*1.5).rounded())
             for dx in -1...1 { add(x+dx,z) }
         }
-        for (ex,ez) in [(-5,-28),(8,-29),(-12,-7),(6,-10),(-17,-19),(-11,-45),(14,-43)] {
+        for (ex,ez) in [(-5,-28),(8,-29),(-12,-7),(6,-10),(-17,-19),(-11,-45),(16,-42)] {
             for step in 0...abs(ex) {
                 let x = ex < 0 ? -step : step, z = ez+Int(sin(Double(step)*0.4))
                 add(x,z); add(x,z+1)
@@ -90,7 +90,7 @@ struct Terrain {
             level = level*blend+shape(plot.midX,plot.midY)*(1-blend)
         }
         if !end && biome.passage == nil {
-            let blend = min(1,max(0,(abs(x)-68)/27))
+            let blend = min(1,max(0,(max(abs(x),abs(z+32))-68)/27))
             level = level*(1-blend)+4*blend
         }
         return floor(level)
@@ -170,7 +170,7 @@ struct Terrain {
         let noise = Self.noise(x,z,scale:22,seed:seed+30)
         let arch = max(0,1-pow(x/70,2))*max(0,1-pow((z+22)/110,2))
         let level = floor((nether ? 18 : biome == .deep ? 22 : 11)+(nether || biome == .deep ? 24 : 15)*arch+noise*5)
-        let blend = min(1,max(0,(abs(x)-68)/27))
+        let blend = min(1,max(0,(max(abs(x),abs(z+32))-68)/27))
         return floor(level*(1-blend)+32*blend)
     }
 }
@@ -178,12 +178,13 @@ struct Terrain {
 extension Terrain {
 
     /// Chunked surfaces shared by habitat views and the Overworld portal approaches
-    func node(assets: Assets, x: Range<Int> = -96..<96, z: Range<Int> = -128..<64,
+    func node(assets: Assets, x: Range<Int> = -96..<96, z: Range<Int> = -128..<64, bounded: Bool = true,
               height sample: ((Int,Int) -> Double)? = nil) throws -> SCNNode {
         let area = biome, terrain = self
         let world = World.allCases.first { $0.biomes.contains(area) }!
-        let ground = SCNNode(); ground.name = "terrain"
+        let ground = Surface(); ground.name = "terrain"; ground.profile = Profile(terrain:self,sample:sample)
         let surface = try assets.tiles(area.surface)
+        let clay = area == .lush ? try assets.tiles("clay") : nil
         let road = area == .meadow ? try assets.tiles("dirt_path") : nil
         let stone = try assets.tiles(world == .nether ? "netherrack" : world == .end ? "end_stone" : area == .deep ? "deepslate" : "stone")
         let dirt = try assets.tiles("dirt")
@@ -194,7 +195,7 @@ extension Terrain {
         func key(_ px: Int, _ pz: Int) -> Int { (px-x.lowerBound+1)*(z.count+2)+pz-z.lowerBound+1 }
         for px in (x.lowerBound-1)...x.upperBound { for pz in (z.lowerBound-1)...z.upperBound { heights[key(px,pz)] = sample?(px,pz) ?? terrain.height(Double(px),Double(pz)) } }
         func h(_ x: Int, _ z: Int) -> Double { heights[key(x,z)] ?? -100 }
-        func edge(_ px: Int, _ pz: Int) -> Bool { !x.contains(px) || !z.contains(pz) }
+        func edge(_ px: Int, _ pz: Int) -> Bool { bounded && (!x.contains(px) || !z.contains(pz)) }
         let strata = try (area == .badlands ? ["red_terracotta","orange_terracotta","yellow_terracotta","terracotta"] : []).map { try assets.tiles($0) }
         let soil = world == .overworld && !area.underground && ![.desert,.badlands,.reef,.monument,.coast,.peaks,.ice].contains(area)
         let directions = [(0,(0,1)),(1,(1,0)),(2,(0,-1)),(3,(-1,0))]
@@ -204,11 +205,12 @@ extension Terrain {
                 let y = h(x,z); guard y > -90 else { continue }
                 let paved = terrain.paved(Double(x),Double(z))
                 var cap = 16
+                if area == .central && x*x+(z+23)*(z+23)<13 { cap = 0 }
                 for (face,d) in directions {
                     let neighbour = h(x+d.0,z+d.1)-(terrain.paved(Double(x+d.0),Double(z+d.1)) ? 0.0625 : 0)
                     if edge(x+d.0,z+d.1) || neighbour < y-(paved ? 0.0625 : 0) { cap |= 1 << face }
                 }
-                let tiles = paved ? road! : surface
+                let tiles = paved ? road! : area == .lush && y<0.9 ? clay! : surface
                 let thickness = paved ? 0.9375 : 1.0
                 land.cube(.init(1,thickness,1),at:.init(Double(x),y-1+thickness/2,Double(z)),material:tiles[0],faces:cap,faceMaterials:tiles)
                 let bottom = terrain.end || area == .shards ? -3-max(0,18-hypot(Double(x),Double(z+17))*0.3) : -28
@@ -248,9 +250,13 @@ extension Terrain {
                     roof.cube(.init(width,0,depth),at:.init(Double(cx)+(width-1)/2,64,Double(cz)+(depth-1)/2),material:stone[0],faces:16)
                 }
             }
-            ground.addChildNode(land.node("chunk-\(cx)-\(cz)"))
-            if !pools.vertices.isEmpty { ground.addChildNode(pools.node("pool-\(cx)-\(cz)")) }
-            if !roof.vertices.isEmpty { ground.addChildNode(roof.node("ceiling-\(cx)-\(cz)")) }
+            let section = Section(); section.x = cx; section.z = cz; section.position = .init(Double(cx),0,Double(cz))
+            for (name,source) in [("chunk",land),("pool",pools),("ceiling",roof)] where !source.vertices.isEmpty {
+                var mesh = source
+                mesh.vertices = mesh.vertices.map { .init($0.x-Double(cx),$0.y,$0.z-Double(cz)) }
+                section.addChildNode(mesh.node("\(name)-\(cx)-\(cz)"))
+            }
+            ground.addChildNode(section)
         } }
         if let water {
             let controller = SCNNode(); controller.name = "flowing-surface"
@@ -281,7 +287,7 @@ enum Collision {
     }
 
     private static func solid(_ hit: SCNHitTestResult) -> Bool {
-        let ignored = ["water","lava","tallgrass","wheat","carrots","potatoes","flower","sapling","fern","rail","web"]
+        let ignored = ["water","lava","tallgrass","wheat","carrots","potatoes","beetroots","flower","sapling","fern","rail","web","clouds"]
         let materials = hit.node.geometry?.materials ?? []
         let name = materials.indices.contains(hit.geometryIndex) ? materials[hit.geometryIndex].name ?? "" : ""
         return !ignored.contains(where:name.contains)
@@ -334,5 +340,269 @@ enum Collision {
             }
         }
         return p
+    }
+}
+
+struct Region: Hashable {
+    static let span = 192
+    static let limit = 30_000_000.0
+    static let farLands = 12_550_824
+    let x: Int
+    let z: Int
+
+    static func at(_ p: SCNVector3) -> Region? {
+        guard p.x.isFinite, p.z.isFinite, abs(p.x)<=limit, abs(p.z)<=limit else { return nil }
+        return Region(x:Int(floor((p.x+96.5)/Double(span))),z:Int(floor((p.z+128.5)/Double(span))))
+    }
+
+    var origin: SCNVector3 { .init(Double(x*Self.span),0,Double(z*Self.span)) }
+
+    func key(_ count: Int) -> Int {
+        let width = Atlas.columns(count), index = z*width+x
+        if x>=0 && x<width && z>=0 && index<count { return index }
+        let a = x>=0 ? x*2 : -x*2-1, b = z>=0 ? z*2 : -z*2-1, sum = a+b
+        return -1-(sum*(sum+1)/2+b)
+    }
+
+    static func from(_ key: Int, count: Int) -> Region {
+        if key>=0 { let width = Atlas.columns(count); return Region(x:key%width,z:key/width) }
+        let n = -1-key
+        var diagonal = Int((sqrt(Double(n)*8+1)-1)/2)
+        if diagonal*(diagonal+1)/2>n { diagonal -= 1 }
+        let b = n-diagonal*(diagonal+1)/2, a = diagonal-b
+        return Region(x:a%2 == 0 ? a/2 : -(a+1)/2,z:b%2 == 0 ? b/2 : -(b+1)/2)
+    }
+
+    func historical(_ world: World) -> Bool {
+        world == .overworld && max(abs(x*Self.span),abs(z*Self.span))>=Self.farLands-Self.span
+    }
+
+    func biome(_ world: World) -> Int {
+        let key = key(world.biomes.count)
+        if key>=0 { return key }
+        if historical(world) { return world.biomes.firstIndex(of:.forest) ?? 0 }
+        let choices = world.biomes.indices.filter { world.biomes[$0].passage == nil }
+        let seed = World.allCases.firstIndex(of:world)!+431
+        return choices[min(choices.count-1,Int(Terrain.random(x,z,seed:seed)*Double(choices.count)))]
+    }
+
+    var neighbours: [Region] { [.init(x:x-1,z:z),.init(x:x+1,z:z),.init(x:x,z:z-1),.init(x:x,z:z+1)] }
+}
+
+struct Chunk: Hashable {
+    static let size = 16
+    let x: Int
+    let z: Int
+    init(x: Int, z: Int) { self.x = x; self.z = z }
+    init(at p: SCNVector3) { x = Int(floor((p.x+0.5)/16)); z = Int(floor((p.z+0.5)/16)) }
+    var origin: SCNVector3 { .init(Double(x*16),0,Double(z*16)) }
+    var region: Region {
+        Region(x:Int(floor((Double(x*16)+104)/192)),z:Int(floor((Double(z*16)+136)/192)))
+    }
+}
+
+final class Section: SCNNode {
+    var x = 0
+    var z = 0
+}
+
+final class Surface: SCNNode {
+    var profile: Terrain.Profile?
+}
+
+extension Terrain {
+    struct Profile {
+        let terrain: Terrain
+        let sample: ((Int,Int) -> Double)?
+    }
+
+    // This bounded wall-and-tunnel study evokes historical Far Lands without emulating the old generator
+    static func farLands(assets: Assets, chunk: Chunk) throws -> Section {
+        let stone = try assets.tiles("stone"), grass = try assets.tiles("grass_block"), bedrock = try assets.tiles("bedrock")
+        let low = -28, high = 128, height = high-low+2, width = 18
+        var solid = Array(repeating:false,count:width*width*height)
+        func key(_ x: Int, _ y: Int, _ z: Int) -> Int { ((x+1)*width+z+1)*height+y-low+1 }
+        let gx = chunk.x*16, gz = chunk.z*16
+        for x in -1...16 { for z in -1...16 { for y in (low-1)...high {
+            let px = gx+x, pz = gz+z, axis = max(abs(px),abs(pz))
+            let across = abs(px)>=abs(pz) ? pz : px, depth = axis-Region.farLands
+            let density = noise(Double(across),Double(y)*1.7,scale:17,seed:911) +
+                noise(Double(depth),Double(y),scale:11,seed:912)*0.28 +
+                sin(Double(y)*0.35+Double(across)*0.06)*0.22
+            solid[key(x,y,z)] = y<4 || y<high && axis>=Region.farLands && density>(-0.08)
+        } } }
+        var mesh = Voxels()
+        for x in 0..<16 { for z in 0..<16 { for y in low..<high where solid[key(x,y,z)] {
+            var mask = 0
+            for (face,d) in [(0,0,1),(1,0,0),(0,0,-1),(-1,0,0),(0,1,0),(0,-1,0)].enumerated() {
+                if !solid[key(x+d.0,y+d.1,z+d.2)] { mask |= 1 << face }
+            }
+            guard mask != 0 else { continue }
+            let materials = y == low ? bedrock : mask&16 != 0 && y>40 ? grass : stone
+            mesh.cube(.init(1,1,1),at:.init(Double(x),Double(y)+0.5,Double(z)),material:materials[0],faces:mask,faceMaterials:materials)
+        } } }
+        let section = Section(); section.addChildNode(mesh.node("historical-far-lands"))
+        return section
+    }
+}
+
+// One asset queue builds only the nearest missing terrain, independently of the five landmark graphs
+final class Stream {
+    let root = SCNNode()
+    private(set) var chunks: [Chunk:Section] = [:]
+    private let assets: Assets
+    private let world: World
+    private let failed: () -> Void
+    private var profiles: [Region:Terrain.Profile] = [:]
+    private var requests: [Chunk:Operation] = [:]
+    private var wanted = Set<Chunk>()
+    private var pending: [Chunk] = []
+    private var centre: Chunk?
+    private var radius = 8
+    private var origin = SCNVector3Zero
+    private var fluids: [ObjectIdentifier:(SCNMaterial,SCNNode,Int)] = [:]
+    private var surfaces: [Chunk:[ObjectIdentifier]] = [:]
+    private var disposed = false
+    private var paused = false
+    private var eye: SCNVector3?
+    var limit: Int { (radius*2+1)*(radius*2+1) }
+    var outstanding: Int { requests.count+pending.count }
+
+    init(world: World, assets: Assets, failed: @escaping () -> Void) {
+        self.world = world; self.assets = assets; self.failed = failed; root.name = "streamed-terrain"
+    }
+
+    func distance(_ chunks: Int) { radius = min(16,max(4,chunks)); centre = nil }
+
+    func pause(_ enabled: Bool) {
+        guard !disposed, enabled != paused else { return }
+        paused = enabled
+        for operation in requests.values { operation.cancel() }
+        requests = [:]; pending = []; centre = nil
+        if !paused, let eye { update(at:eye) }
+    }
+
+    func rebase(_ point: SCNVector3) {
+        origin = point
+        for (key,node) in chunks {
+            let p = key.origin; node.position = .init(p.x-origin.x,0,p.z-origin.z)
+        }
+    }
+
+    func update(at eye: SCNVector3, build: Bool = true) {
+        guard !disposed, Region.at(eye) != nil else { return }
+        self.eye = eye
+        let next = Chunk(at:eye)
+        if next != centre {
+            centre = next
+            wanted = Set((-radius...radius).flatMap { x in (-radius...radius).map { Chunk(x:next.x+x,z:next.z+$0) } })
+            for key in Array(chunks.keys) where !wanted.contains(key) { remove(key) }
+            for key in Array(requests.keys) where !wanted.contains(key) { requests.removeValue(forKey:key)?.cancel() }
+            let regions = Set(wanted.map(\.region))
+            profiles = profiles.filter { regions.contains($0.key) }
+            pending = paused ? [] : wanted.filter { chunks[$0] == nil && requests[$0] == nil }.sorted {
+                let a = ($0.x-next.x)*($0.x-next.x)+($0.z-next.z)*($0.z-next.z)
+                let b = ($1.x-next.x)*($1.x-next.x)+($1.z-next.z)*($1.z-next.z)
+                return a == b ? ($0.x == $1.x ? $0.z<$1.z : $0.x<$1.x) : a<b
+            }
+        }
+        if build { pump() }
+    }
+
+    func register(_ scene: SCNScene, region: Region) {
+        for surface in scene.rootNode.childNodes.compactMap({ $0 as? Surface }) {
+            if let profile = surface.profile { profiles[region] = profile }
+        }
+    }
+
+    func adopt(_ scene: SCNScene, region: Region) {
+        register(scene,region:region)
+        for surface in scene.rootNode.childNodes.compactMap({ $0 as? Surface }) {
+            for section in surface.childNodes.compactMap({ $0 as? Section }) {
+                let key = Chunk(x:region.x*12+section.x/16,z:region.z*12+section.z/16)
+                section.removeFromParentNode()
+                guard wanted.contains(key), !region.historical(world) else { continue }
+                requests.removeValue(forKey:key)?.cancel()
+                remove(key); attach(section,at:key)
+            }
+            for child in surface.childNodes { child.removeFromParentNode() }
+        }
+        pending.removeAll { chunks[$0] != nil }
+        pump()
+    }
+
+    private func attach(_ node: Section, at key: Chunk) {
+        chunks[key] = node
+        let p = key.origin; node.position = .init(p.x-origin.x,0,p.z-origin.z); root.addChildNode(node)
+        var ids = Set<ObjectIdentifier>()
+        node.enumerateChildNodes { child,_ in
+            for material in child.geometry?.materials ?? [] where material.name?.contains("water") == true || material.name?.contains("lava") == true {
+                let id = ObjectIdentifier(material)
+                guard ids.insert(id).inserted else { continue }
+                if let old = fluids[id] { fluids[id] = (old.0,old.1,old.2+1) }
+                else {
+                    let controller = SCNNode(); controller.name = "fluid-atlas"
+                    Landscape.animate(controller,material:material); root.addChildNode(controller); fluids[id] = (material,controller,1)
+                }
+            }
+        }
+        surfaces[key] = Array(ids)
+    }
+
+    private func remove(_ key: Chunk) {
+        chunks.removeValue(forKey:key)?.removeFromParentNode()
+        for id in surfaces.removeValue(forKey:key) ?? [] {
+            guard let old = fluids[id] else { continue }
+            if old.2 == 1 { old.1.removeFromParentNode(); fluids[id] = nil }
+            else { fluids[id] = (old.0,old.1,old.2-1) }
+        }
+    }
+
+    private func pump() {
+        guard !disposed, !paused else { return }
+        while requests.count<4 && !pending.isEmpty {
+            let key = pending.removeFirst()
+            guard wanted.contains(key), chunks[key] == nil, requests[key] == nil else { continue }
+            let region = key.region, index = region.biome(world)
+            let profile = profiles[region] ?? Terrain.Profile(terrain:Terrain(biome:world.biomes[index]),sample:nil)
+            let operation = BlockOperation()
+            operation.addExecutionBlock { [weak self,weak operation] in
+                guard let self, let operation, !operation.isCancelled else { return }
+                let result = Result { () -> Section in
+                    if region.historical(self.world) { return try Terrain.farLands(assets:self.assets,chunk:key) }
+                    let x = key.x*16-region.x*192, z = key.z*16-region.z*192
+                    let node = try profile.terrain.node(assets:self.assets,x:x..<(x+16),z:z..<(z+16),bounded:false,height:profile.sample)
+                    guard let section = node.childNodes.first(where:{ $0 is Section }) as? Section else { throw AssetError.model }
+                    section.removeFromParentNode(); return section
+                }
+                SCNTransaction.flush()
+                DispatchQueue.main.async { [weak self,weak operation] in
+                    guard let self, let operation, !operation.isCancelled, !self.disposed, self.requests[key] === operation else { return }
+                    self.requests[key] = nil
+                    switch result {
+                    case .success(let node): if self.wanted.contains(key) { self.attach(node,at:key) }
+                    case .failure: self.failed()
+                    }
+                    self.pump()
+                }
+            }
+            requests[key] = operation; assets.queue.addOperation(operation)
+        }
+    }
+
+    func contains(_ point: SCNVector3) -> Bool { chunks[Chunk(at:point)] != nil }
+
+    func constrain(_ point: SCNVector3, from start: SCNVector3) -> SCNVector3 {
+        if Region.at(point) != nil && contains(point) { return point }
+        let p = Chunk(at:start).origin
+        return .init(min(p.x+15.49,max(p.x-0.49,point.x)),point.y,min(p.z+15.49,max(p.z-0.49,point.z)))
+    }
+
+    func dispose() {
+        disposed = true
+        for operation in requests.values { operation.cancel() }
+        requests = [:]; pending = []; wanted = []; profiles = [:]
+        for key in Array(chunks.keys) { remove(key) }
+        root.removeFromParentNode()
     }
 }

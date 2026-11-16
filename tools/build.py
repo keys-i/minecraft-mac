@@ -124,7 +124,10 @@ def assemble(args):
     for name in ('standalone.py', 'standalone-setup.py', 'standalone-gameinput.py', 'winrt.reg'):
         shutil.copy2(ROOT / 'src' / name, resources / 'scripts' / name)
     if bridge is not None:
-        for name in ('vendor/patches/standalone-dxmt-memory-lifetime.patch', 'tools/probes/standalone-dxmt-display-trace.c'):
+        patches = ['vendor/patches/standalone-dxmt-memory-lifetime.patch', 'tools/probes/standalone-dxmt-display-trace.c']
+        if 'handoff_patch_sha256' in bridge:
+            patches.append('vendor/patches/standalone-dxmt-handoff.patch')
+        for name in patches:
             target = resources / 'scripts' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)
@@ -132,6 +135,11 @@ def assemble(args):
     shutil.copy2(ROOT / 'vendor/README.md', resources / 'vendor/README.md')
     shutil.copy2(ROOT / 'LICENSE', resources / 'LICENSE')
     link_graphics(resources, bridge)
+    # Deep bundle signing does not discover bare Wine executables in Resources
+    for path in (packaged_wine / 'bin').iterdir():
+        if path.is_file() and not path.is_symlink():
+            subprocess.run(['codesign', '--force', '--sign', '-', str(path)], check=True)
+            subprocess.run(['codesign', '--verify', '--strict', str(path)], check=True)
     # Sign nested binaries before hashing: signing modifies their bytes.
     subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
     record_packaged_bridge(resources, bridge)
@@ -184,7 +192,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='26', CFBundleShortVersionString='0.16.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='27', CFBundleShortVersionString='0.16.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)
