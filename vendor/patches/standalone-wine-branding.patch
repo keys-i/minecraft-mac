@@ -1,0 +1,15 @@
+diff --git a/loader/wine_info.plist.in b/loader/wine_info.plist.in
+--- a/loader/wine_info.plist.in
++++ b/loader/wine_info.plist.in
+@@ -13,8 +13,10 @@
+     <string>org.winehq.wine</string>
+     <key>CFBundleInfoDictionaryVersion</key>
+     <string>6.0</string>
++    <key>CFBundleDisplayName</key>
++    <string>Minecraft Launcher</string>
+     <key>CFBundleName</key>
+-    <string>Wine</string>
++    <string>Minecraft Launcher</string>
+     <key>CFBundlePackageType</key>
+     <string>APPL</string>
+     <key>CFBundleShortVersionString</key>

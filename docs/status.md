@@ -10,6 +10,49 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Launcher handoff and original asset layers in 0.15
+
+The current local candidate is **Minecraft Launcher 0.15.0/build 25**
+Play replaces the scenery/menu with the original Bedrock dirt/loading animation,
+then uses the existing two-process handoff. The Windows game remains a separate
+native window; it is not embedded in SwiftUI. No Keep Open blocker is shown
+
+Three neighbouring authored habitats share a continuous coordinate space
+Flying across east/west boundaries preserves position and direction,
+with matching ground and Nether ceiling seams. Neighbours build asynchronously
+and distant graphs are evicted. The map remains finite and is not the game engine
+Buttons start grey and turn green on hover; inventory slots stay grey
+
+Original material inheritance fixes colour-mask alpha and matte mob rendering
+Cats use their horizontal bind/tail pose; villagers have folded arms and five
+profession layers. The starting village includes pigs, horses and one crowned
+Technoblade tribute pig. Mansion scenery adds a chicken jockey. Original item
+textures supply held weapons; wooden doors open near the camera, paths exclude
+vegetation, and cherry canopies drop textured petals
+
+All 101 Python checks and native synthetic/installed-art checks pass for
+75 species, 42 areas and three passages. Connected-forest wall p95 was 17.96 ms
+in a 1040 × 760 local sample with the existing game/browser running
+A matched 100-clear-sweep probe decreased from 93.02 to 10.22 ms
+This is launcher collision work, without an overall game-startup/FPS claim
+See [the detailed test record](test.md#connected-map-and-loading-screen-in-build-25)
+
+The app's 981 runtime/helper files differ from build 24 only in the Wine loader
+whose embedded name/display name now read Minecraft Launcher. The account helper
+and every other resource remain byte-identical, preserving existing authorisation
+macOS may still use cached labels; no security consent was automated
+All 1,053 resource hashes, strict deep signatures and DMG verification pass
+The local image is 127,567,790 bytes with SHA-256
+
+```text
+3f5fd8fc354e93d49216cde8951c51a0b89461eca0471cbf150228f2971cc5f6
+```
+
+It remains an ad-hoc signed local preview requiring macOS 27. The running game
+was preserved. Computer Use rejected the isolated preview as unapproved, so live
+build 25 handoff, permission labels, VoiceOver and clean-Mac installation remain
+unverified. No notarised binary release has been published
+
 ## Settings menu and crystal connection in 0.14
 
 Settings now opens inside the launcher with a top-right × and Escape dismissal,
@@ -27,14 +70,28 @@ All 93 Python tests, native synthetic and installed-art 70-species/42-area check
 were inspected, and live Computer Use verified gear/⌘, entry and ×/Escape closing
 See [the test record](test.md#responsive-settings-and-dragon-healing-beams-in-014)
 
-The final local candidate is 0.14.0/build 19, requires macOS 27 and preserves all
-1,053 resource hashes and 21 symlinks. The DMG has 128,195,260 bytes and SHA-256
+Build 20 removes the main title's 700-point cap and scales it with both window
+dimensions. Its subtitle and splash scale together; the shortcut hint sits below
+the title. Four native render sizes and live fullscreen inspection cover the change
+Native synthetic checks and all 93 Python tests pass for this refinement
+
+Build 22 gives Play, inventory, Look around and corner credits five times their
+original area in fullscreen, with a smaller scale where needed to fit the window
+Shared hover feedback enlarges and brightens controls over 120 ms; Reduced Motion
+keeps immediate brightness feedback without movement. Four native render sizes,
+synthetic layout checks and live fullscreen inspection cover the change
+Live pointer-hover verification was blocked by Computer Use `noWindowsAvailable` errors
+
+The preceding local candidate was 0.14.0/build 22, requires macOS 27 and preserves all
+1,053 resource hashes and 21 symlinks. The DMG has 128,141,319 bytes and SHA-256
 
 ```text
-d424a83eaf335b6c20c1dc4343d05db43b29ae61e42c5e8309a2d0795e5d8ac9
+623445d042ac54a4060cdda05d68730ec0502048b1bd7927d301a2792d61d96d
 ```
 
-The final candidate’s Settings menu was opened locally. VoiceOver and display zoom remain
+The Settings menu was opened locally in build 19, the title in build 20 and the
+enlarged controls in build 22
+VoiceOver and display zoom remain
 unverified; no helper/runtime rebuild, binary release, merge or notarisation was performed
 
 ## Flight and destination corrections in 0.13
@@ -544,7 +601,7 @@ Local mobs-preview DMG SHA-256:
 
 ## Earlier October 19 interface update
 
-Current source uses **Minecraft for MacOS** branding and a poster-led native
+Current source uses **Minecraft Launcher** branding and a poster-led native
 installer with block-style controls, visible progress and a resizable window
 The earlier data directory, bundle identifier and account helper are retained
 

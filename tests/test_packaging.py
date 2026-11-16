@@ -1,17 +1,17 @@
 """Verify the advertised OS target includes every bundled native component."""
-import importlib.util
 import contextlib
 import hashlib
+import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import plistlib
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('packager', Path(__file__).resolve().parents[1] / 'tools/build.py')
@@ -23,7 +23,7 @@ class PackagingTests(unittest.TestCase):
     def test_launcher_bundles_only_poster_fallback_and_keeps_installation_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            resources = root / 'build/Minecraft for MacOS.app/Contents/Resources'
+            resources = root / 'build/Minecraft Launcher.app/Contents/Resources'
             resources.mkdir(parents=True)
             (root / 'assets').mkdir()
             (root / 'assets/poster.webp').write_bytes(b'approved poster')
@@ -35,7 +35,7 @@ class PackagingTests(unittest.TestCase):
                     patch.object(packager.subprocess, 'run'), \
                     contextlib.redirect_stdout(io.StringIO()):
                 app = packager.build_launcher()
-            self.assertEqual(app.name, 'Minecraft for MacOS.app')
+            self.assertEqual(app.name, 'Minecraft Launcher.app')
             self.assertEqual((resources / 'poster.webp').read_bytes(), b'approved poster')
             self.assertEqual((resources / 'Monocraft.ttf').read_bytes(), b'pixel font')
             self.assertEqual((resources / 'vendor/licenses/Monocraft-OFL.txt').read_text(), 'font licence')
@@ -43,7 +43,7 @@ class PackagingTests(unittest.TestCase):
                 self.assertFalse((app / 'Contents/Resources' / name).exists())
             with (app / 'Contents/Info.plist').open('rb') as file:
                 info = plistlib.load(file)
-            self.assertEqual(info['CFBundleDisplayName'], 'Minecraft for MacOS')
+            self.assertEqual(info['CFBundleDisplayName'], 'Minecraft Launcher')
             self.assertEqual(info['CFBundleIdentifier'], 'local.bedrock.mac.launcher')
             self.assertEqual(info['BedrockProjectPath'], str(root))
 
@@ -66,8 +66,9 @@ class PackagingTests(unittest.TestCase):
             self.assertTrue(fixture.is_relative_to(output))
             worker = fixture / 'src/launcher/setup.py'
             self.assertEqual(worker.read_bytes(), (packager.ROOT / 'tests/preview.py').read_bytes())
-            result = subprocess.check_output([sys.executable, str(worker), '--status'], text=True)
-            self.assertEqual(json.loads(result)['state'], 'new')
+            for flag in ('--status', '--warmup'):
+                result = subprocess.check_output([sys.executable, str(worker), flag], text=True, timeout=3)
+                self.assertEqual(json.loads(result)['state'], 'new')
             self.assertFalse((output / 'Contents/Resources/worker').exists())
             process = subprocess.Popen([sys.executable, str(worker)], stdout=subprocess.PIPE, text=True)
             try:

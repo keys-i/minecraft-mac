@@ -105,7 +105,7 @@ extension Passage {
         scene.rootNode.addChildNode(camera)
         let start = pose(at:0); camera.position = start.eye; camera.look(at:start.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
         camera.runAction(.customAction(duration:Double(duration)) { node,elapsed in
-            let pose = self.pose(at:Double(elapsed)); node.position = pose.eye; node.look(at:pose.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+            let pose = self.pose(at:Double(elapsed)); node.position = pose.eye; node.look(at:node.parent!.convertPosition(pose.aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         },forKey:"passage")
         let fill = SCNNode(); fill.light = SCNLight(); fill.light?.type = .ambient
         fill.light?.intensity = self == .rift ? 500 : 380; scene.rootNode.addChildNode(fill)
@@ -163,11 +163,13 @@ extension Passage {
         } else {
             let mine = self == .mine
             let terrain = Terrain(biome:.forest)
-            let approach = try terrain.node(assets:assets,x:-64..<64,z:-16..<(mine ? 96 : 128)) { x,z in
+            let approach = try terrain.node(assets:assets,x:-96..<96,z:-128..<128) { x,z in
                 if abs(x)<4 && z<(mine ? 42 : 95) { return -100 }
                 if abs(x)<(mine ? 16 : 13) && abs(z+(mine ? 12 : 0))<(mine ? 4 : 6) { return -100 }
                 if !mine && abs(x)<8 && z < -9 { return -100 }
-                return max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
+                let level = max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
+                let edge = min(1,max(0,(Double(abs(x))-55)/40))
+                return floor(level*(1-edge)+4*edge)
             }
             scene.rootNode.addChildNode(approach)
             for z in (mine ? 35 : 91)...(mine ? 42 : 96) {

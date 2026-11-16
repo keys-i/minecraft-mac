@@ -54,7 +54,8 @@ final class FlightView: SCNView {
     private var last = 0.0
     private var loading = false
     private var area: Biome = .meadow
-    private var entry: (point: SCNVector3, height: Double, angles: SCNVector3)?
+    weak var atlas: Atlas?
+    private var doors: [Door] = []
     var exploring = false {
         didSet {
             guard exploring != oldValue else { return }
@@ -62,7 +63,6 @@ final class FlightView: SCNView {
             if exploring { capture() }
             else {
                 release()
-                entry = nil
                 if window?.firstResponder === self { window?.makeFirstResponder(nil) }
             }
         }
@@ -147,12 +147,8 @@ final class FlightView: SCNView {
 
     func install(_ camera: SCNNode?, area: Biome) {
         self.area = area
-        if let entry, let camera, let scene {
-            let proposed = Self.arrival(area,point:entry.point,height:entry.height)
-            camera.position = Collision.nearby(scene.rootNode,at:proposed) ?? camera.position
-            camera.eulerAngles = entry.angles
-        }
-        entry = nil; loading = false
+        doors = scene.map { Door.collect($0.rootNode) } ?? []
+        loading = false
         controller.pointOfView = camera
         controller.interactionMode = .fly; controller.inertiaEnabled = false
         controller.minimumVerticalAngle = -85; controller.maximumVerticalAngle = 85
@@ -188,44 +184,207 @@ final class FlightView: SCNView {
         direction.y += key(49)-(descending ? 1 : 0)
         if simd_length_squared(direction)>0, let scene {
             let next = camera.simdWorldPosition+simd_normalize(direction)*speed*(sprinting ? 2 : 1)*dt
-            camera.worldPosition = Collision.move(scene.rootNode,from:camera.worldPosition,to:SCNVector3(next))
+            atlas?.cancelTravel()
+            for door in doors { door.approach(camera.worldPosition) }
+            let destination = atlas?.constrain(SCNVector3(next)) ?? SCNVector3(next)
+            camera.worldPosition = Collision.move(scene.rootNode,from:camera.worldPosition,to:destination)
         }
         camera.position.y = min(90,max(-28,camera.position.y))
         if let scene { Landscape.medium(scene,area:area,eye:camera.position) }
         let yaw = key(124)-key(123), pitch = key(126)-key(125)
         if yaw != 0 || pitch != 0 { controller.rotateBy(x:-yaw*70*dt,y:pitch*70*dt) }
         needsDisplay = true
-        if let step = Self.crossing(camera.position) { visit(step) }
     }
 
     func visit(_ step: Int) {
-        guard !loading, let camera = pointOfView, travel != nil else { return }
-        let p = camera.position, ground = Terrain(biome:area).height(p.x,p.z)
-        entry = (p,ground > -90 ? p.y-ground : p.y-4,camera.eulerAngles)
-        prepare()
+        if let atlas { atlas.visit(atlas.active+step); return }
+        guard !loading else { return }
         travel?(step)
     }
 
-    static func crossing(_ p: SCNVector3) -> Int? {
-        if p.x>80 || p.z < -112 { return 1 }
-        if p.x < -80 || p.z>48 { return -1 }
-        return nil
+    func dispose() {
+        stop(); release(); atlas = nil; doors = []; travel = nil; finish = nil; controller.pointOfView = nil
+        NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// A bounded neighbourhood shares one coordinate space and one moving camera
+final class Atlas {
+    static let span = 192.0
+    let world: World
+    let assets: Assets
+    let scene = SCNScene()
+    private(set) var active: Int
+    private(set) var tiles: [Int:SCNScene] = [:]
+    private var operations: [Int:Operation] = [:]
+    private var homes: [Int:(SCNVector3,SCNVector3)] = [:]
+    private weak var view: FlightView?
+    private let arrived: (Int) -> Void
+    private let failed: () -> Void
+    private var destination: Int?
+    private var points: [SCNVector3] = []
+    private var last: Double?
+    private var environment = -1.0
+    private var timer: Timer?
+    private var doors: [Door] = []
+
+    init(world: World, index: Int, tile: SCNScene, assets: Assets, view: FlightView,
+         arrived: @escaping (Int) -> Void, failed: @escaping () -> Void) {
+        self.world = world; self.assets = assets; self.view = view
+        self.arrived = arrived; self.failed = failed; active = index
+        attach(tile,index:index)
+        let camera = tile.rootNode.childNode(withName:"camera",recursively:false)!
+        view.scene = scene; view.pointOfView = camera; view.atlas = self
+        view.install(camera,area:world.biomes[index])
+        update(ProcessInfo.processInfo.systemUptime)
+        prefetch()
     }
 
-    static func arrival(_ area: Biome, point: SCNVector3, height: Double) -> SCNVector3 {
-        var x = point.x>80 ? -76 : point.x < -80 ? 76 : point.x
-        var z = point.z < -112 ? 44 : point.z>48 ? -108 : point.z
-        let terrain = Terrain(biome:area)
-        if terrain.height(x,z) < -90 { let p = Landscape.pose(area,at:0).eye; x = p.x; z = p.z }
-        let ground = terrain.height(x,z)
-        var y = min(88,ground+max(1.62,height))
-        if area.underground || World.nether.biomes.contains(area) { y = min(y,max(ground+9,terrain.ceiling(x,z))-1.62) }
-        return .init(x,y,z)
+    func animate(_ enabled: Bool) {
+        guard enabled != (timer != nil) else { return }
+        timer?.invalidate(); timer = nil; last = nil
+        if enabled {
+            let timer = Timer(timeInterval:1.0/30,repeats:true) { [weak self] _ in self?.update(ProcessInfo.processInfo.systemUptime) }
+            self.timer = timer; RunLoop.main.add(timer,forMode:.common)
+        }
+    }
+
+    static func index(at x: Double, count: Int) -> Int {
+        min(count-1,max(0,Int(floor((x+96.5)/span))))
+    }
+
+    private func attach(_ tile: SCNScene, index: Int) {
+        let root = tile.rootNode
+        if let camera = root.childNode(withName:"camera",recursively:false) {
+            homes[index] = (camera.position,camera.eulerAngles)
+            if index != active { camera.removeFromParentNode() }
+        }
+        root.position.x = Double(index)*Self.span
+        tiles[index] = tile; scene.rootNode.addChildNode(root)
+        doors = Door.collect(scene.rootNode)
+        lighting()
+    }
+
+    private func lighting() {
+        for (index,tile) in tiles {
+            for node in tile.rootNode.childNodes where node.light != nil || node is Daylight {
+                node.isHidden = index != active
+            }
+        }
+        environment = -1
+    }
+
+    private func prefetch() {
+        let wanted = Set(max(0,active-1)...min(world.biomes.count-1,active+1))
+        for index in Array(tiles.keys) where !wanted.contains(index) {
+            tiles.removeValue(forKey:index)?.rootNode.removeFromParentNode(); homes[index] = nil
+        }
+        for index in Array(operations.keys) where !wanted.contains(index) { operations.removeValue(forKey:index)?.cancel() }
+        for index in wanted.sorted() where tiles[index] == nil && operations[index] == nil {
+            operations[index] = assets.load(world,biome:index,passage:nil) { [weak self] result in
+                guard let self else { return }
+                self.operations[index] = nil
+                switch result {
+                case .success(let tile): self.attach(tile,index:index)
+                case .failure: self.cancelTravel(); self.failed()
+                }
+            }
+        }
+        doors = Door.collect(scene.rootNode)
+    }
+
+    func constrain(_ point: SCNVector3) -> SCNVector3 {
+        var p = point
+        let lower = tiles[active-1] == nil ? Double(active)*Self.span-95.5 : Double(active-1)*Self.span-95.5
+        let upper = tiles[active+1] == nil ? Double(active)*Self.span+94.5 : Double(active+1)*Self.span+94.5
+        p.x = min(upper,max(lower,p.x)); p.z = min(60,max(-124,p.z))
+        return p
+    }
+
+    func cancelTravel() { destination = nil; points = [] }
+
+    func visit(_ index: Int) {
+        destination = world.index(index); points = []
+        view?.pointOfView?.removeAllActions()
+        if destination == active { route(to:active) }
+    }
+
+    private func settle() {
+        guard let view, let tile = tiles[active] else { return }
+        destination = nil; points = []
+        if !view.exploring { Landscape.focus(tile,world:world,biome:active,animated:true) }
+    }
+
+    private func route(to next: Int) {
+        guard let camera = view?.pointOfView, let home = homes[next] else { return }
+        let a = camera.worldPosition
+        let end = SCNVector3(home.0.x+Double(next)*Self.span,home.0.y,home.0.z)
+        let underground = world == .nether || world.biomes[active].underground
+        func elevation(_ x: Double) -> Double {
+            let index = Self.index(at:x,count:world.biomes.count)
+            let terrain = Terrain(biome:world.biomes[index]), ground = terrain.height(x-Double(index)*Self.span,44)
+            return underground ? max(ground+3,8) : max(ground+14,40)
+        }
+        points = [.init(a.x,elevation(a.x),a.z),.init(a.x,elevation(a.x),44)]
+        let distance = end.x-a.x, steps = max(1,Int(ceil(abs(distance)/4)))
+        for step in 1...steps {
+            let x = a.x+distance*Double(step)/Double(steps)
+            points.append(.init(x,elevation(x),44))
+        }
+        points.append(.init(end.x,elevation(end.x),end.z)); points.append(end)
+    }
+
+    func update(_ time: Double) {
+        guard let view, let camera = view.pointOfView else { return }
+        let dt = min(0.1,max(0,time-(last ?? time))); last = time
+        if let destination {
+            if points.isEmpty {
+                if destination == active { settle() }
+                else {
+                    let next = active+(destination>active ? 1 : -1)
+                    if tiles[next] != nil { route(to:next) }
+                }
+            }
+            if let target = points.first {
+                let start = camera.worldPosition
+                let delta = SIMD3<Double>(target.x-start.x,target.y-start.y,target.z-start.z)
+                let distance = simd_length(delta)
+                if distance<0.15 { points.removeFirst() }
+                else if dt>0 {
+                    for door in doors { door.approach(start) }
+                    let p = SIMD3<Double>(start.x,start.y,start.z)+delta/distance*min(distance,32*dt)
+                    let next = Collision.move(scene.rootNode,from:start,to:.init(p.x,p.y,p.z),radius:0.3)
+                    camera.worldPosition = next
+                    camera.look(at:target,up:.init(0,1,0),localFront:.init(0,0,-1))
+                    if hypot(next.x-start.x,next.z-start.z)+abs(next.y-start.y)<0.001 { cancelTravel() }
+                }
+            }
+        }
+        let index = Self.index(at:camera.worldPosition.x,count:world.biomes.count)
+        if index != active, let tile = tiles[index] {
+            let transform = camera.simdWorldTransform
+            tile.rootNode.addChildNode(camera)
+            camera.simdWorldTransform = transform
+            active = index
+            view.install(camera,area:world.biomes[index])
+            lighting(); prefetch(); arrived(index)
+        }
+        for door in doors { door.approach(camera.worldPosition) }
+        if time-environment >= 1 || environment < 0, let tile = tiles[active] {
+            environment = time
+            scene.background.contents = tile.background.contents
+            scene.fogColor = tile.fogColor
+            scene.fogStartDistance = tile.fogStartDistance; scene.fogEndDistance = tile.fogEndDistance
+        }
+        Landscape.medium(scene,area:world.biomes[active],eye:camera.position)
     }
 
     func dispose() {
-        stop(); release(); travel = nil; finish = nil; controller.pointOfView = nil; entry = nil
-        NotificationCenter.default.removeObserver(self)
+        for operation in operations.values { operation.cancel() }
+        timer?.invalidate(); timer = nil
+        operations = [:]; tiles = [:]; homes = [:]; doors = []
+        for node in scene.rootNode.childNodes { node.removeFromParentNode() }
+        view?.atlas = nil; view = nil
     }
 }
 
@@ -237,6 +396,7 @@ struct Adventure: NSViewRepresentable {
     let assets: Assets
     let exploring: Bool
     let travel: (Int) -> Void
+    let arrived: (Int) -> Void
     let finish: () -> Void
     let failed: () -> Void
 
@@ -250,6 +410,7 @@ struct Adventure: NSViewRepresentable {
         var moving = false
         var request = 0
         var operation: Operation?
+        var atlas: Atlas?
 
         @objc func pan(_ gesture: NSPanGestureRecognizer) {
             guard exploring, let view, !view.captured else { return }
@@ -283,13 +444,20 @@ struct Adventure: NSViewRepresentable {
             coordinator.exploring = exploring
             view.exploring = exploring
             if let scene = view.scene, passage == nil {
-                if exploring { view.pointOfView?.removeAllActions() }
+                if exploring { view.pointOfView?.removeAllActions(); coordinator.atlas?.cancelTravel() }
+                else if let atlas = coordinator.atlas { atlas.visit(atlas.active) }
                 else { Landscape.focus(scene,world:coordinator.showing?.0 ?? world,biome:coordinator.showing?.1 ?? biome,animated:moving) }
             }
+        }
+        if let atlas = coordinator.atlas, coordinator.world == world, passage == nil, coordinator.passage == nil {
+            if coordinator.biome != biome { coordinator.biome = biome; atlas.visit(biome) }
+            Self.motion(view,enabled:moving)
+            return
         }
         if coordinator.world != world || coordinator.passage != passage
             || (passage == nil && coordinator.biome != biome) {
             coordinator.operation?.cancel()
+            coordinator.atlas?.dispose(); coordinator.atlas = nil
             coordinator.request += 1
             let request = coordinator.request
             let arrival = passage == nil ? coordinator.passage : nil
@@ -301,6 +469,14 @@ struct Adventure: NSViewRepresentable {
                 guard let view, let coordinator, coordinator.request == request else { return }
                 switch result {
                 case .success(let scene):
+                    if passage == nil {
+                        coordinator.atlas = Atlas(world:world,index:world.index(biome),tile:scene,assets:assets,view:view,
+                            arrived:{ [weak coordinator] index in coordinator?.biome = index; coordinator?.showing = (world,index); arrived(index) },failed:failed)
+                        coordinator.showing = (world,biome)
+                        if coordinator.exploring { view.pointOfView?.removeAllActions() }
+                        Self.motion(view,enabled:coordinator.moving)
+                        return
+                    }
                     let camera = scene.rootNode.childNode(withName:"camera",recursively:false)
                     if coordinator.exploring { camera?.removeAllActions() }
                     if coordinator.moving, !coordinator.exploring, view.scene != nil {
@@ -319,6 +495,7 @@ struct Adventure: NSViewRepresentable {
     }
 
     private static func motion(_ view: SCNView, enabled: Bool) {
+        (view as? FlightView)?.atlas?.animate(enabled)
         view.scene?.isPaused = !enabled
         view.isPlaying = enabled
         view.rendersContinuously = enabled
@@ -327,6 +504,7 @@ struct Adventure: NSViewRepresentable {
 
     static func dismantleNSView(_ view: FlightView, coordinator: Coordinator) {
         coordinator.operation?.cancel()
+        coordinator.atlas?.dispose(); coordinator.atlas = nil
         coordinator.request += 1
         motion(view, enabled: false)
         view.dispose()

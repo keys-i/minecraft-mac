@@ -1,6 +1,32 @@
 import AppKit
 import SceneKit
 
+final class Door: SCNNode {
+    var swing = Double.pi/2
+    private var open = false
+
+    override func clone() -> Self {
+        let copy = super.clone()
+        copy.swing = swing; copy.open = open
+        return copy
+    }
+
+    func approach(_ eye: SCNVector3) {
+        let p = presentation.worldPosition
+        let near = hypot(p.x-eye.x,p.z-eye.z) < 2.7 && abs(p.y-eye.y)<3
+        guard near != open else { return }
+        open = near
+        removeAction(forKey:"door")
+        runAction(.rotateTo(x:0,y:near ? swing : 0,z:0,duration:0.18),forKey:"door")
+    }
+
+    static func collect(_ root: SCNNode) -> [Door] {
+        var doors: [Door] = []
+        root.enumerateChildNodes { node,_ in if let door = node as? Door { doors.append(door) } }
+        return doors
+    }
+}
+
 enum Structures {
     static func build(_ biome: Biome, x: Double, y: Double, assets: Assets) throws -> SCNNode {
         let root = SCNNode(); root.name = "landmark-\(biome)"; root.position = .init(x,y,-18)
@@ -430,11 +456,27 @@ extension Structures {
             if visible[state], !(cutaway && position[1] > 1 && (position[1] >= size[1]-2 || position[2] >= size[2]-5 || position[0] >= size[0]-4)) { blocks[key(position)] = state }
         }
         var mesh = Voxels(), surfaces: [Int: [SCNMaterial]] = [:]
+        var doors: [Door] = []
         let fullUV = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
         for block in list {
             let p = block["pos"] as! [Int], state = block["state"] as! Int, name = names[state]
             guard visible[state], blocks[key(p)] != nil else { continue }
             let properties = palette[state]["Properties"] as? [String: String] ?? [:]
+            if name.hasSuffix("_door") && name != "iron_door" {
+                var panel = Voxels(), closed = properties
+                closed["open"] = "false"
+                try fixture(name,states:closed,at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&panel)
+                let hinge = SCNNode(); hinge.position = .init(Double(p[0])+0.5,Double(p[1]),Double(p[2])+0.5)
+                let facing = properties["facing"] ?? "north"
+                hinge.eulerAngles.y = facing == "east" ? -.pi/2 : facing == "south" ? .pi : facing == "west" ? .pi/2 : 0
+                let pivot = hinge.convertPosition(.init(properties["hinge"] == "right" ? 0.5 : -0.5,0,0.40625),to:nil)
+                let door = Door(); door.geometry = panel.node("panel").geometry
+                door.name = "door"; door.categoryBitMask = 2
+                door.position = pivot; door.pivot = SCNMatrix4MakeTranslation(pivot.x,pivot.y,pivot.z)
+                door.swing = properties["hinge"] == "right" ? .pi/2 : -.pi/2
+                doors.append(door)
+                continue
+            }
             if try fixture(name,states:properties,data:block["nbt"] as? [String:Any] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
             var faces = 63
             if opaque[state] {
@@ -519,6 +561,7 @@ extension Structures {
             else { cube(.init(1,1,1),.init(0.5,0.5,0.5),mask:faces) }
         }
         let root = mesh.node("template-"+name)
+        for door in doors { root.addChildNode(door) }
         if let water = surfaces.values.first(where: { $0[0].name?.contains("water") == true })?.first { Landscape.animate(root,material:water) }
         root.position = .init(-Double(size[0])/2,0,-Double(size[2])/2)
         return root

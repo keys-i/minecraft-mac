@@ -1,6 +1,6 @@
 # Accessibility
 
-This guide covers the native Minecraft for MacOS launcher and the repository's
+This guide covers the native Minecraft Launcher launcher and the repository's
 player documentation. Accessibility inside the Windows game and Microsoft
 sign-in window also depends on those applications
 
@@ -10,7 +10,7 @@ sign-in window also depends on those applications
 | --- | --- |
 | Install, play, retry or continue | The main button, or <kbd>Return</kbd> while it is available |
 | Cancel setup | **Cancel Setup**, or <kbd>Escape</kbd> while setup can be cancelled |
-| Change accounts | **Minecraft for MacOS → Sign Out of Microsoft…**, with the game closed |
+| Change accounts | **Minecraft Launcher → Sign Out of Microsoft…**, with the game closed |
 | Get help or open logs | The **?** button or **Help** menu opens the in-app guide, which includes setup logs |
 | Pause or resume background motion | **Settings → Background animation** or **View → Animate Scenery** |
 | Choose a scene | The four item slots in the bottom inventory bar, keys <kbd>1</kbd>–<kbd>4</kbd>, or **View**, with the selection exposed to assistive technology |
@@ -18,10 +18,23 @@ sign-in window also depends on those applications
 | Look around | The spyglass button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change areas with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
 | Mute or unmute launcher music | **Settings → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
-| Scenery preferences | The gear button, **Minecraft for MacOS → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd>; the top-right **×** or <kbd>Escape</kbd> closes the menu |
+| Scenery preferences | The gear button, **Minecraft Launcher → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd>; the top-right **×** or <kbd>Escape</kbd> closes the menu |
 | Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
 | Reopen the launcher | **Window → Show Launcher**, or <kbd>⌘</kbd> + <kbd>0</kbd> |
-| Review published app updates | **Minecraft for MacOS → Check for Updates…** |
+| Review published app updates | **Minecraft Launcher → Check for Updates…** |
+
+After Play, the scenery and controls are replaced by a full-window loading screen
+It uses the installed Bedrock dirt background and ten-frame loading animation,
+without invented generation percentages. Status remains text and Cancel stays
+available during cancellable setup. The animation stops under Reduced Motion,
+Low Power Mode or an inactive window
+The launcher waits for the game window before hiding the native app
+It returns after game exit/error; **Window → Show Launcher** remains available
+Quitting the launcher while Minecraft runs leaves its owned game session running
+It no longer presents a Keep Open blocker
+Buttons start grey and turn green on hover, alongside their existing focus outline
+Inventory slots keep grey hover feedback and the original selection frame
+Disabled controls keep their disabled appearance
 
 The interface uses standard SwiftUI text, buttons and progress controls with
 custom world-style drawing. Buttons have an explicit keyboard focus
@@ -46,8 +59,13 @@ The content scrolls independently of its persistent heading and 48-point close
 button. Background launcher controls and keyboard shortcuts are disabled while
 Settings is open; the volume control retains arrow and accessibility adjustments
 Original installed artwork supplies the main title and Minecraft Ten supplies
-the subtitle. Pixel typography identifies the fallback title and shortcut toast; pixel type identifies
+the subtitle. Both scale with window width and height, including fullscreen
+Pixel typography identifies the fallback title and shortcut toast; pixel type identifies
 actions and section titles, while explanatory copy uses plain system type
+Main controls and corner credits reach 5× their area in the tested fullscreen layout
+They shrink together in smaller windows to preserve distinct hit targets
+Hover adds a short enlargement and brightness change; Reduced Motion removes
+the enlargement and transition while keeping immediate brightness feedback
 Text shadows are soft, low-opacity and offset by one point
 The bundled font is registered only within this app; the owner’s subtitle font
 is created in memory without a system font installation

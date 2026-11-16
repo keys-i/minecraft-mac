@@ -73,6 +73,7 @@ class OnboardingTests(unittest.TestCase):
             with patch.object(worker, 'ROOT', root), patch.object(runtime, 'ROOT', root), \
                     patch.object(runtime, 'HELPER', helper), patch.object(runtime, 'STATE', state), \
                     patch.object(runtime, 'SOCKET', endpoint), patch.object(runtime, 'account_pid', account_pid), \
+                    patch.object(runtime, 'game_running', return_value=False), \
                     patch.object(runtime.subprocess, 'Popen', Helper), \
                     patch.object(worker, 'installed', return_value=False), \
                     patch.object(worker, 'load', return_value=runtime), \
@@ -100,6 +101,109 @@ class OnboardingTests(unittest.TestCase):
             self.assertTrue(all(script.parent == root / 'src' for script in scripts))
             self.assertFalse(endpoint.exists())
             self.assertFalse(state.exists())
+
+    def warm(self, game=False, active=False):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            if game:
+                (root / 'game').mkdir()
+                (root / 'game/Minecraft.Windows.exe').write_bytes(b'MZ fixture')
+            with patch.object(worker, 'ROOT', root), patch.object(worker, 'BUNDLE', None), \
+                    patch.object(worker, 'load', return_value=SimpleNamespace(game_running=lambda: active)), \
+                    patch.object(worker, 'installed', return_value=False), \
+                    patch.object(worker, 'initialize_bundle') as wire, \
+                    patch.object(worker, 'validate_install') as validate, \
+                    patch.object(worker, 'run') as run, \
+                    patch('sys.argv', ['setup.py', '--warmup']), contextlib.redirect_stdout(io.StringIO()) as output:
+                if active:
+                    with self.assertRaisesRegex(RuntimeError, 'already running'):
+                        worker.main()
+                    wire.assert_not_called()
+                    run.assert_not_called()
+                    return
+                worker.main()
+                states = [json.loads(line) for line in output.getvalue().splitlines()]
+                if game:
+                    validate.assert_called_once()
+                    run.assert_called_once()
+                    self.assertEqual(run.call_args.args[0][-1], 'prepare')
+                    self.assertEqual(states[-1]['state'], 'ready')
+                else:
+                    validate.assert_not_called()
+                    run.assert_not_called()
+                    self.assertEqual(states[-1]['state'], 'new')
+
+    def test_warmup_only_prepares_existing_game(self):
+        self.warm(game=True)
+
+    def test_warmup_does_not_install_missing_game(self):
+        self.warm()
+
+    def test_active_game_stops_rewiring(self):
+        self.warm(game=True, active=True)
+
+    def test_pid_protocol_is_bounded_and_never_forwards_arbitrary_text(self):
+        lines = [
+            'private-account-output', 'BEDROCK_GAME_PID:-4', 'BEDROCK_GAME_PID:1',
+            'BEDROCK_GAME_PID:2147483648', 'BEDROCK_GAME_PID:00042',
+            'BEDROCK_GAME_PID:42 extra', 'BEDROCK_GAME_PID:42',
+        ]
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(worker, 'ROOT', Path(folder)), tempfile.TemporaryFile() as log, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            worker.run([sys.executable, '-c', 'print(' + repr('\n'.join(lines)) + ')'],
+                       log, 'Fixture failed', game_progress=True)
+            states = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(len(states), 1)
+        self.assertEqual(states[0]['state'], 'playing')
+        self.assertEqual(states[0]['game_pid'], 42)
+
+    def test_pid_is_reported_after_real_spawn(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'bin').mkdir()
+            (root / 'bin/wine').symlink_to(sys.executable)
+            pids = []
+            with patch.object(runtime, 'WINE', root), tempfile.TemporaryFile() as log:
+                result = runtime.wine_run(['-c', 'import os;print(os.getpid())'], root,
+                                          log=log, started=pids.append)
+                log.seek(0)
+                self.assertEqual(int(log.read()), pids[0])
+                self.assertEqual(result.returncode, 0)
+
+    def test_failed_spawn_never_reports_pid(self):
+        started = unittest.mock.Mock()
+        with patch.object(runtime, 'require'), patch.object(runtime.subprocess, 'Popen', side_effect=OSError('fixture')):
+            with self.assertRaises(OSError):
+                runtime.wine_run([], Path(worker.__file__).parents[2], started=started)
+        started.assert_not_called()
+
+    def test_timeout_reaps_only_owned_child(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'bin').mkdir()
+            (root / 'bin/wine').symlink_to(sys.executable)
+            pids = []
+            with patch.object(runtime, 'WINE', root), tempfile.TemporaryFile() as log:
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    runtime.wine_run(['-c', 'import time;time.sleep(30)'], root,
+                                     log=log, timeout=0.05, started=pids.append)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pids[0], 0)
+
+    def test_closed_launcher_does_not_stop_the_owned_child(self):
+        with tempfile.TemporaryDirectory() as folder:
+            done = Path(folder) / 'finished'
+            child = "import time,pathlib; print('BEDROCK_GAME_PID:42',flush=True); time.sleep(0.05); pathlib.Path(" + repr(str(done)) + ").touch()"
+            broken = unittest.mock.Mock()
+            broken.write.side_effect = BrokenPipeError
+            with tempfile.TemporaryFile() as log, patch.object(worker.sys, 'stdout', broken):
+                try:
+                    worker.run([sys.executable, '-c', child], log, 'Child failed', game_progress=True)
+                    self.assertTrue(done.exists())
+                finally:
+                    if worker.sys.stdout is not broken:
+                        worker.sys.stdout.close()
 
     def test_keychain_failure_has_actionable_message(self):
         with tempfile.TemporaryFile() as log, contextlib.redirect_stdout(io.StringIO()):
@@ -165,12 +269,12 @@ class OnboardingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'ROOT', Path(folder)), \
                 patch.object(worker, 'installed', return_value=True), patch.object(worker, 'validate_install'), \
                 patch.object(worker, 'load', return_value=SimpleNamespace(
-                    account=lambda *a, **kw: contextlib.nullcontext(), AccountError=runtime.AccountError)), \
+                    account=lambda *a, **kw: contextlib.nullcontext(), game_running=lambda: False, AccountError=runtime.AccountError)), \
                 patch.object(worker, 'install') as install, patch.object(worker, 'run') as run, \
                 patch('sys.argv', ['setup.py']), contextlib.redirect_stdout(io.StringIO()) as output:
             worker.main()
             install.assert_not_called()
-            self.assertEqual(run.call_args.args[0][-1], 'launch')
+            self.assertEqual(run.call_args.args[0][-2:], ['--report-game-pid', 'launch'])
             self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['state'], 'ready')
 
     def test_failed_setup_never_launches_the_game(self):
@@ -178,7 +282,7 @@ class OnboardingTests(unittest.TestCase):
                 patch.object(worker, 'installed', return_value=False), \
                 patch.object(worker, 'validate_install'), \
                 patch.object(worker, 'load', return_value=SimpleNamespace(
-                    account=lambda *a, **kw: contextlib.nullcontext(), AccountError=runtime.AccountError)), \
+                    account=lambda *a, **kw: contextlib.nullcontext(), game_running=lambda: False, AccountError=runtime.AccountError)), \
                 patch.object(worker, 'install', side_effect=RuntimeError('Setup failed')), \
                 patch.object(worker, 'run') as run, patch('sys.argv', ['setup.py']):
             with self.assertRaisesRegex(RuntimeError, 'Setup failed'):

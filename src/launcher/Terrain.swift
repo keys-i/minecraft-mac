@@ -31,16 +31,36 @@ struct Terrain {
 
     func path(_ z: Double) -> Double { biome == .meadow ? sin(z/8)*1.5 : 3 }
 
+    private static let roads: Set<Int> = {
+        var cells = Set<Int>()
+        func add(_ x: Int, _ z: Int) { cells.insert((x+100)*256+z+132) }
+        for z in -48...18 {
+            let x = Int((sin(Double(z)/8)*1.5).rounded())
+            for dx in -1...1 { add(x+dx,z) }
+        }
+        for (ex,ez) in [(-5,-28),(8,-29),(-12,-7),(6,-10),(-17,-19),(-11,-45),(14,-43)] {
+            for step in 0...abs(ex) {
+                let x = ex < 0 ? -step : step, z = ez+Int(sin(Double(step)*0.4))
+                add(x,z); add(x,z+1)
+            }
+        }
+        return cells
+    }()
+
+    func paved(_ x: Double, _ z: Double) -> Bool {
+        biome == .meadow && Self.roads.contains((Int(x.rounded())+100)*256+Int(z.rounded())+132)
+    }
+
     func occupied(_ x: Double, _ z: Double) -> Bool {
         if biome == .meadow {
-            return plots.contains { $0.contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<1.7 && (-48...18).contains(z)
+            return paved(x,z) || plots.contains { $0.contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<1.7 && (-48...18).contains(z)
         }
         return reserved(x,z) && z < -2
     }
 
     func reserved(_ x: Double, _ z: Double) -> Bool {
         if biome == .meadow {
-            return plots.contains { $0.insetBy(dx:-2,dy:-2).contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<3 && (-48...20).contains(z)
+            return paved(x,z) || plots.contains { $0.insetBy(dx:-2,dy:-2).contains(CGPoint(x:x,y:z)) } || abs(x-path(z))<3 && (-48...20).contains(z)
         }
         if biome == .city && [CGRect(x:-30,y:-53,width:23,height:38),.init(x:18,y:-40,width:21,height:39)].contains(where: { $0.contains(CGPoint(x:x,y:z)) }) { return true }
         let footprint: (Double,Double,Double)
@@ -68,6 +88,10 @@ struct Terrain {
             if dx >= 3 || dz >= 3 { continue }
             let blend = min(1,hypot(dx,dz)/3)
             level = level*blend+shape(plot.midX,plot.midY)*(1-blend)
+        }
+        if !end && biome.passage == nil {
+            let blend = min(1,max(0,(abs(x)-68)/27))
+            level = level*(1-blend)+4*blend
         }
         return floor(level)
     }
@@ -145,7 +169,9 @@ struct Terrain {
         let nether = [.wastes,.crimson,.warped,.soul,.basalt].contains(biome)
         let noise = Self.noise(x,z,scale:22,seed:seed+30)
         let arch = max(0,1-pow(x/70,2))*max(0,1-pow((z+22)/110,2))
-        return floor((nether ? 18 : biome == .deep ? 22 : 11)+(nether || biome == .deep ? 24 : 15)*arch+noise*5)
+        let level = floor((nether ? 18 : biome == .deep ? 22 : 11)+(nether || biome == .deep ? 24 : 15)*arch+noise*5)
+        let blend = min(1,max(0,(abs(x)-68)/27))
+        return floor(level*(1-blend)+32*blend)
     }
 }
 
@@ -158,6 +184,7 @@ extension Terrain {
         let world = World.allCases.first { $0.biomes.contains(area) }!
         let ground = SCNNode(); ground.name = "terrain"
         let surface = try assets.tiles(area.surface)
+        let road = area == .meadow ? try assets.tiles("dirt_path") : nil
         let stone = try assets.tiles(world == .nether ? "netherrack" : world == .end ? "end_stone" : area == .deep ? "deepslate" : "stone")
         let dirt = try assets.tiles("dirt")
         let fluid = world == .overworld && area != .ice || world == .nether || area == .grove
@@ -175,9 +202,15 @@ extension Terrain {
             var land = Voxels(), pools = Voxels(), roof = Voxels()
             for x in cx..<min(cx+16,x.upperBound) { for z in cz..<min(cz+16,z.upperBound) {
                 let y = h(x,z); guard y > -90 else { continue }
+                let paved = terrain.paved(Double(x),Double(z))
                 var cap = 16
-                for (face,d) in directions { if edge(x+d.0,z+d.1) || h(x+d.0,z+d.1)<y { cap |= 1 << face } }
-                land.cube(.init(1,1,1),at:.init(Double(x),y-0.5,Double(z)),material:surface[0],faces:cap,faceMaterials:surface)
+                for (face,d) in directions {
+                    let neighbour = h(x+d.0,z+d.1)-(terrain.paved(Double(x+d.0),Double(z+d.1)) ? 0.0625 : 0)
+                    if edge(x+d.0,z+d.1) || neighbour < y-(paved ? 0.0625 : 0) { cap |= 1 << face }
+                }
+                let tiles = paved ? road! : surface
+                let thickness = paved ? 0.9375 : 1.0
+                land.cube(.init(1,thickness,1),at:.init(Double(x),y-1+thickness/2,Double(z)),material:tiles[0],faces:cap,faceMaterials:tiles)
                 let bottom = terrain.end || area == .shards ? -3-max(0,18-hypot(Double(x),Double(z+17))*0.3) : -28
                 if !strata.isEmpty || soil {
                     for level in 1...(soil ? 3 : Int(max(1,y-bottom-1))) {
@@ -263,7 +296,8 @@ enum Collision {
                 SCNHitTestOption.backFaceCulling.rawValue:false,SCNHitTestOption.ignoreHiddenNodes.rawValue:true])
             if let hit = hits.first(where:solid) {
                 let normal = axis == 0 ? hit.worldNormal.x : axis == 1 ? hit.worldNormal.y : hit.worldNormal.z
-                if normal > 0.01 || sqrt(pow(hit.worldCoordinates.x-point.x,2)+pow(hit.worldCoordinates.y-point.y,2)+pow(hit.worldCoordinates.z-point.z,2)) < radius { return false }
+                let p = root.convertPosition(hit.worldCoordinates,from:nil)
+                if normal > 0.01 || sqrt(pow(p.x-point.x,2)+pow(p.y-point.y,2)+pow(p.z-point.z,2)) < radius { return false }
             }
         }
         return true
@@ -286,6 +320,7 @@ enum Collision {
     }
 
     static func move(_ root: SCNNode, from start: SCNVector3, to end: SCNVector3, radius: Double = 0.25) -> SCNVector3 {
+        if clear(root,from:start,to:end,radius:radius) { return end }
         let distance = sqrt(pow(end.x-start.x,2)+pow(end.y-start.y,2)+pow(end.z-start.z,2))
         let count = max(1,Int(ceil(distance/0.25)))
         var p = start

@@ -107,6 +107,7 @@ ALLOWED_FILES = (
     'vendor/patches/winegdk-macos-local.patch',
     'vendor/patches/minecraft-store-callback.patch',
     'vendor/patches/standalone-wine-dxmt-abi.patch',
+    'vendor/patches/standalone-wine-branding.patch',
     'vendor/patches/standalone-dxmt-memory-lifetime.patch',
     'vendor/patches/standalone-wine-storage-linkage.patch',
     'vendor/patches/standalone-wine-idl-list.patch',

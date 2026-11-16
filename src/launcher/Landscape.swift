@@ -221,7 +221,7 @@ enum Landscape {
                 default: break
                 }
             }
-            if world == .overworld && !area.underground && ![.mushroom,.desert,.badlands,.coast,.reef,.peaks,.snow,.pale].contains(area), !(abs(x)<22 && (-40 ... -8).contains(z)) {
+            if world == .overworld && !area.underground && !terrain.occupied(x,z) && ![.mushroom,.desert,.badlands,.coast,.reef,.peaks,.snow,.pale].contains(area), !(abs(x)<22 && (-40 ... -8).contains(z)) {
                 try sprite(index%7 == 0 ? "flower_dandelion" : "tallgrass",x:x,y:y,z:z,tint:index%7 == 0 ? nil : 0x82B653)
             }
         }
@@ -347,21 +347,6 @@ enum Landscape {
             }
         }
         if area == .meadow {
-            var road: Set<Int> = []
-            func paving(_ x: Int, _ z: Int) throws {
-                guard road.insert((x+100)*256+z+132).inserted else { return }
-                try block(.init(1,0.08,1),.init(Double(x),height(area,x:Double(x),z:Double(z))+0.04,Double(z)),"dirt_path")
-            }
-            for z in -48...18 {
-                let x = Int(terrain.path(Double(z)).rounded())
-                for dx in -1...1 { try paving(x+dx,z) }
-            }
-            for (ex,ez) in [(-5,-28),(8,-29),(-12,-7),(6,-10),(-17,-19),(-11,-45),(14,-43)] {
-                for step in 0...abs(ex) {
-                    let x = ex < 0 ? -step : step, z = ez+Int(sin(Double(step)*0.4))
-                    try paving(x,z); try paving(x,z+1)
-                }
-            }
             for (x,z) in [(-18.0,-7.0),(20,-15),(9,-40)] {
                 let y = height(area,x:x,z:z)
                 for (dx,dz,dy) in [(0.0,0.0,0.5),(1,0,0.5),(0,1,0.5),(0,0,1.5)] {
@@ -387,7 +372,7 @@ enum Landscape {
             cloud.runAction(.repeatForever(.sequence([.moveBy(x:32,y:0,z:0,duration:120),.moveBy(x:-32,y:0,z:0,duration:120)])))
             scene.rootNode.addChildNode(cloud)
         }
-        if area.underground || world == .nether || world == .sift || area == .cherry || area == .snow || area == .pale {
+        if area.underground || world == .nether || world == .sift || area == .snow || area == .pale {
             let material = SCNMaterial(); material.diffuse.contents = colour(world == .nether ? 0xF4BE8F : area == .cherry ? 0xFFD9E7 : 0xBDDBDB)
             material.lightingModel = .constant
             let geometry = SCNBox(width:0.04,height:0.04,length:0.04,chamferRadius:0); geometry.firstMaterial = material
@@ -397,6 +382,25 @@ enum Landscape {
                 let fall = area == .snow || area == .cherry ? -3.0 : 2
                 particle.runAction(.repeatForever(.sequence([.moveBy(x:1,y:fall,z:0.4,duration:8),.moveBy(x:-1,y:-fall,z:-0.4,duration:8)])))
                 scene.rootNode.addChildNode(particle)
+            }
+        }
+        if area == .cherry || area == .grove {
+            let material = try assets.texture("textures/particle/cherry_petal_atlas").copy() as! SCNMaterial
+            let atlas = material.diffuse.contents as! CGImage
+            material.diffuse.contents = atlas.cropping(to:CGRect(x:0,y:0,width:8,height:8))
+            material.lightingModel = .constant; material.writesToDepthBuffer = false
+            let plane = SCNPlane(width:0.18,height:0.18); plane.firstMaterial = material
+            for (index,tree) in scene.rootNode.childNodes.filter({ $0.name == "wind-canopy" }).prefix(36).enumerated() {
+                let petal = SCNNode(geometry:plane); petal.name = "falling-cherry-petal"
+                let start = SCNVector3(tree.position.x+Double(index%3)-1,tree.position.y,tree.position.z)
+                let ground = terrain.height(start.x,start.z)+0.05, duration = 5+Double(index%4)
+                petal.position = start
+                petal.runAction(.repeatForever(.customAction(duration:duration) { node,time in
+                    let phase = (Double(time)/duration+Double(index%7)/7).truncatingRemainder(dividingBy:1)
+                    node.position = .init(start.x+sin(phase*6+Double(index))*0.8,start.y+(ground-start.y)*phase,start.z+phase*1.2)
+                    node.eulerAngles = .init(phase*3,phase*5,phase*4)
+                }))
+                scene.rootNode.addChildNode(petal)
             }
         }
         for (x,z) in [(-12.0,-12.0),(18,-26)] {
@@ -463,7 +467,7 @@ enum Landscape {
     }
 
     static func pose(_ area: Biome, at time: Double) -> (eye: SCNVector3, aim: SCNVector3) {
-        let angle = max(0,time)/12*2 * .pi
+        let angle = max(0,time)/8*2 * .pi
         let phase = (1-cos(angle))/2
         if let passage = area.passage { return passage.pose(at:(area == .mine ? 8 : 15)+phase*7) }
         let x: Double, z: Double, target: SCNVector3, elevation: Double?
@@ -511,20 +515,21 @@ enum Landscape {
         let initial = pose(area,at:0)
         let eye = Collision.nearby(scene.rootNode,at:initial.eye,toward:initial.aim)
             ?? Collision.nearby(scene.rootNode,at:initial.eye) ?? initial.eye
-        camera.position = eye; camera.look(at:initial.aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+        camera.position = eye; camera.look(at:scene.rootNode.convertPosition(initial.aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         let offset = SCNVector3(eye.x-initial.eye.x,eye.y-initial.eye.y,eye.z-initial.eye.z)
+        let doors = Door.collect(scene.rootNode)
         var route = [eye]
-        for index in 1...24 {
+        for index in 1...32 {
             let target = pose(area,at:Double(index)/4).eye
             let start = route.last!, next = Collision.move(scene.rootNode,from:route.last!,to:.init(target.x+offset.x,target.y+offset.y,target.z+offset.z),radius:0.35)
             route.append(Collision.vacant(scene.rootNode,at:next) && Collision.clear(scene.rootNode,from:start,to:next,radius:0.35) ? next : start)
         }
-        camera.runAction(.repeatForever(.customAction(duration:12) { node,time in
-            let phase = 3*(1-cos(Double(time)/12*2 * .pi))
-            let t = min(24,max(0,phase*4)), index = min(23,Int(t)), fraction = t-Double(index)
+        camera.runAction(.repeatForever(.customAction(duration:8) { node,time in
+            let t = min(32,max(0,Double(time)*4)), index = min(31,Int(t)), fraction = t-Double(index)
             let a = route[index], b = route[index+1]
             node.position = .init(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction)
-            node.look(at:pose(area,at:Double(time)).aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+            for door in doors { door.approach(node.worldPosition) }
+            node.look(at:node.parent!.convertPosition(pose(area,at:Double(time)).aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         }),forKey:"journey")
         if let sky = scene.rootNode.childNode(withName:"daylight",recursively:false) as? Daylight {
             Daylight.apply(scene,area:area,seconds:ProcessInfo.processInfo.systemUptime-sky.epoch)
@@ -561,11 +566,11 @@ enum Landscape {
             gateway.addChildNode(platform.node("end-spawn-platform"))
         } else { try Structures.portal(gateway,at:.init(0,-2.5,0),assets:assets,sift:passage == .rift) }
         scene.rootNode.addChildNode(gateway)
-        camera.removeAction(forKey:"journey"); camera.position = start; camera.look(at:aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+        camera.removeAction(forKey:"journey"); camera.position = start; camera.look(at:scene.rootNode.convertPosition(aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         let exit = SCNAction.customAction(duration:4) { node,time in
             let t = min(1,Double(time)/4)
             node.position = .init(start.x+(end.x-start.x)*t,start.y+(end.y-start.y)*t,start.z+(end.z-start.z)*t)
-            node.look(at:aim,up:.init(0,1,0),localFront:.init(0,0,-1))
+            node.look(at:node.parent!.convertPosition(aim,to:nil),up:.init(0,1,0),localFront:.init(0,0,-1))
         }
         camera.runAction(.sequence([exit,idle]),forKey:"journey")
     }
@@ -574,7 +579,7 @@ enum Landscape {
         let terrain = Terrain(biome:area)
         for (kind,species) in area.residents.enumerated() {
             let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem].contains(species)
-            let count = solitary ? 1 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
+            let count = solitary || species == .cat && area == .swamp ? 1 : species == .villager ? 5 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
             for index in 0..<count {
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)
@@ -582,6 +587,7 @@ enum Landscape {
                 let model: SCNNode
                 do { model = try factory.make(species,biome:area,variant:index,classic:classic) }
                 catch AssetError.missing where [.camelHusk,.parched,.nautilus,.zombieNautilus,.happyGhast].contains(species) { continue }
+                if area == .meadow && species == .pig && index == 0 { try factory.crown(model) }
                 actor.addChildNode(model)
                 if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y) }
                 let a = Terrain.random(kind,index,seed:3)*Double.pi*2
@@ -627,6 +633,13 @@ enum Landscape {
                 }
                 scene.rootNode.addChildNode(actor)
             }
+        }
+        if area == .mansion {
+            let actor = SCNNode(), model = try factory.jockey()
+            actor.name = "resident-chicken-jockey"; actor.addChildNode(model)
+            actor.position = .init(1,5,-17)
+            try factory.wander(actor,model:model,species:.chicken,area:area,seed:301,root:scene.rootNode) { x,z in .init(x,5,z) }
+            scene.rootNode.addChildNode(actor)
         }
         if area == .central || world == .nether {
             let group = SCNNode(); group.name = "sky-resident"

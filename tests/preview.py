@@ -6,7 +6,7 @@ import time
 
 
 def emit(state, title, detail='', progress=None):
-    print(json.dumps(dict(state=state, title=title, detail=detail, progress=progress)), flush=True)
+    print(json.dumps({'state': state, 'title': title, 'detail': detail, 'progress': progress}), flush=True)
 
 
 def cancel(*_args):
@@ -16,7 +16,7 @@ def cancel(*_args):
 
 def main():
     signal.signal(signal.SIGTERM, cancel)
-    if '--status' in sys.argv or '--sign-out' in sys.argv:
+    if any(flag in sys.argv for flag in ('--status', '--warmup', '--sign-out')):
         emit('new', 'Minecraft on your Mac')
         return
     detail = 'Interface preview only — no sign-in, download or game launch'

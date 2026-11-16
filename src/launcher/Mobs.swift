@@ -10,9 +10,10 @@ enum Species: String, CaseIterable {
     case horse, polarBear, witch, guardian, drowned, breeze, bogged, witherSkeleton, piglinBrute, zombifiedPiglin
     case cod, salmon, sniffer, husk, ravager, silverfish, tropical, snowGolem, cat
     case camelHusk, parched, nautilus, zombieNautilus, happyGhast
+    case caveSpider, evoker, elderGuardian, pufferfish, stray
 
     var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .drowned, .cod, .salmon, .tropical, .nautilus, .zombieNautilus].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .drowned, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -23,6 +24,38 @@ final class Mobs {
     private var classics: [Species:SCNNode] = [:]
 
     init(assets: Assets) { self.assets = assets }
+
+    func crown(_ pig: SCNNode) throws {
+        guard let head = pig.childNode(withName:"head",recursively:true) else { throw AssetError.model }
+        let bounds = head.boundingBox, width = bounds.max.x-bounds.min.x+0.08
+        let centre = SCNVector3((bounds.max.x+bounds.min.x)/2,bounds.max.y+0.05,(bounds.max.z+bounds.min.z)/2)
+        var mesh = Voxels()
+        let gold = try assets.tiles("gold_block")[0]
+        for side in [-1.0,1] {
+            mesh.cube(.init(width,0.1,0.055),at:.init(centre.x,centre.y,centre.z+side*width/2),material:gold)
+            mesh.cube(.init(0.055,0.1,width),at:.init(centre.x+side*width/2,centre.y,centre.z),material:gold)
+            for x in [-width/2,0,width/2] {
+                mesh.cube(.init(0.075,0.14,0.075),at:.init(centre.x+x,centre.y+0.1,centre.z+side*width/2),material:gold)
+            }
+            for (index,x) in [-width/3,0,width/3].enumerated() {
+                let gem = try assets.tiles(["redstone_block","emerald_block","lapis_block"][index])[0]
+                mesh.cube(.init(0.055,0.055,0.065),at:.init(centre.x+x,centre.y,centre.z+side*width/2),material:gem)
+            }
+        }
+        let crown = mesh.node("technoblade-crown"); crown.categoryBitMask = 1
+        head.addChildNode(crown)
+    }
+
+    func jockey() throws -> SCNNode {
+        let chicken = try make(.chicken), rider = try make(.zombie)
+        rider.name = "jockey-rider"; rider.scale = .init(0.5,0.5,0.5)
+        rider.position.y = 0.45
+        for name in ["rightLeg","leftLeg"] {
+            rider.childNode(withName:name,recursively:true)?.eulerAngles.x = -.pi/2
+        }
+        chicken.addChildNode(rider)
+        return chicken
+    }
 
     func make(_ species: Species, biome: Biome? = nil, variant: Int = 0, classic: Bool = false) throws -> SCNNode {
         if classic && [.pig,.cow,.chicken,.wolf].contains(species) {
@@ -39,6 +72,10 @@ final class Mobs {
         case .camelHusk: name = "camel_husk"
         case .zombieNautilus: name = "zombie_nautilus"
         case .happyGhast: name = "happy_ghast"
+        case .caveSpider: name = "cave_spider"
+        case .evoker: name = "evocation_illager"
+        case .elderGuardian: name = "elder_guardian"
+        case .villager: name = "villager_v2"
         case .snowGolem: name = "snow_golem"
         case .tropical: name = "tropicalfish"
         case .horse: name = "horse_v3"
@@ -56,30 +93,64 @@ final class Mobs {
         let texture: String
         switch species {
         case .happyGhast: texture = "happy_ghast"
-        case .horse: texture = ["base_brown","base_chestnut","base_white","base_black"][variant%4]
-        case .cat: texture = ["tabby","calico","jellie"][variant%3]
+        case .horse: texture = ["base_white","base_creamy","base_chestnut","base_brown","base_black","base_gray","base_darkbrown"][variant%7]
+        case .cat: texture = biome == .swamp ? "all_black" : ["white","black","red","siamese","british","calico","persian","ragdoll","tabby","all_black","jellie"][variant%11]
         case .tropical: texture = variant%2 == 0 ? "typeA" : "typeB"
-        case .wolf: texture = biome == .snow ? "snowy_default" : ["woods_default","pale_default","ashen_default"][variant%3]
-        case .fox: texture = biome == .snow ? "arctic" : "red"
-        case .rabbit: texture = biome == .snow ? "white" : "brown"
-        case .llama: texture = "creamy"
+        case .wolf:
+            switch biome {
+            case .forest: texture = "woods_default"
+            case .snow: texture = "ashen_default"
+            case .jungle: texture = "rusty_default"
+            case .savanna: texture = "spotted_default"
+            case .badlands: texture = "striped_default"
+            default: texture = ["pale_default","ashen_default","black_default","chestnut_default","rusty_default","snowy_default","spotted_default","striped_default","woods_default"][variant%9]
+            }
+        case .fox: texture = [.snow,.ice,.peaks].contains(biome) ? "arctic" : "red"
+        case .rabbit:
+            if biome == .desert { texture = "gold" }
+            else if [.snow,.ice,.peaks].contains(biome) { texture = ["white","white_splotched"][variant%2] }
+            else { texture = ["brown","black","salt"][variant%3] }
+        case .llama: texture = ["creamy","white","brown","gray"][variant%4]
         case .frog: texture = biome == .mangrove ? "warm" : "temperate"
         case .parrot: texture = ["red_blue","green","blue","yellow_blue","grey"][variant%5]
         case .ocelot: texture = "wild"
         case .axolotl: texture = ["lucy","wild","gold","cyan"][variant%4]
         case .pig,.cow,.chicken: texture = [.desert,.savanna,.jungle,.badlands].contains(biome) ? "warm" : [.snow,.peaks,.ice].contains(biome) ? "cold" : "default"
-        case .villager: texture = "farmer"
+        case .villager:
+            switch biome {
+            case .desert,.badlands: texture = "desert"
+            case .jungle: texture = "jungle"
+            case .savanna: texture = "savanna"
+            case .snow,.ice,.peaks: texture = "snow"
+            case .swamp,.mangrove: texture = "swamp"
+            default: texture = "plains"
+            }
+        case .golem: texture = ["default","exposed","weathered"][variant%3]
+        case .elderGuardian: texture = "elder"
         case .shulker: texture = "undyed"
         default: texture = "default"
         }
-        return try actor(name, texture: texture, label: species.rawValue,variant:variant)
+        let model = try actor(name, texture: texture, label: species.rawValue,variant:variant)
+        // Normal puff uses the behaviour's scale rather than a client-entity script
+        if species == .pufferfish { model.scale = .init(1.2,1.2,1.2) }
+        if species == .villager { model.scale = .init(0.9375,0.9375,0.9375) }
+        return model
     }
 
     func actor(_ name: String, texture: String = "default", label: String? = nil, variant: Int = 0) throws -> SCNNode {
-        let key = name+"-"+texture+(name == "tropicalfish" ? "-\(variant)" : "")
+        let variantKey = name == "horse_v3" || name == "villager_v2" ? "-\(variant%5)" : name == "tropicalfish" ? "-\(variant%6)" : ""
+        let key = name+"-"+texture+variantKey
         if let model = models[key] { return model.clone() }
         let model = try assets.actor(name,texture:texture,variant:variant)
         model.name = "mob-"+(label ?? name)
+        let weapons = ["skeleton":"bow_standby","stray":"bow_standby","bogged":"bow_standby","parched":"bow_standby",
+            "wither_skeleton":"stone_sword","piglin":"crossbow_standby","piglin_brute":"gold_axe",
+            "zombie_pigman":"gold_sword","pillager":"crossbow_standby","vindicator":"iron_axe"]
+        if let weapon = weapons[name], let hand = model.childNode(withName:"rightItem",recursively:true) {
+            let item = try assets.item(weapon)
+            item.eulerAngles.z = -.pi/4
+            hand.addChildNode(item)
+        }
         var index = 0
         model.enumerateChildNodes { node,_ in
             let name = node.name?.lowercased() ?? ""
@@ -101,7 +172,8 @@ final class Mobs {
         let aliases: [Species:String] = [.ironGolem:"iron_golem",.glowsquid:"glow_squid",.magma:"magma_cube",
             .illager:"pillager",.polarBear:"polar_bear",.witherSkeleton:"wither_skeleton",.piglinBrute:"piglin_brute",
             .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish",.villager:"villager_v2",
-            .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast"]
+            .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast",
+            .caveSpider:"cave_spider",.evoker:"evocation_illager",.elderGuardian:"elder_guardian"]
         let path = "entities/"+(aliases[species] ?? species.rawValue)+".json"
         let data: Data
         do { data = try assets.file(path,behaviour:true) }
@@ -114,7 +186,7 @@ final class Mobs {
               let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String:Any],
               let entity = object["minecraft:entity"] as? [String:Any],
               var components = entity["components"] as? [String:Any] else { throw AssetError.model }
-        if let raw = entity["component_groups"] {
+        if let raw = entity["component_groups"], !(raw is NSNull) {
             guard let groups = raw as? [String:Any] else { throw AssetError.model }
             let active: [Species:String] = [.enderman:"minecraft:enderman_calm",.armadillo:"minecraft:unrolled",.happyGhast:"minecraft:adult_mobile"]
             for name in ["adult","minecraft:adult",active[species]].compactMap({ $0 }) {
@@ -153,11 +225,14 @@ final class Mobs {
     func wander(_ actor: SCNNode, model: SCNNode, species: Species, area: Biome, seed: Int,
                 root: SCNNode, point: (Double,Double) -> SCNVector3) throws {
         let terrain = Terrain(biome:area), origin = actor.position, motion = try locomotion(species)
+        let height = model.childNode(withName:"jockey-rider",recursively:true) == nil ? motion.height : max(1.5,motion.height)
         guard motion.speed > 0 else { return }
+        var mounted = Set<ObjectIdentifier>()
+        model.childNode(withName:"jockey-rider",recursively:true)?.enumerateChildNodes { node,_ in mounted.insert(ObjectIdentifier(node)) }
         var legs: [(SCNNode,SCNVector3,Double)] = []
         model.enumerateChildNodes { node,_ in
             let name = node.name?.lowercased() ?? ""
-            if name.contains("leg") {
+            if name.contains("leg") && !mounted.contains(ObjectIdentifier(node)) {
                 let sign: Double
                 if let number = name.last?.wholeNumberValue { sign = [0,3].contains(number%4) ? 1 : -1 }
                 else {
@@ -179,7 +254,7 @@ final class Mobs {
                 let distance = 1+Terrain.random(seed,index*12+attempt,seed:86)*4
                 let candidate = point(origin.x+cos(angle)*distance,origin.z+sin(angle)*distance)
                 if Self.walkable(from:start,to:candidate,species:species,terrain:terrain)
-                    && Collision.clear(root,from:start,to:candidate,radius:motion.width/2,height:motion.height) { end = candidate; break }
+                    && Collision.clear(root,from:start,to:candidate,radius:motion.width/2,height:height) { end = candidate; break }
             }
             if index < 6 { visited.append(end) }
             let length = sqrt(pow(end.x-start.x,2)+pow(end.y-start.y,2)+pow(end.z-start.z,2))

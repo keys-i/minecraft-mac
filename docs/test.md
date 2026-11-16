@@ -5,7 +5,159 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Connected map and loading screen in build 25
+
+Build 25 replaces the whole launcher scene with the installed Bedrock loading
+background and reversible ten-frame atlas after Play. The animation uses 10 fps
+and stops with Reduced Motion, Low Power Mode or an inactive window
+No generation percentage is fabricated; Cancel retains the real worker policy
+The previous game-window handoff remains a two-process transition
+
+All 101 Python checks pass. Native synthetic and installed-art checks pass for
+75 species, 42 areas and three passages. They cover loading-frame timing,
+Play/warmup state gates, inherited colour-mask/blending rules, malformed material
+inheritance, cat bind/tail pose, folded villager arms and five profession composites
+New checks cover original held items, crown/jockey construction, hinged-door clone
+state, road occupancy, recessed path-edge collision, common terrain seams and bidirectional map crossings that
+preserve world position and direction. A guided area-selection regression traverses
+the map; mansion checks place the jockey above its foundation and outside solid
+geometry. The meadow requires exactly one tribute crown plus ordinary pigs/horses
+The map retains at most three habitats
+
+Native renders at 760 × 620 and 1040 × 760 cover the full loading screen
+Original-art model renders show opaque/matte mobs, cats, professions, weapons,
+the crowned pig and the mounted baby zombie. A connected-map boundary and the
+village paths were also rendered and inspected. The crown is a launcher-made
+tribute using the owner's block textures, rather than movie artwork
+
+Minecraft Wiki was read through its public API using curl, including
+[Cherry Leaves](https://minecraft.wiki/w/Cherry_Leaves),
+[Dirt Path](https://minecraft.wiki/w/Dirt_Path),
+[Door](https://minecraft.wiki/w/Door),
+[Villager](https://minecraft.wiki/w/Villager),
+[Water](https://minecraft.wiki/w/Water) and
+[the movie pig](https://minecraft.wiki/w/Movie:Pig)
+Installed resource/animation/material definitions supply the exact model and
+texture references. No original game textures or models enter the source export
+
+A same-process Metal probe used 1040 × 760, 4× MSAA, ten warmup frames and sixty
+measured frames per view, before the final path-edge face correction. The single
+forest and connected three-habitat
+forest use the same active habitat/camera. Minecraft and Chrome for Testing stayed
+running, and a compiler overlapped the sample, so these are budget observations
+
+| Graph | Build time | GPU median / p95 | Wall median / p95 | Nodes / triangles |
+| --- | --- | --- | --- | --- |
+| Single forest | 579.16 ms | 5.56 / 9.39 ms | 10.12 / 15.80 ms | 604 / 186,684 |
+| Connected forest | 2,544.62 ms | 5.81 / 9.77 ms | 11.32 / 17.96 ms | 1,808 / 534,210 |
+
+Both samples fit the 33.3 ms idle budget. The connected graph exceeds the 16.7 ms
+spectator target at p95; sustained 60 fps and memory growth remain unverified
+Neighbour construction runs on the existing asset queue after the first habitat
+A separate matched probe measured 100 identical clear camera sweeps through the
+connected graph: the previous axis sweep took 93.02 ms and the direct clear-sweep
+path took 10.22 ms. Both produced the same endpoint. Blocked sweeps retain axis
+sliding and the native collision regressions. This is not a game-startup speedup
+
+REA inspected the signed x86_64 Wine loader without Hopper, parent Evidence
+`ev_e3d6587eb7d33ae208a94eba03c2c8d6f1c2371c3b7222e8d09e3f1f21a13dd2`
+The embedded plist was independently decoded and both name fields read
+Minecraft Launcher. Its package identity remains `org.winehq.wine`
+The launcher/helper resources are preserved except for that rebuilt loader
+macOS controls permission labels and may retain existing identities
+
+Live Computer Use could inspect the existing mounted build 24 launcher, but
+rejected the isolated build 25 preview as an unapproved app. The active Windows
+game was preserved. No live build 25 Play handoff, actual gameplay comparison,
+security prompt label, VoiceOver or clean-Mac installation is claimed
+The supplied temporary screenshot paths had disappeared before inspection
+
+## Original assets and launcher handoff in 0.15
+
+Minecraft Launcher is the app, window and menu name; the artwork reads
+Minecraft Mac Edition with its splash at the main logo’s lower-right corner. Buttons start grey
+and turn green on hover; the shared 120 ms enlargement respects Reduced Motion
+Computer Use inspected the renamed 0.15 title screen and grey Play button
+Pointer injection still returned `noWindowsAvailable`, so the green hover and
+live Reduced Motion behaviour remain unchecked
+
+The original installed asset definitions now supply seven horse coats and five
+marking states, eleven cat skins, four llama coats and habitat-specific skins
+Strays retain their original clothing layer and calm Evokers keep crossed arms
+Unsaddled horse equipment is hidden. Cave Spiders, Evokers, Elder Guardians,
+Pufferfish and Strays bring the roster to 75 species across 42 authored areas
+Log/pillar axes and saved full-block facing now remap their original materials
+without mutating shared upright materials. No original game assets are bundled
+
+All 101 Python tests pass, including warmup without downloads/sign-in, active-game
+protection, PID filtering, real child PID reporting, spawn failure, timeout cleanup and a closed launcher output pipe that must not
+stop the owned child
+Native synthetic and installed-art checks pass for 75 species, 42 areas and three
+passages, including horse layers, Stray clothing, Evoker arms, log axes and furnace
+facing. An offscreen original-art render was inspected for those models and blocks
+
+Five installed-art habitats were measured sequentially with the old and new
+scenery sources, using the same optimised Swift probe at 1040 × 760 with 4× MSAA
+Each sample uses 10 warmup frames and 60 measured frames. An initial run kept
+Minecraft active; a repeat after it closed kept Chrome for Testing and the normal
+workspace running. Native compilation overlapped the repeat, so these remain
+budget observations rather than a controlled speedup or actual Minecraft FPS result
+The repeat produced these p95 values
+
+| Scene | Previous wall p95 | Current wall p95 | Current GPU p95 |
+| --- | --- | --- | --- |
+| Meadow village | 15.07 ms | 15.03 ms | 8.74 ms |
+| Woodland mansion | 15.75 ms | 23.02 ms | 11.36 ms |
+| Warm reef | 14.50 ms | 26.79 ms | 12.28 ms |
+| Frozen ocean | 12.13 ms | 20.69 ms | 10.36 ms |
+| Abandoned mineshaft | 11.13 ms | 10.73 ms | 8.16 ms |
+
+These samples fit the 33.3 ms idle budget. New graph construction ranged from
+154.51 to 600.26 ms on the existing asset queue; first-scene asset loading is
+included. The full native checks retain the per-area node and triangle ceilings
+
+Background warmup uses the existing preparation locks and never starts the
+account helper or downloads a missing game. Five unchanged-prefix CLI preparation
+samples had median 33.83 ms, range 29.39–40.21 ms, excluding frozen worker startup
+and app wiring. No end-to-end Play-to-game speedup has been established
+The runtime now reports the actual spawned Wine PID; native matching waits for
+an onscreen normal game window before hiding the launcher, and ready/error
+restores it. The wait ends with the owned session rather than a fixed timeout
+Computer Use verified return to Play after the user quit Minecraft normally
+The user reported a black window during build 23 handoff. Build 24 uses app-level
+hide/unhide instead of ordering out an individual window, and removes the blocking
+Keep Open alert while a game runs. Native checks verify the gameplay quit policy
+Final live build 24 handoff verification remains pending; the active game was preserved
+This is a two-process handoff, without shared-window embedding
+
+REA bound the owned x86-64 executable, but Hopper readiness timed out before
+native strings/xrefs produced evidence. Installed material definitions establish
+separate culling/blending rules; the launcher's shared cutout shader remains an
+approximation. The task-owned provider process and temporary runtime were cleaned up
+
+The 0.15.0/build 24 local app includes a rebuilt frozen worker. All 981 original
+runtime/helper payload files remain byte-identical; its 1,053 resource hashes,
+strict deep signature verification and DMG checksum pass. It still requires
+macOS 27. Developer ID signing, notarisation, clean-Mac installation, VoiceOver
+and display-zoom workflows remain unverified
+
 ## Responsive Settings and dragon healing beams in 0.14
+
+The title no longer stops growing at 700 points. Native renders cover 760 × 620,
+1040 × 760, 2016 × 1310 and 2560 × 720 windows, with title widths of 532, 728,
+1411.2 and 900 points. Width and height constrain the artwork, subtitle and splash
+together; the shortcut toast occupies the next row instead of covering the title
+Regression checks cover fullscreen growth, doubled bounds and short ultrawide windows
+Build 20 was opened through Computer Use and its larger title verified in fullscreen
+The final native synthetic checks and all 93 Python tests pass
+
+Build 22 enlarges Play, inventory, Look around and corner text to 5× their area in the
+2016 × 1310 render. The same four window sizes use 1.55×, 2.14×, 2.24× and 2.12×
+scales. Native checks require the fullscreen factor, separated inventory/spyglass
+targets and smaller scaling when setup copy needs space
+The final build was inspected live in fullscreen. Desktop pointer automation
+returned `noWindowsAvailable`, so hover timing and the live Reduced Motion path
+remain unverified. Source guards retain immediate brightness feedback without motion
 
 Settings is an in-window Minecraft menu with a top-right close button, Escape
 and ⌘, support. Its heading and close button stay visible while content scrolls

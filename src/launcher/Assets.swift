@@ -52,6 +52,7 @@ final class Assets {
     private var materials: [String: SCNMaterial] = [:]
     private var tilesets: [String: [SCNMaterial]] = [:]
     private var tables: [String: [String: Any]] = [:]
+    private var families: [String:(mask:Bool,blend:Bool)] = [:]
 
     init(data: URL, classic: Bool = false) throws {
         func packs(_ directory: String) throws -> [URL] {
@@ -102,11 +103,15 @@ final class Assets {
             let face = try? self.texture("textures/blocks/stone")
             let stone = face.map { NSImage(cgImage:$0.diffuse.contents as! CGImage,size:NSSize(width:32,height:32)) }
             var frames: [String:NSImage] = [:]
-            for name in ["hotbar_0","selected_hotbar_slot","title","icon_setting","sound_glyph","how_to_play_button_default","camera-small","spyglass"] {
+            for name in ["hotbar_0","selected_hotbar_slot","title","icon_setting","sound_glyph","how_to_play_button_default","camera-small","spyglass","loading_bar"] {
                 if let material = try? self.texture((name == "spyglass" ? "textures/items/" : "textures/ui/")+name) {
                     let bitmap = material.diffuse.contents as! CGImage
                     frames[name] = NSImage(cgImage:bitmap,size:NSSize(width:bitmap.width,height:bitmap.height))
                 }
+            }
+            if let material = try? self.texture("textures/blocks/dirt") {
+                let bitmap = material.diffuse.contents as! CGImage
+                frames["loading-dirt"] = NSImage(cgImage:bitmap,size:NSSize(width:64,height:64))
             }
             for surface in Set(Biome.allCases.map(\.surface)) {
                 if let tiles = try? self.tiles(surface) {
@@ -211,6 +216,10 @@ final class Assets {
         if path.hasPrefix("textures/blocks/") { material.diffuse.minificationFilter = .linear }
         material.diffuse.wrapS = .repeat; material.diffuse.wrapT = .repeat
         material.lightingModel = .lambert
+        material.specular.contents = NSColor.black
+        material.reflective.contents = NSColor.black
+        material.metalness.contents = 0
+        material.roughness.contents = 1
         material.transparencyMode = .aOne
         // Minecraft cutouts must not hide the opaque mesh beneath them
         material.shaderModifiers = [.fragment: "if (_output.color.a < 0.1) { discard_fragment(); }"]
@@ -219,17 +228,69 @@ final class Assets {
         return material
     }
 
+    func item(_ name: String) throws -> SCNNode {
+        let material = try texture("textures/items/"+name)
+        let image = material.diffuse.contents as! CGImage
+        guard image.width <= 64, image.height <= 64 else { throw AssetError.image }
+        let bitmap = NSBitmapImageRep(cgImage:image)
+        func solid(_ x: Int, _ y: Int) -> Bool {
+            x>=0 && y>=0 && x<image.width && y<image.height && (bitmap.colorAt(x:x,y:y)?.alphaComponent ?? 0)>0.1
+        }
+        var mesh = Voxels()
+        let pixel = 0.75/Double(image.width)
+        for y in 0..<image.height { for x in 0..<image.width where solid(x,y) {
+            var faces = 5
+            for (face,dx,dy) in [(1,1,0),(3,-1,0),(4,0,-1),(5,0,1)] where !solid(x+dx,y+dy) { faces |= 1 << face }
+            let uv = CGRect(x:Double(x)/Double(image.width),y:Double(y+1)/Double(image.height),width:1/Double(image.width),height:-1/Double(image.height))
+            mesh.cube(.init(pixel,pixel,1.0/32),at:.init((Double(x)+0.5-Double(image.width)/2)*pixel,
+                (Double(image.height)/2-Double(y)-0.5)*pixel,0),material:material,faces:faces,textureUV:Array(repeating:uv,count:6))
+        } }
+        let item = mesh.node("held-"+name); item.categoryBitMask = 1
+        return item
+    }
+
+    private func family(_ name: String) throws -> (mask:Bool,blend:Bool) {
+        if let found = families[name] { return found }
+        let definitions: [String:Any]
+        do {
+            guard let entries = try json("materials/entity.material")["materials"] as? [String:Any] else { throw AssetError.model }
+            definitions = entries
+        } catch AssetError.missing { return (false,false) }
+        var current = name, seen = Set<String>(), mask = false, blend = false
+        while !current.isEmpty {
+            guard seen.count < 16, seen.insert(current).inserted else { throw AssetError.model }
+            guard let entry = definitions.first(where:{ $0.key.split(separator:":").first.map(String.init) == current }) else { break }
+            guard let flags = entry.value as? [String:Any] else { throw AssetError.model }
+            mask = mask || ((flags["defines"] as? [String] ?? [])+(flags["+defines"] as? [String] ?? [])).contains("USE_COLOR_MASK")
+            blend = blend || ((flags["states"] as? [String] ?? [])+(flags["+states"] as? [String] ?? [])).contains("Blending")
+            current = entry.key.split(separator:":").dropFirst().first.map(String.init) ?? ""
+        }
+        families[name] = (mask,blend)
+        return (mask,blend)
+    }
+
     func actor(_ name: String, texture key: String = "default", variant: Int = 0) throws -> SCNNode {
         let document = try json("entity/"+name+".entity.json")
         guard let entity = document["minecraft:client_entity"] as? [String: Any],
               let description = entity["description"] as? [String: Any],
               let geometries = description["geometry"] as? [String: String], let identifier = geometries[key] ?? geometries["default"],
-              let textures = description["textures"] as? [String: String], let image = textures[key] else { throw AssetError.model }
-        let definition = try geometry(identifier, entity: name)
+              let textures = description["textures"] as? [String: String], let image = textures[name == "villager_v2" ? "base" : key] else { throw AssetError.model }
+        var definition = try geometry(identifier, entity: name)
+        if name == "cat", var bones = definition["bones"] as? [[String:Any]] {
+            for index in bones.indices where ["body","tail1","tail2"].contains(bones[index]["name"] as? String ?? "") && bones[index]["bind_pose_rotation"] == nil {
+                bones[index]["bind_pose_rotation"] = [90.0,0.0,0.0]
+            }
+            definition["bones"] = bones
+        }
         let skin = try texture(image)
         let material = skin.copy() as! SCNMaterial
+        let family = try family((description["materials"] as? [String:String])?["default"] ?? "entity_alphatest")
+        material.blendMode = family.blend ? .alpha : .replace
+        if !family.blend {
+            material.shaderModifiers = [.fragment:"if (_output.color.a < 0.1) { discard_fragment(); } _output.color.a = 1.0;"]
+        }
         // These native shaders use texture alpha for dye or emission rather than holes
-        if ["enderman","blaze"].contains(name) || (description["materials"] as? [String: String])?["default"] == "sheep" {
+        if family.mask || ["enderman","blaze","sheep"].contains(name) {
             let image = skin.diffuse.contents as! CGImage
             if image.alphaInfo == .last || image.alphaInfo == .first {
                 let alpha = image.alphaInfo == .last ? CGImageAlphaInfo.noneSkipLast : .noneSkipFirst
@@ -239,6 +300,24 @@ final class Assets {
                     provider:image.dataProvider!,decode:nil,shouldInterpolate:false,intent:.defaultIntent)!
             }
             material.blendMode = .replace
+            material.shaderModifiers = [.fragment:"_output.color.a = 1.0;"]
+        }
+        if name == "villager_v2" {
+            let bitmap = skin.diffuse.contents as! CGImage
+            guard let context = CGContext(data:nil,width:bitmap.width,height:bitmap.height,bitsPerComponent:8,bytesPerRow:bitmap.width*4,
+                space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw AssetError.image }
+            let profession = ["farmer","librarian","cleric","armorer","butcher"][variant%5]
+            context.interpolationQuality = .none
+            context.draw(bitmap,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
+            for layer in [key,profession,"level_stone"] {
+                guard let path = textures[layer] else { throw AssetError.model }
+                let image = try texture(path).diffuse.contents as! CGImage
+                guard image.width == bitmap.width, image.height == bitmap.height else { throw AssetError.image }
+                context.draw(image,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
+            }
+            guard let composite = context.makeImage() else { throw AssetError.image }
+            material.diffuse.contents = composite
+            material.name = "villager-"+key+"-"+profession
         }
         if name == "enderman" {
             let source = NSBitmapImageRep(cgImage:skin.diffuse.contents as! CGImage)
@@ -260,6 +339,35 @@ final class Assets {
         }
         if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
         let model = try node(definition,material:material)
+        if name == "cat" {
+            model.childNode(withName:"tail1",recursively:true)?.eulerAngles.x += 51.57 * .pi/180
+            model.childNode(withName:"tail2",recursively:true)?.eulerAngles.x -= 62 * .pi/180
+        }
+        if name == "villager" || name == "villager_v2", let arms = model.childNode(withName:"arms",recursively:true) {
+            arms.position.y -= 1.0/16; arms.position.z -= 1.0/16
+            arms.eulerAngles.x += 42.97 * .pi/180
+        }
+        if name == "stray" {
+            guard let overlay = geometries["overlay"], let path = textures["overlay"] else { throw AssetError.model }
+            let layer = try node(geometry(overlay,entity:name),material:texture(path))
+            layer.name = "stray-clothes"; model.addChildNode(layer)
+        }
+        if name == "horse_v3" {
+            let key = ["markings_none","markings_white","markings_whitefield","markings_whitedots","markings_blackdots"][variant%5]
+            if variant%5 != 0 {
+                guard let path = textures[key] else { throw AssetError.model }
+                let layer = try node(definition,material:texture(path))
+                layer.name = "horse-markings"; model.addChildNode(layer)
+            }
+            model.enumerateChildNodes { part,_ in
+                if let name = part.name, ["Saddle","Bit","Bridle","Rein","Bag","MuleEar"].contains(where:{ name.hasPrefix($0) }) { part.isHidden = true }
+            }
+        }
+        if name == "evocation_illager" {
+            model.enumerateChildNodes { part,_ in
+                if part.name == "leftarm" || part.name == "rightarm" { part.geometry = nil }
+            }
+        }
         if name == "copper_golem", let eyes = textures["eyes_"+key] {
             let glow = try texture(eyes).copy() as! SCNMaterial
             glow.lightingModel = .constant
@@ -533,7 +641,27 @@ extension Assets {
     func tiles(_ name: String, states: [String: String] = [:]) throws -> [SCNMaterial] {
         let key = name+states.keys.sorted().map { "|"+$0+"="+states[$0]! }.joined()
         if let tiles = tilesets[key] { return tiles }
-        let tiles = try resolve(name,states:states)
+        var tiles = try resolve(name,states:states)
+        if states["axis"] == "x" || states["axis"] == "z" {
+            let order = states["axis"] == "x" ? [0,4,2,5,3,1] : [4,1,5,3,2,0]
+            tiles = order.map { tiles[$0] }
+            let side = states["axis"] == "x" ? [0,2,4,5] : [1,3]
+            for index in side {
+                let material = tiles[index].copy() as! SCNMaterial
+                material.diffuse.contentsTransform = SCNMatrix4MakeRotation(.pi/2,0,0,1)
+                tiles[index] = material
+            }
+        } else if let facing = states["facing"], ["north","east","west","up","down"].contains(facing) {
+            let order: [Int]
+            switch facing {
+            case "north": order = [2,3,0,1,4,5]
+            case "east": order = [3,0,1,2,4,5]
+            case "west": order = [1,2,3,0,4,5]
+            case "up": order = [5,1,4,3,0,2]
+            default: order = [4,1,5,3,2,0]
+            }
+            tiles = order.map { tiles[$0] }
+        }
         tilesets[key] = tiles
         return tiles
     }
@@ -601,10 +729,7 @@ extension Assets {
                 let prefix = name.hasPrefix("stripped_") ? "stripped_"+wood+"_log" : "log_"+stem
                 let side = try texture("textures/blocks/"+prefix)
                 let cap = try texture("textures/blocks/"+prefix+"_top")
-                var result = Array(repeating:side,count:6)
-                let indices = states["axis"] == "x" ? [1,3] : states["axis"] == "z" ? [0,2] : [4,5]
-                for index in indices { result[index] = cap }
-                return result
+                return [side,side,side,side,cap,cap]
             }
             if name == wood+"_leaves" {
                 let stem = wood == "dark_oak" ? "big_oak" : wood
@@ -639,7 +764,7 @@ extension Assets {
             else { key = mapped }
             let entry = catalog[key] as? [String: Any]
             let value = entry?["textures"]
-            let path = value as? String ?? (value as? [String])?.first ?? "textures/blocks/"+key
+            let path = value as? String ?? (value as? [String])?.first ?? (value as? [String:Any])?["path"] as? String ?? "textures/blocks/"+key
             return try texture(path,tint:name == "mangrove_leaves" ? 0x78A73F : nil)
         }
     }
