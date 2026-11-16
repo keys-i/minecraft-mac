@@ -33,7 +33,7 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 
 | Component | Responsibility | Source of truth |
 | --- | --- | --- |
-| Native launcher | Window, Play/Cancel, status rendering, sign-out menu, worker lifetime | `src/launcher/BedrockLauncher.swift` |
+| Native launcher | Window, Play/Cancel, status rendering, sign-out menu, worker observation | `src/launcher/BedrockLauncher.swift` |
 | Worker | Installation checks, bundle wiring, setup lock, one account session, structured status | `src/launcher/setup.py` |
 | Session runtime | Prefix preparation, account helper ownership, Wine environment, game launch | `src/standalone.py` |
 | Account helper | Keychain cache, Microsoft login and license, game download, Xbox IPC | `src/standalone-helper.rs` and pinned Xodus patches |
@@ -47,7 +47,7 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 The native title screen places a central Play button and compact four-slot realm
 hotbar over one live SceneKit world. Busy/error states use a separate status panel
 The installed game supplies the original title artwork, Minecraft Ten subtitle
-font and splash pool. The Launcher subtitle uses an extruded face and sloped stone backing
+font and splash pool. The Mac Edition subtitle uses an extruded face and sloped stone backing
 The title, subtitle and splash scale together with both window dimensions,
 without a fixed fullscreen size cap. The shortcut toast sits below the header
 The yellow splash uses a native repeating scale animation, removed when motion
@@ -65,7 +65,7 @@ Reduced Motion keeps immediate colour feedback without enlargement or animation
 Realm names and number shortcuts remain in help/accessibility labels
 Stone controls and installed utility glyphs share hover, press and focus states
 Action headings/buttons now use pixel type. The hotbar has no extra backing
-The splash overlaps the title; the bottom corners hold a native developer Link
+The splash anchors to the lower-right corner of the main Minecraft artwork; the bottom corners hold a native developer Link
 and the actual launcher bundle version. Scenery motion controls remain in Settings/View
 The top-left biome name opens an in-window destination list with original block
 textures, search, selected states and arrow-key navigation. Automatic biome travel
@@ -321,9 +321,13 @@ After Play, the runtime emits `BEDROCK_GAME_PID:<decimal>` only after spawning W
 The worker accepts only exact PID lines in the range 2…2,147,483,647 and sends
 `game_pid` in the playing status. The launcher checks onscreen window metadata
 for that PID, a normal window layer and at least 320 × 200 points before hiding
-its own window. One cancellable task polls at 150 ms until a game window appears
+the native app through `NSApplication.hide`, which also handles fullscreen spaces. One cancellable task polls at 150 ms until a game window appears
 or the session ends
-A final ready/error state cancels the wait and restores the hidden launcher
+A final ready/error state cancels the wait, unhides the app and restores the launcher
+Quitting the launcher during gameplay closes the native app without a blocking
+alert. The worker remains responsible for its game/account session until game
+exit, dropping UI events after the output pipe closes. Setup cancellation keeps
+its existing confirmation and owned-process cleanup
 This hands off between two processes; it does not embed Wine inside SwiftUI
 
 macOS permission prompts identify their requesting signed executable. The app's

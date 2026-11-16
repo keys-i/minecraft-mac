@@ -244,6 +244,11 @@ struct LauncherChecks {
         let art = try Assets(data:fixture)
         let menus = Launcher(status:.init(state:"ready",title:"Ready",detail:"",progress:nil),background:NSImage(),assets:art)
         menus.showSettings(); precondition(menus.settings && !menus.help)
+        let delegate = AppDelegate(); delegate.launcher = menus
+        menus.running = true
+        menus.status = status(nil,state:"playing")
+        precondition(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
+        menus.running = false
         menus.showHelp(); precondition(menus.help && !menus.settings)
         menus.showSettings(); precondition(menus.settings && !menus.help)
         let behaviours = fixture.appendingPathComponent("behavior_packs/vanilla/entities")

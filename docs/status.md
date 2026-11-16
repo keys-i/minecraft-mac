@@ -12,7 +12,7 @@ inventories and exports
 
 ## Launcher handoff and original asset layers in 0.15
 
-The current local candidate is **Minecraft Launcher 0.15.0/build 23**
+The current local candidate is **Minecraft Launcher 0.15.0/build 24**
 It adds original horse markings, Stray clothing, five additional species and
 block-axis/facing corrections. Grey buttons use green hover feedback
 Existing-game preparation starts before Play, without account access or downloads
@@ -20,20 +20,23 @@ The two-process handoff hides the launcher after detecting the real game window
 and restores it on exit/error; it does not embed the Windows game in SwiftUI
 macOS permission dialogs can still identify Wine or the existing signed helper
 
-All 100 Python checks and native synthetic/installed-art checks pass for
+All 101 Python checks and native synthetic/installed-art checks pass for
 75 species, 42 areas and three passages. Five sampled render p95 values fit the
 33.3 ms idle budget. No overall Minecraft launch speedup has been measured
-The user confirmed the game appeared in a separate window; final live
-hide/restore and pointer-hover verification remain incomplete
+Build 24 restores the Mac Edition title, anchors the splash to the main logo
+and uses app-level hiding to address the reported black handoff window
+It removes the Keep Open quit blocker; the worker safely continues after the
+launcher closes. Return to Play was observed after normal game exit in build 23
+Final build 24 handoff and pointer-hover verification remain incomplete
 See [the detailed test record](test.md#original-assets-and-launcher-handoff-in-015)
 
 The app preserves 981 runtime/helper payload files byte-for-byte, including the
 authorised helper. The frozen Python worker and native launcher were rebuilt
 All 1,053 packaged resource hashes, strict deep signature verification and DMG
-verification pass. This local DMG is 127,089,166 bytes with SHA-256
+verification pass. This local DMG is 127,187,437 bytes with SHA-256
 
 ```text
-4c72bbe2ab84a85b90ea1ce5c30d368384bcd98ed49a41e658e1d450f20a822f
+5710f38be946c9c6a68f8c510800ecaf694b74935461f07ee7961eb9ecf942d9
 ```
 
 It remains an ad-hoc signed local preview requiring macOS 27, with no notarised

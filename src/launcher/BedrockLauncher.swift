@@ -186,14 +186,16 @@ final class Launcher: ObservableObject {
 
     private func handoff(_ pid: Int?) {
         windowTask?.cancel(); windowTask = nil
-        if let window = hiddenWindow { window.makeKeyAndOrderFront(nil); hiddenWindow = nil }
+        if let window = hiddenWindow {
+            NSApp.unhide(nil); window.makeKeyAndOrderFront(nil); hiddenWindow = nil
+        }
         guard let pid, pid > 1 && pid <= Int(Int32.max) else { return }
         windowTask = Task { [weak self] in
             while let self, !Task.isCancelled, self.status.gamePID == pid {
                 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
                 if Self.gameVisible(pid,windows:windows) {
                     let window = NSApp.windows.first { $0.title == launcherName }
-                    self.hiddenWindow = window; window?.orderOut(nil)
+                    self.hiddenWindow = window; NSApp.hide(nil)
                     return
                 }
                 do { try await Task.sleep(for:.milliseconds(150)) } catch { return }
@@ -272,23 +274,13 @@ final class Launcher: ObservableObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var launcher: Launcher?
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard launcher?.running == true else { return .terminateNow }
+        guard launcher?.canCancel == true else { return .terminateNow }
         let alert = NSAlert()
-        if launcher?.canCancel == true {
-            alert.messageText = "Stop setup?"
-            alert.informativeText = "You can continue later. Your game and saves will be kept."
-            alert.addButton(withTitle: "Keep Going")
-            alert.addButton(withTitle: "Stop Setup")
-            if alert.runModal() == .alertSecondButtonReturn { launcher?.cancel() }
-        } else {
-            let playing = launcher?.status.state == "playing"
-            alert.messageText = playing ? "Minecraft is still running" : "The launcher is finishing up"
-            alert.informativeText = playing
-                ? "Quit Minecraft first to finish your session safely. You can close the launcher window while you play."
-                : "Keep the app open until the current step finishes. Your existing game and saves will be kept."
-            alert.addButton(withTitle: "Keep Open")
-            alert.runModal()
-        }
+        alert.messageText = "Stop setup?"
+        alert.informativeText = "You can continue later. Your game and saves will be kept."
+        alert.addButton(withTitle: "Keep Going")
+        alert.addButton(withTitle: "Stop Setup")
+        if alert.runModal() == .alertSecondButtonReturn { launcher?.cancel() }
         return .terminateCancel
     }
 
@@ -519,12 +511,24 @@ struct GameTitle: View {
                         .lineLimit(1).shadow(color:.black.opacity(0.6),radius:0,y:3)
                 }
             }.frame(width:width,height:width/5.52)
+            .overlay(alignment:.bottomTrailing) {
+                if !splash.isEmpty {
+                    Group {
+                        if moving {
+                            splashText.phaseAnimator([false,true]) { content,small in
+                                content.scaleEffect(small ? 0.94 : 1)
+                            } animation: { _ in .easeInOut(duration:0.25) }
+                        } else { splashText }
+                    }.rotationEffect(.degrees(-20)).offset(x:width*0.16,y:width*0.025)
+                        .accessibilityHidden(true).allowsHitTesting(false)
+                }
+            }
             ZStack {
                 ForEach((1...6).reversed(),id:\.self) { depth in
-                    Text("LAUNCHER").foregroundStyle(Color(white:0.08))
+                    Text("MAC EDITION").foregroundStyle(Color(white:0.08))
                         .offset(x:CGFloat(depth)*0.3,y:CGFloat(depth)*0.65)
                 }
-                Text("LAUNCHER").foregroundStyle(LinearGradient(colors:[.white,Color(white:0.8)],startPoint:.top,endPoint:.bottom))
+                Text("MAC EDITION").foregroundStyle(LinearGradient(colors:[.white,Color(white:0.8)],startPoint:.top,endPoint:.bottom))
             }.font(font.map { Font(CTFontCreateCopyWithAttributes($0,width*0.042,nil,nil)) } ?? Blocks.type(width*0.042))
                 .padding(.horizontal,22).padding(.top,3).padding(.bottom,8)
                 .background {
@@ -538,19 +542,7 @@ struct GameTitle: View {
                     }
                 }
         }.frame(width:width)
-            .overlay(alignment:.bottomTrailing) {
-                if !splash.isEmpty {
-                    Group {
-                        if moving {
-                            splashText.phaseAnimator([false,true]) { content,small in
-                                content.scaleEffect(small ? 0.94 : 1)
-                            } animation: { _ in .easeInOut(duration:0.25) }
-                        } else { splashText }
-                    }.rotationEffect(.degrees(-20)).offset(x:width*0.04,y:-width*0.075)
-                        .accessibilityHidden(true).allowsHitTesting(false)
-                }
-            }
-            .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft Launcher")
+            .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft Mac Edition")
             .accessibilityAddTraits(.isHeader)
     }
 }

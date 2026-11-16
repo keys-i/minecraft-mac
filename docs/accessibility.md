@@ -23,8 +23,10 @@ sign-in window also depends on those applications
 | Reopen the launcher | **Window → Show Launcher**, or <kbd>⌘</kbd> + <kbd>0</kbd> |
 | Review published app updates | **Minecraft Launcher → Check for Updates…** |
 
-After Play, the launcher waits for the game window before hiding its own window
+After Play, the launcher waits for the game window before hiding the native app
 It returns after game exit/error; **Window → Show Launcher** remains available
+Quitting the launcher while Minecraft runs leaves its owned game session running
+It no longer presents a Keep Open blocker
 Buttons start grey and turn green on hover, alongside their existing focus outline
 Disabled controls keep their disabled appearance
 

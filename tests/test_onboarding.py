@@ -191,6 +191,20 @@ class OnboardingTests(unittest.TestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(pids[0], 0)
 
+    def test_closed_launcher_does_not_stop_the_owned_child(self):
+        with tempfile.TemporaryDirectory() as folder:
+            done = Path(folder) / 'finished'
+            child = "import time,pathlib; print('BEDROCK_GAME_PID:42',flush=True); time.sleep(0.05); pathlib.Path(" + repr(str(done)) + ").touch()"
+            broken = unittest.mock.Mock()
+            broken.write.side_effect = BrokenPipeError
+            with tempfile.TemporaryFile() as log, patch.object(worker.sys, 'stdout', broken):
+                try:
+                    worker.run([sys.executable, '-c', child], log, 'Child failed', game_progress=True)
+                    self.assertTrue(done.exists())
+                finally:
+                    if worker.sys.stdout is not broken:
+                        worker.sys.stdout.close()
+
     def test_keychain_failure_has_actionable_message(self):
         with tempfile.TemporaryFile() as log, contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(RuntimeError, 'macOS Keychain prompt'):

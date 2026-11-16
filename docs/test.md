@@ -7,7 +7,8 @@ Test counts below describe the October 20, 2026 source snapshot
 
 ## Original assets and launcher handoff in 0.15
 
-Minecraft Launcher is the app, window, menu and subtitle name. Buttons start grey
+Minecraft Launcher is the app, window and menu name; the artwork reads
+Minecraft Mac Edition with its splash at the main logo’s lower-right corner. Buttons start grey
 and turn green on hover; the shared 120 ms enlargement respects Reduced Motion
 Computer Use inspected the renamed 0.15 title screen and grey Play button
 Pointer injection still returned `noWindowsAvailable`, so the green hover and
@@ -21,28 +22,31 @@ Pufferfish and Strays bring the roster to 75 species across 42 authored areas
 Log/pillar axes and saved full-block facing now remap their original materials
 without mutating shared upright materials. No original game assets are bundled
 
-All 100 Python tests pass, including warmup without downloads/sign-in, active-game
-protection, PID filtering, real child PID reporting, spawn failure and timeout cleanup
+All 101 Python tests pass, including warmup without downloads/sign-in, active-game
+protection, PID filtering, real child PID reporting, spawn failure, timeout cleanup and a closed launcher output pipe that must not
+stop the owned child
 Native synthetic and installed-art checks pass for 75 species, 42 areas and three
 passages, including horse layers, Stray clothing, Evoker arms, log axes and furnace
 facing. An offscreen original-art render was inspected for those models and blocks
 
 Five installed-art habitats were measured sequentially with the old and new
 scenery sources, using the same optimised Swift probe at 1040 × 760 with 4× MSAA
-Each sample uses 10 warmup frames and 60 measured frames. Minecraft and Chrome
-for Testing remained running, so these samples establish budget headroom under
-that load, not a controlled speedup or an actual Minecraft FPS result
+Each sample uses 10 warmup frames and 60 measured frames. An initial run kept
+Minecraft active; a repeat after it closed kept Chrome for Testing and the normal
+workspace running. Native compilation overlapped the repeat, so these remain
+budget observations rather than a controlled speedup or actual Minecraft FPS result
+The repeat produced these p95 values
 
 | Scene | Previous wall p95 | Current wall p95 | Current GPU p95 |
 | --- | --- | --- | --- |
-| Meadow village | 16.45 ms | 15.51 ms | 9.04 ms |
-| Woodland mansion | 15.28 ms | 16.19 ms | 9.78 ms |
-| Warm reef | 16.46 ms | 14.55 ms | 9.32 ms |
-| Frozen ocean | 16.16 ms | 13.89 ms | 9.83 ms |
-| Abandoned mineshaft | 13.31 ms | 10.28 ms | 7.86 ms |
+| Meadow village | 15.07 ms | 15.03 ms | 8.74 ms |
+| Woodland mansion | 15.75 ms | 23.02 ms | 11.36 ms |
+| Warm reef | 14.50 ms | 26.79 ms | 12.28 ms |
+| Frozen ocean | 12.13 ms | 20.69 ms | 10.36 ms |
+| Abandoned mineshaft | 11.13 ms | 10.73 ms | 8.16 ms |
 
 These samples fit the 33.3 ms idle budget. New graph construction ranged from
-144.13 to 822.39 ms on the existing asset queue; first-scene asset loading is
+154.51 to 600.26 ms on the existing asset queue; first-scene asset loading is
 included. The full native checks retain the per-area node and triangle ceilings
 
 Background warmup uses the existing preparation locks and never starts the
@@ -52,8 +56,11 @@ and app wiring. No end-to-end Play-to-game speedup has been established
 The runtime now reports the actual spawned Wine PID; native matching waits for
 an onscreen normal game window before hiding the launcher, and ready/error
 restores it. The wait ends with the owned session rather than a fixed timeout
-The user confirmed that Minecraft appeared in its own window. Final live
-hide/restore verification remains incomplete; the active game was preserved
+Computer Use verified return to Play after the user quit Minecraft normally
+The user reported a black window during build 23 handoff. Build 24 uses app-level
+hide/unhide instead of ordering out an individual window, and removes the blocking
+Keep Open alert while a game runs. Native checks verify the gameplay quit policy
+Final live build 24 handoff verification remains pending; the active game was preserved
 This is a two-process handoff, without shared-window embedding
 
 REA bound the owned x86-64 executable, but Hopper readiness timed out before
@@ -61,7 +68,7 @@ native strings/xrefs produced evidence. Installed material definitions establish
 separate culling/blending rules; the launcher's shared cutout shader remains an
 approximation. The task-owned provider process and temporary runtime were cleaned up
 
-The 0.15.0/build 23 local app includes a rebuilt frozen worker. All 981 original
+The 0.15.0/build 24 local app includes a rebuilt frozen worker. All 981 original
 runtime/helper payload files remain byte-identical; its 1,053 resource hashes,
 strict deep signature verification and DMG checksum pass. It still requires
 macOS 27. Developer ID signing, notarisation, clean-Mac installation, VoiceOver

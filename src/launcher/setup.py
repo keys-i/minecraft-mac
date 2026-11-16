@@ -65,7 +65,11 @@ def event(state, title, detail='', progress=None, game_pid=None):
     status = dict(state=state, title=title, detail=detail, progress=progress)
     if game_pid is not None:
         status['game_pid'] = game_pid
-    print(json.dumps(status), flush=True)
+    try:
+        print(json.dumps(status), flush=True)
+    except BrokenPipeError:
+        # Closing the launcher must not interrupt its owned game/account session
+        sys.stdout = open(os.devnull, 'w')
 
 
 def load(name, filename):
