@@ -73,13 +73,11 @@ Text shadows are soft, low-opacity and offset by one point
 The bundled font is registered only within this app; the owner’s subtitle font
 is created in memory without a system font installation
 
-The shortcut toast displays **⌘ + L to look around** for 60 seconds, then returns
-after 70 uninterrupted seconds with the launcher as the active window
-Switching to another app or Settings cancels that return wait. Entering spectator
-view shows 60-second movement instructions; leaving dismisses them. Setup, errors
-and journeys suppress hints. The instruction remains available through the spyglass button's
-label/help even while the toast is hidden; no repeated VoiceOver announcement is requested
-Reduced Motion replaces the toast fade with an immediate change
+The achievement toast appears when the rendered camera arrives in another biome or realm
+It stays for four seconds, fades over 400 ms, and never repeats from an idle timer
+The paper doll stays hidden until that fade is complete, then its limbs and cape follow camera movement
+Reduced Motion removes the transition and pose animation, while focus and low power pause the character renderer
+Routine scenery progress stays in the background; a centred error offers Try again when necessary
 
 The README uses labelled links, image descriptions, headings and expandable
 sections. The poster's message is repeated in ordinary text so the image is
@@ -90,7 +88,7 @@ An unsupported scenery format falls back to the approved poster without blocking
 the setup controls
 
 The minimap has a stepped circular edge, a north marker and text coordinates
-M toggles it while exploring; Settings → Key bindings can change that shortcut
+M toggles it while exploring; Settings → Keyboard & Mouse can change that shortcut
 The input recorder cancels on Escape, focus loss and closing the settings
 It reserves Command-Q and names any swapped control after a conflict
 Help uses an in-window menu with the same pixel font, close button and Escape

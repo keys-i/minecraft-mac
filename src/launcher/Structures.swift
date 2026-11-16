@@ -610,10 +610,7 @@ extension Structures {
         }
         let names = palette.map { ($0["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"") }
         func hidden(_ name: String) -> Bool { ["air","cave_air","void_air","jigsaw","structure_block","structure_void"].contains(name) }
-        func partial(_ name: String) -> Bool {
-            Block.plant(name) || name.hasSuffix("_bed") || ["portal","stairs","slab","door","pane","fence","wall","torch","plate","flower","glass","leaves","water","lava","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","vine","ladder","composter","chest","chain"].contains { name.contains($0) }
-        }
-        let visible = names.map { !hidden($0) }, opaque = names.map { !partial($0) }
+        let visible = names.map { !hidden($0) }
         func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
         var blocks: [Int: Int] = [:], positions = Set<Int>()
         for block in list {
@@ -624,6 +621,25 @@ extension Structures {
             let state = names[original] == "jigsaw" && (block["nbt"] as? [String:Any])?["final_state"] as? String == "minecraft:grass_path" ? pathState! : original
             if visible[state], !(cutaway && position[1] > 1 && (position[1] >= size[1]-2 || position[2] >= size[2]-5 || position[0] >= size[0]-4)) { blocks[key(position)] = state }
         }
+        let tags = Dictionary(uniqueKeysWithValues:list.compactMap { block -> (Int,[String:Any])? in
+            guard let tag = block["nbt"] as? [String:Any], let p = block["pos"] as? [Int] else { return nil }
+            return (key(p),tag)
+        })
+        return try volume(name,size:size,palette:palette,blocks:blocks,tags:tags,assets:assets,interior:interior)
+    }
+
+    static func volume(_ name: String, size: [Int], palette: [[String:Any]], blocks: [Int:Int],
+                       tags: [Int:[String:Any]] = [:], assets: Assets, interior: Bool = false) throws -> SCNNode {
+        guard size.count == 3, size[0]>0, size[0]<=128, size[1]>0, size[1]<=384, size[2]>0, size[2]<=128,
+              palette.count<4096, blocks.count<=250_000,
+              blocks.allSatisfy({ (0..<size[0]*size[1]*size[2]).contains($0.key) && palette.indices.contains($0.value) }) else { throw AssetError.model }
+        let names = palette.map { ($0["Name"] as? String ?? "").replacingOccurrences(of:"minecraft:",with:"") }
+        func key(_ p: [Int]) -> Int { p[0]+size[0]*(p[2]+size[2]*p[1]) }
+        func position(_ index: Int) -> [Int] { [index%size[0],index/(size[0]*size[2]),index/size[0]%size[2]] }
+        func partial(_ name: String) -> Bool {
+            Block.plant(name) || name == "pointed_dripstone" || name.hasSuffix("_bed") || ["portal","stairs","slab","door","pane","fence","wall","torch","plate","flower","glass","leaves","water","lava","carpet","trapdoor","rail","rod","candle","lantern","bars","banner","bell","brewing","wheat","carrots","potatoes","beetroots","vine","ladder","composter","chest","chain"].contains { name.contains($0) }
+        }
+        let opaque = names.map { !partial($0) }
         var mesh = Voxels(), liquid = Voxels(), surfaces: [Int: [SCNMaterial]] = [:]
         var fluids: [String:[SCNMaterial]] = [:], doors: [Door] = []
         var portals: [String:SCNMaterial] = [:]
@@ -664,8 +680,8 @@ extension Structures {
             return node
         }
         let fullUV = Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6)
-        for block in list {
-            let p = block["pos"] as! [Int]
+        for index in blocks.keys.sorted() {
+            let p = position(index)
             if interior && (p[0] == 0 || p[0] == size[0]-1 || p[2] == 0 || p[2] == size[2]-1) { continue }
             guard let state = blocks[key(p)] else { continue }
             let name = names[state]
@@ -749,16 +765,19 @@ extension Structures {
                     faces:horizontal ? 16 : across ? 1 : 2,textureUV:Array(repeating:CGRect(x:0,y:1,width:1,height:-1),count:6))
                 continue
             }
-            if try fixture(name,states:resolved,data:block["nbt"] as? [String:Any] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
-            var faces = 63
+            if try fixture(name,states:resolved,data:tags[index] ?? [:],at:.init(Double(p[0]),Double(p[1]),Double(p[2])),assets:assets,mesh:&mesh) { continue }
+            var faces = 63, lips: [Int] = []
             if opaque[state] || name == "glass" || name == "tinted_glass" || name.contains("stained_glass") && !name.contains("pane") {
                 for (face,d) in [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]].enumerated() {
                     let neighbour = [p[0]+d[0],p[1]+d[1],p[2]+d[2]]
                     if (0..<3).allSatisfy({ (0..<size[$0]).contains(neighbour[$0]) }),
-                       let index = blocks[key(neighbour)], opaque[index] || names[index] == name && (palette[index]["Properties"] as? [String:String] ?? [:]) == properties { faces &= ~(1 << face) }
+                       let index = blocks[key(neighbour)], opaque[index] || names[index] == name && (palette[index]["Properties"] as? [String:String] ?? [:]) == properties {
+                        faces &= ~(1 << face)
+                        if face<4, ["farmland","grass_path","dirt_path"].contains(names[index]), !["farmland","grass_path","dirt_path"].contains(name) {lips.append(face)}
+                    }
                 }
             }
-            guard faces != 0 else { continue }
+            guard faces != 0 || !lips.isEmpty else { continue }
             let materials: [SCNMaterial]
             if let found = surfaces[state] { materials = found }
             else {
@@ -777,6 +796,10 @@ extension Structures {
                     materials = tiles
                 } else { materials = try assets.tiles(name,states:properties) }
                 surfaces[state] = materials
+            }
+            for face in lips {
+                mesh.cube(.init(1,0.0625,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.96875,Double(p[2])+0.5),
+                    material:materials[face],faces:1 << face,textureUV:Array(repeating:CGRect(x:0,y:0.0625,width:1,height:-0.0625),count:6))
             }
             func cube(_ dimensions: SCNVector3, _ centre: SCNVector3, mask: Int = 63, sprite: Bool = false) {
                 mesh.cube(dimensions,at:.init(Double(p[0])+centre.x,Double(p[1])+centre.y,Double(p[2])+centre.z),
@@ -812,7 +835,9 @@ extension Structures {
                     liquid.vertices[index].y = Double(p[1])+corner(point.x>Double(p[0])+0.5 ? 1 : -1,point.z>Double(p[2])+0.5 ? 1 : -1)
                 }
             } else if name == "farmland" || name == "grass_path" || name == "dirt_path" {
-                cube(.init(1,0.9375,1),.init(0.5,0.46875,0.5))
+                let side = CGRect(x:0,y:1,width:1,height:-0.9375)
+                mesh.cube(.init(1,0.9375,1),at:.init(Double(p[0])+0.5,Double(p[1])+0.46875,Double(p[2])+0.5),
+                    material:materials[0],textureUV:[side,side,side,side,fullUV[4],fullUV[5]],faceMaterials:materials)
             } else if name.hasSuffix("_stairs") {
                 let upper = properties["half"] == "top"
                 cube(.init(1,0.5,1),.init(0.5,upper ? 0.75 : 0.25,0.5))
@@ -868,7 +893,9 @@ extension Structures {
                         cube(x == 0 ? .init(0.125,0.125,0.5) : .init(0.5,0.125,0.125),.init(0.5+x,y,0.5+z))
                     }
                 }
-            } else if Block.plant(name) {
+            } else if ["pink_petals","wildflowers","leaf_litter"].contains(name) {
+                cube(.init(1,0,1),.init(0.5,0.0125,0.5),mask:16,sprite:true)
+            } else if Block.plant(name) || name == "pointed_dripstone" {
                 let first = mesh.vertices.count, turn = SCNNode()
                 turn.position = .init(Double(p[0])+0.5,Double(p[1])+0.5,Double(p[2])+0.5); turn.eulerAngles.y = .pi/4
                 cube(.init(1,1,0),.init(0.5,0.5,0.5),mask:1,sprite:true)
@@ -901,8 +928,8 @@ extension Structures {
             else { cube(.init(1,1,1),.init(0.5,0.5,0.5),mask:faces) }
         }
         // A resident must clear each stair edge before lowering its full collision box
-        for block in list {
-            let p = block["pos"] as! [Int], index = block["state"] as! Int, name = names[index]
+        for (cell,index) in blocks {
+            let p = position(cell), name = names[index]
             guard name.hasSuffix("_stairs"), blocks[key(p)] != nil else { continue }
             let states = palette[index]["Properties"] as? [String:String] ?? [:]
             guard states["half"] != "top", states["shape"] == nil || states["shape"] == "straight",
@@ -923,8 +950,8 @@ extension Structures {
         }
         let geometry = mesh.node("template-"+name), root = Footprint()
         root.geometry = geometry.geometry; root.name = geometry.name; root.categoryBitMask = geometry.categoryBitMask
-        let foundations = list.compactMap { block -> SCNVector3? in
-            let p = block["pos"] as! [Int]
+        let foundations = blocks.keys.compactMap { cell -> SCNVector3? in
+            let p = position(cell)
             guard p[1] == 0, let state = blocks[key(p)] else { return nil }
             let name = names[state]
             guard opaque[state] || ["farmland","grass_path","dirt_path"].contains(name) || name.hasSuffix("_slab") || name.hasSuffix("_stairs") else { return nil }

@@ -59,7 +59,7 @@ The isolated generator uses a separate prefix, two server threads, low CPU prior
 It never opens the player's worlds or account helper
 One serial generation queue prevents concurrent server writes and LevelDB reads
 A seed/version hash chooses the private scenery database; its manifest records completed dimension/chunk coordinates and located destinations
-Console checks run in batches of at most 16, waiting for the server's ordered reply before sending another batch
+Private behaviour-pack functions check at most 16 chunks together, with a scoreboard result and an ordered console barrier before the next batch
 The launcher requests the nearest 81 chunks at a time after its initial nine, so completed scenery can become visible without waiting for the whole render distance
 Brief generator-lock contention waits for owned cleanup, with a 30-second deadline and cancellation
 
@@ -69,7 +69,16 @@ Meshes omit buried faces and share original materials from the installed game
 A serial asset queue owns asset caches and constructs meshes; the main thread installs completed node graphs
 The fog horizon follows the nearest unfinished mesh boundary, including the initial static frame; flight waits for rendered terrain
 Stale work is cancelled or rejected by its request/revision token
-Chunk radius is 4–16, and visible chunk data/graphs leave as the camera travels
+The requested chunk radius is 8–512 in the three generated dimensions
+The nearest 8–16 chunks retain full voxel geometry and collision; farther terrain uses progressively coarser vertical solid bands from those same official chunks
+One outer ring is queued at a time, and low-priority page meshes leave buried interiors on disk
+Distant bands preserve canopy gaps, cavern voids and End-island undersides, including the Nether
+Only completed page meshes advance the fog horizon; cancelled pages return to the pending set
+A 512-chunk square can encompass 1,050,625 saved chunks, so first-time preparation can take substantial time and storage
+This is progressive voxel detail at distance, not a million fully detailed chunks resident simultaneously
+The authored Sift and historical Far Lands retain their earlier bounded renderer
+The chunk-completion index is split into 32 × 32 region files rather than repeatedly parsing one growing manifest
+Old completion records migrate before their header is rewritten, and the native reader can invalidate and retry a missing saved chunk twice
 
 The left pixel-circle minimap rasterises 128 × 128 samples from the same blocks
 It appears in Look around and toggles with M
@@ -77,13 +86,17 @@ Physical key bindings, camera capture and master volume remain in the native Min
 The biome title is 1.25 times the corner-credit type size and automatically scrolls when it overflows
 Reduced Motion removes animated transitions and marquee motion
 
-Portal routes carve corridors and construct ruins in scenery overrides, without modifying the Bedrock database or any player world
-At most two route records per dimension reconstruct the same blocks after reopening
+Portal routes connect existing clear caves where available and carve seeded irregular caverns around missing links in scenery overrides, without modifying the Bedrock database or any player world
+At most two versioned route records per dimension retain the anchors, discovered cave connections and procedural seed after reopening
+Legacy records remain readable and a recovery copy precedes their first replacement
 The Nether path includes a nearby cave, mineshafts, dungeon, buried ruins and an obsidian lava-pool portal
 The End path follows a reachable house chest where available, then a ravine/mine approach, dungeon, lush/dripstone cavern, stronghold prisons, kitchens, shrine, sleeping rooms, aqueduct and hidden portal passage
 Routes share collision/meshing/map data and remain explorable; manual movement cancels the cinematic while retaining its structures
+Tours target 165 seconds of movement; Space and Skip journey share the coordinator-owned portal handoff
 
-Residents use original installed geometry and textures, collision-checked forward movement and independent head glances
+Residents use original installed geometry and textures, swept support/medium checks, displacement-based facing/gait and independent head glances
+Streamed and authored models share leg phases and the installed bat timing profile
+Drowned remain bottom walkers in ambient scenery; amphibious pose selection distinguishes wet support from free water
 Authored species awareness selects a 10–40% chance per eight-second attention interval
 This is scenery AI, not a reproduction of the complete Minecraft behaviour/combat engine
 Sift and historical Far Lands remain authored interpretations, not official dimensions or current Bedrock generation
@@ -92,7 +105,9 @@ The earlier `Adventure`, `Terrain` and `Passage` implementation remains for cust
 ## Assets and sound
 
 `Assets.swift` reads original models, block textures, fonts, structures, title art, splashes and music directly from the owner's installed data
-Archive readers are bounded; newer versioned packs override older entries
+Archive readers are bounded; newer versioned packs override older entries across PNG/TGA formats and geometry filenames
+Loose same-pack files take precedence, partial catalog definitions inherit unchanged fields, and path arrays support dictionary entries
+Grass colour-mask alpha selects tint while preserving opaque dirt, shortened path sides use cropped UVs, and plants use cutout geometry
 No Minecraft art, music, game payload or account data is included in source exports
 `Music.swift` owns one native player, bounded on-demand loading, focus/visibility pauses and the settings master-volume control
 The asset queue releases archive buffers after each completed build/load

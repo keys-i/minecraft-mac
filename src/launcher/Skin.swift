@@ -9,6 +9,7 @@ struct Skin: NSViewRepresentable {
     let cape: String
     let slim: Bool
     let active: Bool
+    @ObservedObject var position: Position
     var failed: (String) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -59,7 +60,45 @@ struct Skin: NSViewRepresentable {
     final class View: SCNView {
         var active = false
         var reducedMotion = false
+        var model: SCNNode?
+        private var bones: [(SCNNode,SCNVector3)] = []
+        private var previous: (SCNVector3,Double,Double)?
+        private var stride = 0.0
         private var observers: [NSObjectProtocol] = []
+
+        func install(_ model: SCNNode) {
+            self.model = model; bones = []; previous = nil
+            model.enumerateChildNodes { node,_ in
+                if ["leftleg","rightleg","leftarm","rightarm","body","head","cape"].contains(node.name?.lowercased() ?? "") {
+                    bones.append((node,node.eulerAngles))
+                }
+            }
+        }
+
+        func pose(_ point: SCNVector3, yaw: Double, at time: Double) {
+            defer { previous = (point,yaw,time) }
+            guard active, !reducedMotion, let (before,heading,last) = previous, time>last else { return }
+            let distance = hypot(point.x-before.x,point.z-before.z), dt = min(0.5,time-last)
+            let speed = min(1,distance/dt/5)
+            stride += min(1,distance)*1.5
+            let swing = sin(stride*Double.pi)*0.65*speed
+            let turn = max(-0.5,min(0.5,atan2(sin(yaw-heading),cos(yaw-heading))))
+            SCNTransaction.begin(); SCNTransaction.animationDuration = 0.1
+            for (node,rest) in bones {
+                var angle = rest
+                switch node.name?.lowercased() {
+                case "leftleg","rightarm": angle.x += swing
+                case "rightleg","leftarm": angle.x -= swing
+                case "head": angle.y += turn
+                case "body": angle.z += sin(stride*Double.pi)*0.035*speed
+                case "cape": angle.x -= 0.12+speed*0.5+abs(sin(stride*Double.pi))*0.08*speed; angle.z += turn*0.6
+                default: break
+                }
+                node.eulerAngles = angle
+            }
+            model?.position.y = abs(sin(stride*Double.pi))*0.035*speed
+            SCNTransaction.commit()
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -98,6 +137,7 @@ struct Skin: NSViewRepresentable {
             rendersContinuously = false
             pointOfView = nil
             scene = nil
+            model = nil; bones = []; previous = nil
         }
 
         deinit { observers.forEach(NotificationCenter.default.removeObserver) }
@@ -126,6 +166,7 @@ struct Skin: NSViewRepresentable {
         view.active = active
         view.reducedMotion = reduceMotion
         view.refresh()
+        view.pose(position.sample.point,yaw:position.sample.yaw,at:ProcessInfo.processInfo.systemUptime)
         let coordinator = context.coordinator
         if let input = coordinator.input, input.skin == skin, input.cape == cape, input.slim == slim { return }
         coordinator.input = (skin,cape,slim)
@@ -148,12 +189,6 @@ struct Skin: NSViewRepresentable {
                 let capeImage = try cape.isEmpty ? nil : Self.image(at:URL(fileURLWithPath:cape),cape:true)
                 let model = try assets.avatar(skin:skinImage,cape:capeImage,slim:slim)
                 model.eulerAngles.y = .pi-0.28
-                model.enumerateChildNodes { node,_ in
-                    if node.name?.lowercased() == "cape", node.geometry != nil {
-                        node.eulerAngles.x -= 0.11
-                        VoxelAdventure.sway(node,x:0.035,period:4.5)
-                    }
-                }
                 let scene = SCNScene()
                 scene.rootNode.addChildNode(model)
                 let camera = SCNNode()
@@ -186,6 +221,7 @@ struct Skin: NSViewRepresentable {
                 switch result {
                 case .success(let (scene,camera)):
                     view.scene = scene
+                    if let model = scene.rootNode.childNode(withName:"owned-avatar",recursively:false) { view.install(model) }
                     view.pointOfView = camera
                     view.needsDisplay = true
                     view.setAccessibilityLabel(cape.isEmpty ? "Your imported Minecraft skin" : "Your imported Minecraft skin and cape")

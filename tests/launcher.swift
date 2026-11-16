@@ -32,11 +32,67 @@ struct LauncherChecks {
             }
         }
         precondition(!Trail.Record(kind:"end",x:Int.min,y:0,z:0,seed:0).valid)
+        let archived = Trail(.init(kind:"end",x:0,y:70,z:0,seed:42)).record
+        precondition(archived.version == 2 && archived.anchors?.count == 13)
+        let recovered = try JSONDecoder().decode(Trail.Record.self,from:JSONEncoder().encode(archived))
+        precondition(Trail(archived).blocks == Trail(recovered).blocks,"Saved layouts must restore deterministically")
+        var malformed = archived; malformed.anchors = []
+        precondition(!malformed.valid)
+        var homestead = WorldData(dimension:0)
+        for x in -2...2 {for z in -2...2 {let key = Chunk(x:x,z:z); homestead.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}}
+        var homesteadBlocks: [Cell:Block] = [:]
+        for x in -24...24 {for z in -24...24 {homesteadBlocks[Cell(x:x,y:69,z:z)] = Block(name:"grass_block")}}
+        homestead.apply(homesteadBlocks)
+        let shelter = Trail.plan(.init(kind:"end",x:0,y:70,z:0,seed:42),data:homestead)
+        precondition(shelter.record.shelter != nil && shelter.record.foundation != nil)
+        homestead.apply(shelter.blocks)
+        precondition(shelter.approach(data:homestead,eye:.init(0.5,71.62,0.5),chest:true).contains {$0.title.contains("house chest")},"The End story needs a reachable house chest even outside villages")
         precondition(!Block(name:"grass_block").passable && Block(name:"short_grass").passable)
         precondition(!Block(name:"mangrove_roots").passable && !Block(name:"brown_mushroom_block").passable)
         precondition(!Block(name:"end_portal_frame").passable && Block(name:"end_portal").passable)
         for name in ["dandelion","poppy","blue_orchid","allium","azure_bluet","red_tulip","oxeye_daisy","cornflower","lily_of_the_valley","wither_rose","sunflower","lilac","rose_bush","peony"] {
             precondition(Block(name:name).passable && !Block(name:name).opaque,"Flowers must never become solid floating cubes: \(name)")
+        }
+        let farShell = Horizon.shell(.init(x:-10,z:20),radius:512)
+        precondition(farShell.count == 4096 && farShell.contains(.init(x:-522,z:532)))
+        precondition(Horizon.page(.init(x:-1,z:-17)) == .init(x:-1,z:-2))
+        precondition(Horizon.step(.init(x:512,z:0),near:.init(x:0,z:0)) == 16)
+        var bandBytes = Data([9,1,0,0,1,0,0,0,10,0,0,8,4,0])
+        bandBytes.append(contentsOf:"name".utf8); bandBytes.append(contentsOf:[15,0])
+        bandBytes.append(contentsOf:"minecraft:stone".utf8); bandBytes.append(contentsOf:[10,6,0])
+        bandBytes.append(contentsOf:"states".utf8); bandBytes.append(contentsOf:[0,0])
+        let lowerBand = try Subchunk(bandBytes); bandBytes[2] = 2
+        let upperBand = try Subchunk(bandBytes)
+        let islands = try VoxelChunk(key:.init(x:0,z:0),dimension:2,sections:[0:lowerBand,2:upperBand],biomeData:nil)
+        let distantBands = Horizon.Tile(islands,near:.init(x:0,z:0))
+        precondition(distantBands.columns[0].map(\.bottom) == [0,32] && distantBands.columns[0].map(\.top) == [16,48],"Distant terrain must preserve empty space between solid bands")
+        var horizon = Horizon(); horizon.insert([islands.key:distantBands])
+        horizon.operation = BlockOperation(); horizon.pending = .init(x:0,z:0); horizon.dirty = []
+        horizon.cancel()
+        precondition(horizon.operation == nil && horizon.dirty.contains(.init(x:0,z:0)),"Cancelled page work must be requeued")
+        horizon.prune(near:.init(x:512,z:512),radius:8)
+        precondition(horizon.tiles.isEmpty && horizon.groups.isEmpty)
+        precondition((0..<4).map {Mobs.legSign("leg\($0)")} == [1,-1,-1,1])
+        var support = WorldData(dimension:0)
+        support.chunks[.init(x:0,z:0)] = try VoxelChunk(key:.init(x:0,z:0),dimension:0,sections:[:],biomeData:nil)
+        var floor: [Cell:Block] = [:]
+        for x in 0..<16 {for z in 0..<16 {floor[Cell(x:x,y:0,z:z)] = Block(name:x == 5 ? "water" : "stone")}}
+        floor[Cell(x:7,y:1,z:5)] = Block(name:"stone")
+        floor[Cell(x:9,y:0,z:5)] = Block(name:"stone_slab",states:["top_slot_bit":"0"])
+        support.apply(floor)
+        precondition(support.standing(at:.init(3.5,1,5.5),radius:0.3,height:1.8) != nil)
+        precondition(support.standing(at:.init(5.5,1,5.5),radius:0.3,height:1.8) == nil,"Liquids must never support walking mobs")
+        let waterStop = support.walk(from:.init(3.5,1,5.5),to:.init(8.5,1,5.5),radius:0.3,height:1.8)
+        precondition(waterStop.x<5,"A swept walk must stop before a water gap")
+        precondition(support.standing(at:.init(7.5,1,5.5),radius:0.3,height:1.8)?.y == 2)
+        precondition(support.standing(at:.init(9.5,1,5.5),radius:0.3,height:1.8)?.y == 0.5)
+        support.apply([Cell(x:3,y:1,z:5):Block(name:"water")])
+        precondition(support.standing(at:.init(3.5,1,5.5),radius:0.3,height:0.3) == nil)
+        precondition(support.standing(at:.init(3.5,1,5.5),radius:0.3,height:0.3,water:true) != nil,"Aquatic bottom walking needs explicit permission")
+        support.apply([Cell(x:2,y:1,z:2):Block(name:"pointed_dripstone")])
+        precondition(support.vacant(.init(2.1,1,2.1),radius:0.1) && !support.vacant(.init(2.5,1,2.5),radius:0.1))
+        for name in ["dead_bush","deadbush","reeds","sugar_cane","short_dry_grass","tall_dry_grass","bush","firefly_bush"] {
+            precondition(Block(name:name).passable && !Block(name:name).opaque)
         }
         precondition(Crowd.attention(.villager) == 0.4 && Crowd.attention(.cow) == 0.1)
         func status(_ progress: Double?, state: String = "busy") -> Status {
@@ -163,26 +219,31 @@ struct LauncherChecks {
                                         visible:disabled != 2,playing:disabled == 3))
         }
         var shortcut = ShortcutHint()
-        shortcut.focus(at:10)
-        precondition(shortcut.showing && shortcut.delay(at:10) == 60)
-        shortcut.advance(at:69)
+        precondition(!shortcut.showing && !shortcut.occupied)
+        shortcut.show(at:10)
+        precondition(shortcut.showing && shortcut.occupied && shortcut.delay(at:10) == 4)
+        shortcut.advance(at:13.9)
         precondition(shortcut.showing)
-        shortcut.advance(at:70)
-        precondition(!shortcut.showing && shortcut.delay(at:70) == 70)
-        shortcut.focus(at:90)
-        shortcut.advance(at:159)
-        precondition(!shortcut.showing)
-        shortcut.advance(at:160)
-        precondition(shortcut.showing && shortcut.delay(at:160) == 60)
-        shortcut.focus(at:190)
-        precondition(shortcut.delay(at:190) == 30)
-        shortcut.focus(at:230)
-        precondition(!shortcut.showing && shortcut.delay(at:230) == 70)
+        shortcut.advance(at:14)
+        precondition(!shortcut.showing && shortcut.occupied)
+        shortcut.advance(at:14.39)
+        precondition(shortcut.occupied)
+        shortcut.advance(at:14.4)
+        precondition(!shortcut.occupied)
         shortcut.advance(at:300)
-        shortcut.dismiss(at:305)
-        precondition(!shortcut.showing && shortcut.delay(at:305) == 70)
-        shortcut.show(at:310)
-        precondition(shortcut.showing && shortcut.delay(at:310) == 60)
+        precondition(!shortcut.showing && !shortcut.occupied,"Arrivals must never repeat on an idle timer")
+        shortcut.show(at:310); shortcut.show(at:312)
+        shortcut.advance(at:314)
+        precondition(shortcut.showing && shortcut.generation == 3)
+        let doll = Skin.View(), avatar = SCNNode()
+        for name in ["leftleg","rightleg","leftarm","rightarm","cape"] { let bone = SCNNode(); bone.name = name; avatar.addChildNode(bone) }
+        doll.install(avatar); doll.active = true
+        doll.pose(.init(0,0,0),yaw:0,at:1); doll.pose(.init(0.2,0,0),yaw:0.1,at:1.1)
+        let left = avatar.childNode(withName:"leftleg",recursively:false)!, right = avatar.childNode(withName:"rightleg",recursively:false)!, cloth = avatar.childNode(withName:"cape",recursively:false)!
+        precondition(abs(left.eulerAngles.x)>0.1 && abs(left.eulerAngles.x+right.eulerAngles.x)<0.0001 && cloth.eulerAngles.x < -0.2)
+        doll.pose(.init(0.2,0,0),yaw:0.1,at:1.2)
+        precondition(left.eulerAngles.x == 0 && abs(cloth.eulerAngles.x+0.12)<0.0001)
+        doll.dispose()
         let flying = FlightView(frame:.init(x:0,y:0,width:320,height:200))
         let flightScene = SCNScene(), eye = SCNNode()
         eye.camera = SCNCamera(); eye.position = .init(0,10,0)
@@ -591,6 +652,27 @@ struct LauncherChecks {
         try Data([9]).write(to:pack.appendingPathComponent("folder/a.png"))
         let fallback = try art.file("folder/a.png")
         precondition(fallback == Data([9]))
+        try write("blocks.json",["fixture_block":["textures":["side":"fixture_side","up":"fixture_top","down":"fixture_side"]]])
+        try write("textures/terrain_texture.json",["texture_data":["fixture_side":["textures":[["path":"textures/entity/fixture"]]],"fixture_top":["textures":"textures/entity/fixture"]]])
+        let newest = fixture.appendingPathComponent("resource_packs/vanilla_1.10")
+        try JSONSerialization.data(withJSONObject:["fixture_block":["sound":"grass"]]).write(to:newest.appendingPathComponent("blocks.json"))
+        let inherited = try Assets(data:fixture).tiles("fixture_block")
+        precondition(inherited.allSatisfy {$0.name == "textures/entity/fixture"},"Sound-only overrides must retain inherited face textures and dictionary-array paths")
+        let geometry = newest.appendingPathComponent("models/entity/fixture_z.geo.json")
+        try FileManager.default.createDirectory(at:geometry.deletingLastPathComponent(),withIntermediateDirectories:true)
+        try JSONSerialization.data(withJSONObject:["geometry.fixture":["texturewidth":2,"textureheight":2,"bones":[["name":"body","cubes":[["origin":[0,0,0],"size":[16,1,1],"uv":[0,0]]]]]]]).write(to:geometry)
+        let modern = try Assets(data:fixture).actor("fixture")
+        precondition(abs(modern.boundingBox.max.x-modern.boundingBox.min.x-1)<0.001,"Newest geometry must win across different filenames")
+        try FileManager.default.removeItem(at:geometry)
+        var tga = Data([0,0,2,0,0,0,0,0,0,0,0,0,2,0,2,0,32,40])
+        for _ in 0..<4 {tga.append(contentsOf:[56,34,12,255])}
+        let newTexture = newest.appendingPathComponent("textures/entity/fixture.tga")
+        try FileManager.default.createDirectory(at:newTexture.deletingLastPathComponent(),withIntermediateDirectories:true)
+        try tga.write(to:newTexture)
+        let newestImage = try Assets(data:fixture).texture("textures/entity/fixture").diffuse.contents as! CGImage
+        let newestPixel = NSBitmapImageRep(cgImage:newestImage).colorAt(x:0,y:0)!.usingColorSpace(.deviceRGB)!
+        precondition(abs(newestPixel.redComponent-12.0/255)<0.01 && newestPixel.alphaComponent == 1,"New-pack TGA must outrank old-pack PNG")
+        try FileManager.default.removeItem(at:newTexture)
         let actor = try art.actor("fixture")
         let head = actor.childNode(withName:"head",recursively:true)!
         precondition(abs(head.worldPosition.y-2) < 0.0001 && abs(head.worldPosition.z) < 0.0001)
@@ -681,6 +763,20 @@ struct LauncherChecks {
                 precondition(flower.geometry?.sources(for:.vertex).first?.vectorCount == (name == "sunflower" && half == "upper" ? 16 : 8),"Flowers use crossed cutouts, never a cube: \(name)")
             }
         }
+        let grass = try assets.tiles("grass_block"), pathTiles = try assets.tiles("dirt_path")
+        let side = NSBitmapImageRep(cgImage:grass[0].diffuse.contents as! CGImage)
+        for x in 0..<side.pixelsWide {for y in 0..<side.pixelsHigh {precondition(side.colorAt(x:x,y:y)!.alphaComponent == 1,"Grass colour masks must not create transparent dirt")}}
+        precondition(grass[0].name == "textures/blocks/grass_side" && pathTiles[4].name == "textures/blocks/grass_path_top")
+        for name in ["deadbush","dead_bush","reeds","sugar_cane","short_dry_grass","tall_dry_grass","pointed_dripstone","cave_vines"] {
+            let plant = try Structures.volume(name,source:["size":[1,1,1],"palette":[["Name":"minecraft:"+name]],"blocks":[["pos":[0,0,0],"state":0]]],assets:assets)
+            precondition(plant.geometry?.sources(for:.vertex).first?.vectorCount == 8)
+        }
+        let fieldChart = Chart(), fieldView = FlightView()
+        let field = Expedition.Coordinator(chart:fieldChart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
+        field.view = fieldView; field.initial = false; field.streaming = false; field.radius = 512; field.world = .overworld
+        field.updateRegion(at:.init(0,100,0))
+        precondition(field.radius == 512 && field.wanted.count == 33*33+17*8,"A 512-chunk target must keep its working queue bounded without changing the requested radius")
+        field.dispose()
         if let path = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_WORLD"] {
             let database = try Database(URL(fileURLWithPath:path)), chart = Chart(), view = FlightView(frame:NSRect(x:0,y:0,width:1040,height:760))
             let coordinator = Expedition.Coordinator(chart:chart,assets:assets,root:URL(fileURLWithPath:"/nonexistent-minecraft-fixture"))
@@ -751,6 +847,7 @@ struct LauncherChecks {
             let point = head.presentation.worldPosition
             crowd.advance(1.0/30,data:terrain,observer:.init(point.x+8,point.y+1,point.z+4))
             precondition(abs(head.eulerAngles.y-original.y)+abs(head.eulerAngles.x-original.x)>0.0001,"An attentive resident must turn its head towards the observer")
+            precondition(head.eulerAngles.x>original.x,"Looking up must pitch the imported head towards an observer above it")
             crowd.advance(1.0/30,data:terrain,visible:{_ in false})
             precondition(crowd.residents.allSatisfy {$0.actor.isHidden},"Residents wait for their terrain mesh to become visible")
             crowd.advance(1.0/30,data:terrain,visible:{_ in true})

@@ -148,11 +148,13 @@ struct Block: Hashable, Codable {
         ["short_grass","tall_grass","tallgrass","fern","large_fern","dead_bush","deadbush","brown_mushroom","red_mushroom","cobweb","web",
          "dandelion","poppy","blue_orchid","allium","azure_bluet","oxeye_daisy","cornflower","lily_of_the_valley","wither_rose",
          "sunflower","lilac","rose_bush","peony","torchflower","pitcher_plant","open_eyeblossom","closed_eyeblossom"].contains(name)
+            || ["reeds","sugar_cane","seagrass","tall_seagrass","kelp","kelp_plant","crimson_roots","warped_roots","nether_sprouts","pink_petals","wildflowers","leaf_litter","short_dry_grass","tall_dry_grass","bush","firefly_bush"].contains(name)
+            || ["cave_vines","cave_vines_body_with_berries","cave_vines_head_with_berries","weeping_vines","twisting_vines","glow_lichen"].contains(name)
             || name.hasSuffix("_flower") || name.hasSuffix("_sapling") || name.hasSuffix("_tulip")
     }
 
     var opaque: Bool {
-        !passable && !["stairs","slab","pane","fence","wall","leaves","glass","bed","plate","carpet","candle","lantern","bars","banner","bell","brewing","chest","scaffolding","chain"].contains(where:model.contains)
+        !passable && model != "pointed_dripstone" && !["stairs","slab","pane","fence","wall","leaves","glass","bed","plate","carpet","candle","lantern","bars","banner","bell","brewing","chest","scaffolding","chain"].contains(where:model.contains)
     }
 }
 
@@ -325,6 +327,10 @@ struct WorldData {
                 for y in Int(floor(feet.y+epsilon))...Int(floor(feet.y+height-epsilon)) {
                     guard let block = block(x,y,z), !block.passable else { continue }
                     let p = block.properties, name = block.model
+                    if name == "pointed_dripstone" {
+                        if feet.x+radius<=Double(x)+0.375 || feet.x-radius>=Double(x)+0.625 || feet.z+radius<=Double(z)+0.375 || feet.z-radius>=Double(z)+0.625 {continue}
+                        return false
+                    }
                     if name == "chain" {
                         let axis = p["axis"] ?? "y"
                         let low = SCNVector3(Double(x)+(axis == "x" ? 0 : 0.40625),Double(y)+(axis == "y" ? 0 : 0.40625),Double(z)+(axis == "z" ? 0 : 0.40625))
@@ -368,9 +374,73 @@ struct WorldData {
         return point
     }
 
+    func medium(at point: SCNVector3) -> String? {
+        let x = Int(floor(point.x)), y = Int(floor(point.y)), z = Int(floor(point.z))
+        for layer in 0...1 {
+            if let cell = block(x,y,z,layer:layer), cell.fluid {return cell.name.contains("lava") ? "lava" : "water"}
+        }
+        return nil
+    }
+
+    func immersed(_ feet: SCNVector3, radius: Double, height: Double, in medium: String) -> Bool {
+        for x in [-radius*0.85,radius*0.85] {for z in [-radius*0.85,radius*0.85] {for y in [0.05,height*0.8] {
+            if self.medium(at:.init(feet.x+x,feet.y+y,feet.z+z)) != medium {return false}
+        } } }
+        return vacant(feet,radius:radius,height:height)
+    }
+
+    // Support is separate from camera occupancy: passable liquids are never generic ground
+    func standing(at feet: SCNVector3, radius: Double, height: Double, lava: Bool = false, water: Bool = false) -> SCNVector3? {
+        var levels = Set<Double>()
+        for x in [feet.x-radius*0.8,feet.x,feet.x+radius*0.8] {for z in [feet.z-radius*0.8,feet.z,feet.z+radius*0.8] {
+            for y in stride(from:Int(floor(feet.y+1)),through:Int(floor(feet.y-2)),by:-1) {
+                guard let cell = block(Int(floor(x)),y,Int(floor(z))) else {continue}
+                if cell.fluid {
+                    if lava && cell.name.contains("lava") {levels.insert(Double(y)+0.875)}
+                    continue
+                }
+                guard !cell.passable else {continue}
+                let p = cell.properties, name = cell.model
+                var top = 1.0
+                if name == "farmland" || name.contains("_path") {top = 0.9375}
+                if name.hasSuffix("_slab"), p["type"] != "double", p["type"] != "top" {top = 0.5}
+                if name.hasSuffix("_stairs"), p["half"] != "top" {levels.insert(Double(y)+0.5)}
+                if name.contains("carpet") {top = 0.0625}
+                levels.insert(Double(y)+top)
+            }
+        } }
+        for y in levels.sorted(by:>) where y<=feet.y+1.001 && y>=feet.y-1.001 {
+            let point = SCNVector3(feet.x,y,feet.z)
+            guard vacant(point,radius:radius,height:height) else {continue}
+            let liquid = medium(at:.init(feet.x,y+0.05,feet.z))
+            if liquid == "water" && !water || liquid == "lava" && !lava {continue}
+            var supported = true
+            for dx in [-radius*0.8,0,radius*0.8] {for dz in [-radius*0.8,0,radius*0.8] {
+                let probe = SCNVector3(point.x+dx,point.y-0.03,point.z+dz)
+                if let liquid = medium(at:probe) {
+                    if !lava || liquid != "lava" {supported = false}
+                } else if vacant(probe,radius:0.01,height:0.02) {supported = false}
+            } }
+            if supported {return point}
+        }
+        return nil
+    }
+
+    func walk(from start: SCNVector3, to end: SCNVector3, radius: Double, height: Double, lava: Bool = false, water: Bool = false) -> SCNVector3 {
+        let distance = hypot(end.x-start.x,end.z-start.z), count = max(1,Int(ceil(distance/0.2)))
+        var point = start
+        for _ in 0..<count {
+            let candidate = SCNVector3(point.x+(end.x-start.x)/Double(count),point.y,point.z+(end.z-start.z)/Double(count))
+            guard let supported = standing(at:candidate,radius:radius,height:height,lava:lava,water:water),
+                  vacant(.init(point.x,max(point.y,supported.y),point.z),radius:radius,height:height) else {break}
+            point = supported
+        }
+        return point
+    }
+
     func node(_ key: Chunk, assets: Assets) throws -> SCNNode {
         guard chunks[key] != nil else { throw ChunkError.missing }
-        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], list: [[String:Any]] = []
+        var palette: [[String:Any]] = [], indices: [Block:Int] = [:], cells: [Int:Int] = [:]
         var levels: [Chunk:[Int]] = [:]
         for dx in -1...1 { for dz in -1...1 {
             let nearby = Chunk(x:key.x+dx,z:key.z+dz)
@@ -389,11 +459,11 @@ struct WorldData {
                         index = palette.count; indices[block] = index
                         palette.append(["Name":"minecraft:"+block.model,"Properties":block.properties])
                     }
-                    list.append(["pos":[dx+1,y+64,dz+1],"state":index])
+                    cells[dx+1+18*(dz+1+18*(y+64))] = index
                 }
             }
         } }
-        let node = try Structures.volume("chunk-\(key.x)-\(key.z)",source:["size":[18,384,18],"palette":palette,"blocks":list],assets:assets,interior:true)
+        let node = try Structures.volume("chunk-\(key.x)-\(key.z)",size:[18,384,18],palette:palette,blocks:cells,assets:assets,interior:true)
         node.position = .init(Double(key.x*16)-1,-64,Double(key.z*16)-1)
         return node
     }

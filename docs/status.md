@@ -12,6 +12,24 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
+### Build 33 candidate
+
+The 0.17.0/build 33 local candidate is prepared in `outputs/0.17.0-build33` beside the checkout
+It completes the project-owned Python-to-Rust migration, merges key bindings into Keyboard & Mouse and keeps routine scenery preparation out of the interface
+Arrival achievements fade before the movement-driven character/cape returns
+Biome titles are 1.25 times the corner-credit type, without a realm separator, and scroll automatically when needed
+
+Both complete portal stories use persisted seeded layouts, existing clear cave connections where available and irregular cavern additions
+The real-world sweep covers every route after furnishing; Enter Look around keeps those ruins explorable, while Space/Skip uses the portal handoff
+Mob support and medium checks prevent generic liquid walking, facing/gait use actual travel, and flight timings derive from installed definitions
+Original asset precedence, grass masks, shortened-block UVs and plant cutouts are covered by native fixtures
+
+The generated dimensions accept 8–512 chunks with full voxel detail nearby and progressive vertical-band detail farther away
+The custom Sift and historical Far Lands retain their earlier renderer
+Full native game-AI parity, maximum-distance preparation/memory and live capture/transition/cape checks remain outstanding
+Build 32 remains installed until Minecraft and Minecraft Launcher have been quit normally
+See the [build 33 evidence](test.md#build-33-scenery-and-journeys) for the actual checks and measurement limits
+
 ### Build 32 scenery correction
 
 Build 32 fixes duplicate world-generation probes and waits through brief generator-lock contention
@@ -19,7 +37,8 @@ The launcher loads nearby chunks in bounded batches and centres its scenery prog
 Common flowers are rendered as cutouts with their original textures
 The isolated official generator completes and saves a 330-new-chunk regression request successfully
 The candidate app passes strict signatures and all 1,583 resource checks with the authorised helper unchanged
-Build 31 remains installed while the required normal quit is pending
+Build 32 is installed after normal-quit confirmation, with the original build 31 preserved for recovery
+Live inspection confirms visible terrain and nonzero camera coordinates in Look around
 See [build 32 evidence](test.md#scenery-loading-correction-in-build-32) for actual checks and outstanding verification
 
 ### Build 31

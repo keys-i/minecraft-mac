@@ -5,6 +5,34 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 33 scenery and journeys
+
+October 21, 2026, on the same M3 Pro and macOS 27.0.1
+The Rust suite passes 23 unit checks and four integration checks, with rustfmt and Clippy warnings denied
+The native fixtures pass layout persistence, continuously swept routes, fallback-house reachability, liquid/support separation, partial-block clearance, imported head pitch, gait phases and cancelled distant-page recovery
+The installed-art sweep covers 86 species, heroes, 43 authored areas and three legacy passages, plus the new cave/stronghold meshes and original generated first-world installation
+
+An isolated official-server request saves all 403 chunks used by the longer real-world route check
+The independent LevelDB version-record inspection finds zero missing chunks
+Both complete routes also pass body-clearance sampling against the decoded real world after all scenery edits, including a reachable house chest for the End approach
+The initial real-world check caught a grass block between sparse route points; the final builder clears the entire swept camera envelope after furnishing
+Village, irregular cavern/city ruins and the grand End room have been rendered with the installed artwork and visually inspected
+
+The earlier paired 25-chunk meshing comparison measured village 1.4445 → 1.1590 seconds, the preceding Nether-route scene 1.5495 → 1.1957 seconds and End-route scene 1.4170 → 1.1526 seconds
+Those route images precede the natural-layout rewrite, so their timings are not comparisons of the final journey geometry
+The final no-compiler/no-generator 25-chunk sample takes 1.262 seconds for the village, 1.254 seconds for the new cavern and 1.226 seconds for the new End room
+At 1280 × 900 with 4× MSAA, ten sampled frame snapshots have p95 wall times of 19.66, 23.93 and 25.29 ms respectively
+The combined run peaks at 489,947,136 resident bytes; it includes 403 decoded source chunks and three sequential scenes, so it is not an apples-to-apples comparison with the earlier 100-chunk run
+Short offscreen snapshots are diagnostics, not proof of sustained interactive 60 FPS
+
+Behaviour references use effective installed Bedrock 1.26.52.3 entity and animation definitions, including bat/bee/ghast goals, cod's fish identifier, amphibious pose states and drowned's calm bottom walking
+The read-only behaviour audit did not launch or decompile the full game
+The [Minecraft Wiki chunk reference](https://minecraft.wiki/w/Chunk) corroborates 16 × 16 columns and separate simulation/rendering coverage; its [drowned reference](https://minecraft.wiki/w/Drowned#Swimming) distinguishes swimming pursuit from supported movement
+Native steering, speed conversion, combat and complete game-AI parity remain unverified
+
+A 512-chunk request is tested for bounded near/ring scheduling and LOD selection, not a completed million-chunk preparation or sustained maximum-distance memory benchmark
+Final live keyboard/capture, portal-skip, achievement and cape checks require opening the completed candidate after the installed app has been quit normally
+
 ## Scenery loading correction in build 32
 
 October 20, 2026, on the same M3 Pro and macOS 27.0.1
@@ -26,7 +54,10 @@ Unfinished mesh boundaries limit the fog horizon and captured movement until nei
 The first-frame fixture checks a nine-chunk scene inside a requested 289-chunk area with animation stopped; its screenshot was inspected
 The build 32 candidate passes strict deep signatures and all 1,583 resource digests
 Its authorised helper is byte-identical to build 31, with SHA-256 `706bba4f8cb08d90b080b0949dfd133e0a47f1122ee90693a54b058a05a280d6`
-Installation and live visual verification are awaiting the required normal quit
+After the user's normal-quit confirmation, build 32 is installed and passes the same payload/signature checks
+Build 31 is preserved in the build 32 output's recovery directory
+Computer Use confirms the centred panel and visible terrain in both the menu and Look around; the map reports 207, 74, 763 after movement
+The installed scenery manifest grows beyond the original nine chunks, reaching 99 during this check
 
 ## Rust and seeded expeditions in build 31
 

@@ -15,16 +15,28 @@ enum Species: String, CaseIterable {
     case caveSpider, evoker, elderGuardian, pufferfish, stray
     case donkey, mule, phantom, tadpole, traderLlama, trader, wither, zoglin, zombieHorse, zombieVillager, sulfurCube
 
-    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast, .phantom, .wither].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .drowned, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus, .tadpole].contains(self) }
+    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .happyGhast, .phantom, .wither].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus, .tadpole].contains(self) }
+    var amphibious: Bool { [.axolotl,.turtle,.drowned,.frog].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
 // Imported rigs face actor +Z; replace the full Euler vector to avoid decomposed half-turns
 final class Mobs {
+    struct Motion {
+        var speed: Double
+        var width: Double
+        var height: Double
+        var waterSpeed = 0.8
+        var interval = 2.0...7.0
+        var horizontal = 10.0
+        var vertical = 4.0
+        var offset = 0.0
+        var reselect = false
+    }
     let assets: Assets
     private var models: [String: SCNNode] = [:]
-    private var locomotions: [Species:(speed:Double,width:Double,height:Double)] = [:]
+    private var locomotions: [Species:Motion] = [:]
     private var classics: [Species:SCNNode] = [:]
 
     init(assets: Assets) { self.assets = assets }
@@ -515,7 +527,7 @@ final class Mobs {
             .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish",.villager:"villager_v2",
             .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast",
             .caveSpider:"cave_spider",.evoker:"evocation_illager",.elderGuardian:"elder_guardian",.traderLlama:"trader_llama",
-            .trader:"wandering_trader",.zombieHorse:"zombie_horse",.zombieVillager:"zombie_villager_v2",.sulfurCube:"sulfur_cube"]
+            .trader:"wandering_trader",.zombieHorse:"zombie_horse",.zombieVillager:"zombie_villager_v2",.sulfurCube:"sulfur_cube",.cod:"fish"]
         let path = "entities/"+(aliases[species] ?? species.rawValue)+".json"
         let data = try assets.file(path,behaviour:true)
         guard data.count <= 2*1024*1024,
@@ -689,12 +701,12 @@ final class Mobs {
         }),forKey:"oxidation")
     }
 
-    func locomotion(_ species: Species) throws -> (speed:Double,width:Double,height:Double) {
+    func locomotion(_ species: Species) throws -> Motion {
         if let found = locomotions[species] { return found }
         let entity: [String:Any]
         do { entity = try self.entity(species) }
         catch AssetError.missing {
-            let fallback = (speed:0.8,width:0.6,height:1.8)
+            let fallback = Motion(speed:0.8,width:0.6,height:1.8)
             locomotions[species] = fallback
             return fallback
         }
@@ -731,9 +743,56 @@ final class Mobs {
         guard (0...16).contains(movement), (0...16).contains(multiplier),
               (0.01...16).contains(width), (0.01...16).contains(height) else { throw AssetError.model }
         // shortcut: the bat's 20-tick visual speed is approximate; float_wander does not publish a world-speed conversion
-        let result = (speed:min(2,movement*multiplier*(species == .bat ? 20 : 4)),width:width,height:height)
+        var result = Motion(speed:min(2,movement*multiplier*(species == .bat ? 20 : 4)),width:width,height:height)
+        let underwater = try number("minecraft:underwater_movement","value",fallback:movement)
+        guard (0...16).contains(underwater) else {throw AssetError.model}
+        result.waterSpeed = min(2,underwater*4)
+        let floating = "minecraft:behavior.float_wander", hovering = "minecraft:behavior.random_hover"
+        if let raw = components[floating] {
+            guard let goal = raw as? [String:Any] else {throw AssetError.model}
+            if let raw = goal["float_duration"] {
+                guard let range = raw as? [NSNumber], range.count == 2,
+                      range.allSatisfy({CFGetTypeID($0) != CFBooleanGetTypeID() && $0.doubleValue.isFinite && (0.05...60).contains($0.doubleValue)}),
+                      range[1].doubleValue>=range[0].doubleValue else {throw AssetError.model}
+                result.interval = range[0].doubleValue...range[1].doubleValue
+            }
+            result.horizontal = try number(floating,"xz_dist",fallback:result.horizontal)
+            result.vertical = try number(floating,"y_dist",fallback:result.vertical)
+            result.offset = try number(floating,"y_offset",fallback:result.offset)
+            if let raw = goal["random_reselect"] {
+                guard let value = raw as? NSNumber, CFGetTypeID(value) == CFBooleanGetTypeID() else {throw AssetError.model}
+                result.reselect = value.boolValue
+            }
+        }
+        if components[hovering] != nil {
+            let interval = try number(hovering,"interval",fallback:1)
+            guard (0.05...60).contains(interval) else {throw AssetError.model}
+            result.interval = interval...interval
+            result.horizontal = try number(hovering,"xz_dist",fallback:result.horizontal)
+            result.vertical = try number(hovering,"y_dist",fallback:result.vertical)
+            result.offset = try number(hovering,"y_offset",fallback:result.offset)
+            result.reselect = true
+        }
+        guard (0.1...32).contains(result.horizontal), (0.1...32).contains(result.vertical), abs(result.offset)<=32 else {throw AssetError.model}
         locomotions[species] = result
         return result
+    }
+
+    static func legSign(_ name: String) -> Double {
+        if let number = name.last?.wholeNumberValue {return [0,3].contains(number%4) ? 1 : -1}
+        if let horse = ["legbl":-28.6/45.8,"legbr":28.6/45.8,"legfl":1,"legfr":-1][name] {return horse}
+        let side = name.contains("left") ? 1.0 : -1.0
+        return side * (["hind","back","rear"].contains(where:name.contains) ? -1 : 1)
+    }
+
+    static func pose(_ legs: [(SCNNode,SCNVector3,Double)], species: Species, distance: Double) {
+        for (leg,base,sign) in legs {
+            if [.spider,.caveSpider].contains(species), let index = leg.name?.last?.wholeNumberValue {
+                let phase = Double(index/2)*Double.pi/2, side = index%2 == 0 ? 1.0 : -1
+                leg.eulerAngles = .init(base.x,base.y-side*abs(cos(distance*76.34*Double.pi/180+phase))*22.92*Double.pi/180,
+                    base.z-side*abs(sin(distance*38.17*Double.pi/180+phase))*22.92*Double.pi/180)
+            } else {leg.eulerAngles = .init(base.x+sin(distance*7)*(species == .enderman ? 0.35 : 0.5)*sign,base.y,base.z)}
+        }
     }
 
     // shortcut: original dimensions and calm speed guide scenery routes, use the game engine for full behaviour
@@ -744,14 +803,8 @@ final class Mobs {
         guard motion.speed > 0 else { return }
         Self.face(actor)
         if species == .bat {
-            guard let components = try entity(.bat)["components"] as? [String:Any],
-                  let goal = components["minecraft:behavior.float_wander"] as? [String:Any],
-                  let duration = goal["float_duration"] as? [Double], duration.count == 2,
-                  duration.allSatisfy({ $0.isFinite && (0.05...60).contains($0) }), duration[1]>=duration[0],
-                  let horizontal = goal["xz_dist"] as? Double, horizontal.isFinite, (0.1...32).contains(horizontal),
-                  let vertical = goal["y_dist"] as? Double, vertical.isFinite, (0.1...32).contains(vertical),
-                  let offset = goal["y_offset"] as? Double, offset.isFinite, abs(offset)<=32,
-                  let reselect = goal["random_reselect"] as? Bool else { throw AssetError.model }
+            let duration = [motion.interval.lowerBound,motion.interval.upperBound], horizontal = motion.horizontal
+            let vertical = motion.vertical, offset = motion.offset, reselect = motion.reselect
             var target = origin, previous = 0.0, elapsed = 0.0, nextChoice = 0.0, choice = 0
             actor.runAction(.repeatForever(.customAction(duration:60) { [weak root] node,time in
                 guard let root else { return }
@@ -785,14 +838,7 @@ final class Mobs {
         model.enumerateChildNodes { node,_ in
             let name = node.name?.lowercased() ?? ""
             if name.contains("leg") && !mounted.contains(ObjectIdentifier(node)) {
-                let sign: Double
-                if [.horse,.donkey,.mule,.zombieHorse].contains(species) {
-                    sign = ["legbl":-28.6/45.8,"legbr":28.6/45.8,"legfl":1,"legfr":-1][name] ?? 0
-                } else if let number = name.last?.wholeNumberValue { sign = [0,3].contains(number%4) ? 1 : -1 }
-                else {
-                    let side = name.contains("left") ? 1.0 : -1
-                    sign = side * (["hind","back","rear"].contains(where:name.contains) ? -1 : 1)
-                }
+                let sign = Self.legSign(name)
                 legs.append((node,node.eulerAngles,sign))
             }
             if name == "head" && ![.horse,.donkey,.mule,.zombieHorse].contains(species) {
@@ -823,13 +869,7 @@ final class Mobs {
                     node.eulerAngles = .init(0,heading,0)
                     node.position = .init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
                     let stride = sin([.horse,.donkey,.mule,.zombieHorse].contains(species) ? (distance+length*t)*7 : Double(time)*7)
-                    for (leg,base,sign) in legs {
-                        if [.spider,.caveSpider].contains(species), let index = leg.name?.last?.wholeNumberValue {
-                            let moved = distance+length*t, phase = Double(index/2)*Double.pi/2, side = index%2 == 0 ? 1.0 : -1
-                            leg.eulerAngles = .init(base.x,base.y-side*abs(cos(moved*76.34*Double.pi/180+phase))*22.92*Double.pi/180,
-                                base.z-side*abs(sin(moved*38.17*Double.pi/180+phase))*22.92*Double.pi/180)
-                        } else { leg.eulerAngles = .init(base.x+stride*(species == .enderman ? 0.35 : 0.5)*sign,base.y,base.z) }
-                    }
+                    Self.pose(legs,species:species,distance:distance+length*t)
                     if hopping { node.position.y += abs(stride)*(species == .slime || species == .magma ? 0.65 : 0.3) }
                     if species.swimming || species.flying { node.position.y += sin(Double(time)*2+Double(seed))*0.12 }
                 }
@@ -861,7 +901,7 @@ final class Mobs {
                 if ground >= min(start.y,end.y)-0.5 { return false }
             } else if !species.flying && species != .strider {
                 let bridge = [.witherSkeleton].contains(species)
-                if terrain.biome.passage == nil && ground < 0.9 || !bridge && abs(ground-start.y)>1 { return false }
+                if terrain.biome.passage == nil && ground < 0.9 && species != .drowned || !bridge && abs(ground-start.y)>1 { return false }
             }
         }
         return true

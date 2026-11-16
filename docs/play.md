@@ -52,7 +52,7 @@ not a resumable transfer. Avoid starting multiple copies of the app.
 Look around keeps the pointer captured for camera movement and hides clickable
 menu controls. Press **Escape** to use the menus again
 The pixel minimap sits on the left; **M** shows or hides it
-Use **Settings → Key bindings** to change movement, map, realm and travel keys
+Use **Settings → Keyboard & Mouse** to change movement, map, realm and travel keys
 Conflicting assignments swap, and Escape cancels recording
 
 **Settings → Video → World seed** creates a repeatable launcher landscape after
@@ -64,11 +64,13 @@ These local files stay on your Mac; no default skin is shown as your character
 After Minecraft is installed, click the biome name at the top left to find an
 area. Choose realms with the four inventory slots, keys **1–4**, or the scroll wheel
 Normal realm changes pass through a mine’s Nether portal, a stronghold’s End
-portal or an artistic Sift rift. **Skip journey** goes straight there
+portal or an artistic Sift rift
+The longer cave tours normally take 2–3 minutes; **Space** and **Skip journey** use the destination portal transition
+Entering Look around interrupts the tour and leaves the same caves and ruins explorable
 The main menu groups Play and Settings in the centre, with one corner spyglass
-Settings has Video, Audio, Keyboard & Mouse, Key bindings, Character and Accessibility categories
+Settings has Video, Audio, Keyboard & Mouse, Character and Accessibility categories
 Video controls background animation, automatic touring and chunk distance
-Audio has master volume; Keyboard & Mouse has sensitivity and inverted Y
+Audio has master volume; Keyboard & Mouse has sensitivity, inverted Y and all key bindings
 Each category has its own Reset defaults button
 Choose **Abandoned mineshaft** or **Stronghold · Portal room** in the area picker
 to explore the tunnels, side shafts, libraries and portal room at your own pace
@@ -90,178 +92,15 @@ The minimap appears while Look around is open and leaves with spectator mode
 It shows north, terrain and your coordinates. Its historical Far Lands view is
 marked map-unavailable because that 3D wall has no shared heightmap
 Turning off background animation keeps deliberate flight and its map available
-Settings controls **Render distance** in 16 × 16-block chunks, from 4 to 16
+Settings controls **Render distance** in 16 × 16-block chunks, from 8 to 512
+Nearby terrain keeps full block detail; distant detail is sampled progressively from the same generated chunks
+Large distances need substantial first-time generation and disk space; preparations stay in the background
 Choose **Far Lands** in the Overworld picker to visit a historical recreation;
 choose another area to return. It is not a current Bedrock biome
 The Overworld village includes pigs, horses, baby animals and a crowned
 Technoblade tribute pig with a red cape. The woodland mansion contains a chicken jockey
 Use **⌘L** or **Escape** to return to a hover where you are
 
-The achievement-style shortcut hint stays for one minute, then returns after
-70 uninterrupted seconds of launcher-window focus. Settings and other apps
-restart that wait. Flight replaces it briefly with movement instructions
-Hints stay out of the way during setup, errors and portal journeys
-
-The title uses the installed game’s artwork and yellow splash list, with a
-Mac Edition subtitle. Splash text overlaps the title, as on the game’s menu
-The original splash list keeps its per-letter colours without showing formatting codes
-The lower left credits **@Keys-i**, linking to **keysi.dev**; the lower right shows
-the launcher version. The hotbar has no extra backing strip
-Splash motion follows your scenery and macOS motion settings
-
-**Settings → Master volume** changes original Minecraft menu and game music,
-initially 18%. Set it to zero to mute
-Music pauses when another window/app takes focus, the launcher is hidden or
-Minecraft is running. No music download is added; tracks come from your own
-installed copy, including **Sweden** when available. No **Stockholm** track was
-found in the tested installation
-
-The Overworld follows a twenty-minute day/night cycle with original sun/moon
-art, stars, dusk colours, changing shadows and darker water at night
-Rain or snow follows the biome, with emission suppressed indoors and underwater
-The meadow's four adult villagers visit distinct jobs, gather and return to beds
-at night. Copper golems gradually oxidise; fully oxidised scenery golems stop
-Nether and End lighting stays specific to those realms
-Idle cameras follow a continuous eight-second hovering route instead of
-slowing to a stop at each endpoint
-
-Water combines the installed biome’s colour and opacity with the original atlas alpha
-Lava stays self-lit with its original orange detail. Both advance original frames
-Mob skins use their matching geometry, including current warm/cold variants
-Ambient residents wander, graze, swim or hop with unsynchronised pauses and
-correct diagonal leg timing. This is scenery behaviour rather than complete
-Minecraft combat, breeding or navigation AI
-
-Cherry groves include Toast, a pink sheep and a named rainbow sheep
-A named upside-down chicken, a skeleton horse and a brief custom Herobrine
-cameo are authored scenery surprises. Herobrine is folklore, not a vanilla mob
-`jeb_` changes sheep wool; it does not make cat or wolf collars cycle colours
-Java seasonal chests and Halloween mobs are not claimed as Bedrock features
-
-Eligible pigs, cows, chickens and wolves can use the installation’s older base
-model/skin. The launcher-only nostalgia chance is 10% in daylight, rising to 15%
-at night; deterministic biome/resident seeds choose individuals when a scene
-is built. These are retained legacy assets, not a promise of a named old release
-Modern Minecraft does not have this random historical-mob spawning rule
-
-The background reads art from your installed game. Before installation, the
-poster stays visible. An unsupported art format also falls back to the poster
-and does not prevent setup or Play. Sift scenery does not add a realm to the game
-
-## Understand the Mac prompts
-
-Permission to open a downloaded app and permission to read saved credentials
-are separate. Current builds are ad-hoc signed and not notarized, so they may
-not show the same first-open experience as an identified developer's app.
-Use [Apple's app-opening guidance](https://support.apple.com/en-us/102445) for a
-build whose source you trust. Do not disable Gatekeeper globally.
-
-The account helper may appear as `standalone_helper` and request the
-**Minecraft Bedrock Standalone** Keychain item. **Allow** (or **Allow Once**)
-authorizes one request; **Always Allow** remembers access for that helper.
-Only choose it when you recognize and trust the app. See
-[Apple's Keychain explanation](https://support.apple.com/guide/keychain-access/kyca1243/mac).
-The password requested by macOS unlocks your Keychain; it is not your Microsoft
-password. Never share it in a bug report or with an automated agent.
-
-A repeat launch of the unchanged, authorized build was confirmed prompt-free.
-Changing the helper's ad-hoc signature can request authorization again. A
-promise of zero prompts after every update would be inaccurate.
-
-## Accounts and game features
-
-Use **Minecraft Launcher → Sign Out of Microsoft…** while the game is closed to
-change accounts. Sign-out keeps the game and worlds. The next Play action asks
-for Microsoft sign-in and checks the new account's ownership.
-
-This is a compatibility project, not an official Microsoft Mac edition.
-Local gameplay, a featured-server lobby, and listing joined Realms have been
-observed. Xbox and PS5 friend-world play were also confirmed on the earlier
-standalone stability build; see [the dated evidence](status.md#stability-fixes-and-earlier-gameplay-evidence). Active Realm
-entry, combined native-build multiplayer, and every Marketplace feature remain
-unverified. Keep Xbox permissions and game versions in mind
-when reporting multiplayer issues; do not assume a visible server or Realm list
-proves a successful online session. See [the current evidence](status.md).
-
-## Your files, backups, and updates
-
-In Finder, choose **Go → Go to Folder…** and enter:
-
-```text
-~/Library/Application Support/Bedrock for Mac/
-```
-
-| Folder | Contents |
-| --- | --- |
-| `game` | Downloaded Minecraft program and package metadata |
-| `bottles/Bedrock-Standalone` | Windows environment, game settings, and local worlds |
-| `logs/standalone` | Setup, account, prefix, and game diagnostics |
-| `runtime`, `sources` | Runtime links, helper link, and session records |
-| `downloads` | Locally acquired component downloads, if present |
-
-The data folder retains its earlier name so existing installations keep using the
-same worlds and settings
-
-Worlds are inside the prefix's `drive_c/users/<wine-user>/AppData/Roaming/Minecraft Bedrock/`
-tree, under the account's `games/com.mojang/minecraftWorlds` directory. The Wine
-user and account folder names vary. Do not assume a world is stored in `game/`.
-
-For a backup, quit Minecraft normally, wait for **Play**, and quit the launcher.
-Copy the entire `bottles/Bedrock-Standalone` folder to a dated location outside
-the app's data directory. Keep backups private: they can contain account and
-game settings. A full data-directory backup is useful for troubleshooting but
-does not replace the app bundle or export your macOS Keychain credentials.
-
-To restore on the same Mac and data location, close the game and launcher,
-preserve the current prefix under a
-different name, and copy the backup back to `bottles/Bedrock-Standalone`. Keep
-both copies until you have opened the expected world successfully. Restore and
-world save/reopen are still items in the clean-Mac validation plan; never test
-them on your only copy of a world.
-Moving a prefix to a different Mac/user can leave absolute Wine drive mappings
-pointing at the old location; cross-Mac migration is not a supported automatic
-workflow.
-
-**Minecraft Launcher → Check for Updates…** checks the project's published
-releases and offers the Releases page for manual review. It distinguishes app
-DMGs from source archives and does not replace your installation. Use **Settings…**
-for scenery preferences; game graphics and controls stay in Minecraft's settings
-
-There is no automatic app or game updater. For an app update, back up the prefix,
-close the game and launcher, and replace only the application in Applications.
-The next launch reconnects to the existing data. Keep the previous app until
-the update works; a game or prefix changed by a newer version may need its
-matching backup when rolling back. Existing game files are reused, so replacing
-the app does not itself download a new Minecraft version.
-
-To uninstall the app while retaining saves, close both programs and move the
-application to Trash. Its data directory and Keychain item remain. To reclaim
-game storage, first back up worlds, then deliberately remove only the data you
-intend to discard. Sign out through the app before removing it if you also want
-to clear its saved user session. No automatic CrossOver world migration exists.
-
-## Troubleshooting
-
-| Symptom | What to do |
-| --- | --- |
-| Rosetta or macOS requirement error | Check the prerequisites above. Moving the app cannot change its minimum OS. |
-| Microsoft window closed or sign-in timed out | Choose **Try Again** and complete sign-in. Returning-account waits are bounded to 15 minutes; initial download sessions to two hours. |
-| Keychain access denied | Retry and handle the macOS prompt yourself. Do not delete credentials as a first troubleshooting step. |
-| Keychain prompt on every launch | Check whether you chose **Allow** instead of **Always Allow**, or rebuilt/replaced the helper. Report prompts from an unchanged build separately. |
-| Purchase or content-license error | Verify the signed-in account owns Minecraft for Windows. Sign out and switch accounts if needed. |
-| Game/component connection error | Check connectivity, then retry. Report the exact stage if it persists; a successful Microsoft login does not prove the download service is reachable. |
-| Incomplete existing game | Close the app, preserve `game` as a separately named folder in the data directory, then retry. Never remove `bottles` to fix a download. |
-| Another setup/helper is running | Return to the active launcher, finish or cancel setup, or quit Minecraft normally. Do not delete `/tmp/xodus.sock` or kill every Wine process. If the conflict persists after a normal restart, report it. |
-| Minecraft exits or shows a blank window | Keep your saves. Record the game version and whether the failure followed a runtime/app update; include a short reviewed error excerpt. |
-
-Use **Help → Open Setup Logs** (or **Open Setup Log** on an error screen).
-`onboarding.log` covers the overall setup; `account.log` covers the helper;
-`prefix-setup.log` covers Wine preparation; `minecraft-*.log` covers game sessions.
-Logs are local and are not automatically submitted as bug reports.
-
-Report a reproducible problem with the
-[GitHub bug template](https://github.com/keys-i/minecraft-mac/issues/new?template=bug_report.yml).
-Include macOS version, chip, app/source revision, game version, last visible
-stage, and whether this was a first install, retry, or update. Review excerpts
-before posting: omit passwords, tokens, email addresses, signed URLs, and full
-unreviewed logs. Use [SECURITY.md](../.github/SECURITY.md) for security reports.
+An achievement appears when a new biome or realm is reached, stays for four seconds and fades away
+The paper doll stays hidden until that fade ends, then follows your movement with animated limbs and cape
+Scenery preparation has no frontend progress bar; a centred error offers Try again if preparation fails

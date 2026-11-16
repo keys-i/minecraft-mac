@@ -1,4 +1,4 @@
-use crate::{atomic, digest, event, hex, read_json};
+use crate::{atomic, atomic_bytes, digest, event, hex, read_json};
 use anyhow::{Context, Result, ensure};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,8 @@ struct Request {
     dimension: u8,
     chunks: Vec<[i32; 2]>,
     #[serde(default)]
+    refresh: Vec<[i32; 2]>,
+    #[serde(default)]
     locate: Vec<Locator>,
 }
 
@@ -55,8 +57,56 @@ struct Destination {
 struct Manifest {
     version: String,
     seed: String,
+    #[serde(default)]
     chunks: BTreeSet<(u8, i32, i32)>,
     destinations: Vec<Destination>,
+}
+
+struct Cache {
+    folder: PathBuf,
+    regions: BTreeMap<(u8, i32, i32), BTreeSet<[i32; 2]>>,
+}
+
+impl Cache {
+    fn region(&mut self, dimension: u8, x: i32, z: i32) -> Result<&mut BTreeSet<[i32; 2]>> {
+        ensure!(
+            dimension < 3 && x.unsigned_abs() <= 1_874_998 && z.unsigned_abs() <= 1_874_998,
+            "Invalid cached chunk"
+        );
+        let key = (dimension, x.div_euclid(32), z.div_euclid(32));
+        if !self.regions.contains_key(&key) {
+            let path = self
+                .folder
+                .join(format!("{}-{}-{}.json", key.0, key.1, key.2));
+            ensure!(!path.is_symlink(), "A link blocks the scenery chunk index");
+            let points: BTreeSet<[i32; 2]> = if path.exists() {
+                read_json(&path, 64 * 1024)?
+            } else {
+                BTreeSet::new()
+            };
+            ensure!(
+                points.len() <= 1024
+                    && points
+                        .iter()
+                        .all(|[x, z]| x.div_euclid(32) == key.1 && z.div_euclid(32) == key.2),
+                "Invalid scenery chunk index"
+            );
+            self.regions.insert(key, points);
+        }
+        self.regions.get_mut(&key).context("Missing scenery region")
+    }
+
+    fn save(&self) -> Result<()> {
+        for (key, points) in &self.regions {
+            atomic(
+                &self
+                    .folder
+                    .join(format!("{}-{}-{}.json", key.0, key.1, key.2)),
+                points,
+            )?;
+        }
+        Ok(())
+    }
 }
 
 struct Paths {
@@ -138,6 +188,14 @@ impl Request {
         }
         self.chunks.sort_unstable();
         self.chunks.dedup();
+        ensure!(
+            self.refresh.len() <= self.chunks.len()
+                && self
+                    .refresh
+                    .iter()
+                    .all(|point| self.chunks.binary_search(point).is_ok()),
+            "Invalid scenery repair region"
+        );
         Ok(())
     }
 }
@@ -340,26 +398,33 @@ struct Checks {
 }
 
 impl Checks {
-    fn commands(&mut self, edits: &[Vec<String>]) -> Vec<String> {
+    fn commands(&mut self, count: usize) -> Vec<String> {
         if !self.pending.is_empty() {
             return Vec::new();
         }
-        self.pending = (0..edits.len())
-            .filter(|index| !self.done.contains(index))
-            .take(16)
-            .collect();
-        if self.pending.is_empty() {
+        let Some(first) = (0..count).find(|index| !self.done.contains(index)) else {
             return Vec::new();
-        }
-        self.pending
-            .iter()
-            .flat_map(|&index| edits[index].iter().cloned())
-            .chain(["list".into()])
-            .collect()
+        };
+        let group = first / 16;
+        self.pending = (group * 16..count.min((group + 1) * 16)).collect();
+        vec![
+            format!("function scenery/batch{group}"),
+            format!(
+                "scoreboard players test progress scenery {} {}",
+                self.pending.len(),
+                self.pending.len()
+            ),
+            "list".into(),
+        ]
     }
 
-    fn found(&mut self, index: usize) -> bool {
-        self.pending.contains(&index) && self.done.insert(index)
+    fn completed(&mut self, count: usize) -> bool {
+        if self.pending.is_empty() || count != self.pending.len() {
+            return false;
+        }
+        let before = self.done.len();
+        self.done.extend(&self.pending);
+        self.done.len() != before
     }
 
     fn finish(&mut self, text: &str) {
@@ -368,6 +433,68 @@ impl Checks {
             self.pending.clear();
         }
     }
+}
+
+fn functions(folder: &Path, dimension: u8, chunks: &[[i32; 2]]) -> Result<()> {
+    let mut pack = folder.to_path_buf();
+    for component in ["behavior_packs", "scenery"] {
+        pack.push(component);
+        private_directory(&pack)?;
+    }
+    atomic_bytes(
+        &pack.join("manifest.json"),
+        &serde_json::to_vec(
+            &json!({"format_version":2,"header":{"name":"Launcher scenery checks","description":"Private generation checks","uuid":"a2958bc5-2abc-4bdb-9b90-a372808e5dbe","version":[1,0,0],"min_engine_version":[1,21,0]},"modules":[{"type":"data","uuid":"5c7d63e9-7c1c-43d7-80f8-4080b17d74b0","version":[1,0,0]}]}),
+        )?,
+    )?;
+    let enabled = folder.join("world_behavior_packs.json");
+    let mut entries: Vec<serde_json::Value> = if enabled.exists() {
+        read_json(&enabled, 64 * 1024)?
+    } else {
+        Vec::new()
+    };
+    ensure!(entries.len() <= 16, "Too many scenery behaviour packs");
+    if !entries
+        .iter()
+        .any(|entry| entry["pack_id"] == "a2958bc5-2abc-4bdb-9b90-a372808e5dbe")
+    {
+        entries.push(json!({"pack_id":"a2958bc5-2abc-4bdb-9b90-a372808e5dbe","version":[1,0,0]}));
+        atomic(&enabled, &entries)?;
+    }
+    pack.push("functions");
+    private_directory(&pack)?;
+    pack.push("scenery");
+    private_directory(&pack)?;
+    let prefix = format!("execute in {} run ", DIMENSIONS[dimension as usize]);
+    let (y, original) = if dimension == 0 {
+        (-64, "bedrock")
+    } else if dimension == 1 {
+        (0, "bedrock")
+    } else {
+        (255, "air")
+    };
+    for (group, points) in chunks.chunks(16).enumerate() {
+        let mut batch = String::from("scoreboard players set progress scenery 0\n");
+        for (offset, &[x, z]) in points.iter().enumerate() {
+            let index = group * 16 + offset;
+            let position = format!("{} {y} {}", x * 16, z * 16);
+            for block in [original, "barrier"] {
+                batch.push_str(&format!("{prefix}execute if block {position} {block} run function scenery/chunk{index}\n"));
+            }
+            let text = format!(
+                "{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run setblock {position} barrier\n{prefix}execute if block {position} barrier run setblock {position} {original}\n{prefix}execute if block {position} {original} run scoreboard players add progress scenery 1\n"
+            );
+            atomic_bytes(
+                &pack.join(format!("chunk{index}.mcfunction")),
+                text.as_bytes(),
+            )?;
+        }
+        atomic_bytes(
+            &pack.join(format!("batch{group}.mcfunction")),
+            batch.as_bytes(),
+        )?;
+    }
+    Ok(())
 }
 
 fn acquire(lock: &File, cancelled: &AtomicBool) -> Result<()> {
@@ -393,11 +520,13 @@ fn acquire(lock: &File, cancelled: &AtomicBool) -> Result<()> {
 fn generate(
     paths: &Paths,
     root: &Path,
+    folder: &Path,
     dimension: u8,
     chunks: &[[i32; 2]],
     locators: &[Locator],
     cancelled: &AtomicBool,
 ) -> Result<Vec<Destination>> {
+    functions(folder, dimension, chunks)?;
     let prefix = if dimension == 0 {
         String::new()
     } else {
@@ -419,6 +548,7 @@ fn generate(
     ]
     .map(|rule| format!("gamerule {rule}"))
     .into();
+    commands.push("scoreboard objectives add scenery dummy".into());
     for (index, points) in groups.values().enumerate() {
         let x0 = points.iter().map(|p| p[0]).min().context("Empty region")? * 16;
         let z0 = points.iter().map(|p| p[1]).min().context("Empty region")? * 16;
@@ -433,29 +563,6 @@ fn generate(
             .iter()
             .map(|locator| format!("{prefix}locate {} {}", locator.kind, locator.id)),
     );
-    let (y, original) = match dimension {
-        0 => (-64, "bedrock"),
-        1 => (0, "bedrock"),
-        _ => (255, "air"),
-    };
-    let mut positions = BTreeMap::new();
-    let mut edits = Vec::new();
-    for (index, &[x, z]) in chunks.iter().enumerate() {
-        positions.insert((x * 16, y, z * 16), index);
-        let position = format!("{} {y} {}", x * 16, z * 16);
-        edits.push(vec![
-            format!(
-                "{prefix}execute if block {position} barrier run setblock {position} {original}"
-            ),
-            format!(
-                "{prefix}execute if block {position} {original} run setblock {position} barrier"
-            ),
-            format!(
-                "{prefix}execute if block {position} barrier run setblock {position} {original}"
-            ),
-            format!("{prefix}testforblock {position} {original}"),
-        ]);
-    }
     let mut child = command(Path::new("/usr/bin/nice"), root, &paths.network)
         .args(["-n", "10", "/usr/bin/sandbox-exec", "-f"])
         .arg(root.join("sandbox.sb"))
@@ -495,7 +602,7 @@ fn generate(
     };
     let (mut buffer, mut block, mut destinations) = (Vec::new(), [0_u8; 65536], Vec::new());
     let mut checks = Checks::default();
-    let loaded = Regex::new(r"Successfully found the block at (-?\d+),\s*(-?\d+),\s*(-?\d+)")?;
+    let loaded = Regex::new(r"Score (\d+) is in range")?;
     let nearest = Regex::new(
         r"The nearest (minecraft:[a-z_0-9]+) is at block (-?\d+), (\(y\?\)|-?\d+), (-?\d+)",
     )?;
@@ -542,25 +649,22 @@ fn generate(
                 let line = String::from_utf8_lossy(&bytes);
                 let text = ansi.replace_all(&line, "");
                 if text.contains("Server started.") {
-                    ready = Some(Instant::now());
-                    engine.send(
-                        &DIMENSIONS
-                            .map(|name| format!("execute in {name} run tickingarea remove_all")),
-                    )?;
+                    let mut cleanup = DIMENSIONS
+                        .map(|name| format!("execute in {name} run tickingarea remove_all"))
+                        .to_vec();
+                    cleanup.push("list".into());
+                    engine.send(&cleanup)?;
                 }
-                if let Some(capture) = loaded.captures(&text) {
-                    let position = (
-                        capture[1].parse()?,
-                        capture[2].parse()?,
-                        capture[3].parse()?,
+                // Ticking-area removal finishes after console processing, before areas can be reused
+                if ready.is_none() && !configured && text.contains(" players online:") {
+                    ready = Some(Instant::now());
+                }
+                if let Some(capture) = loaded.captures(&text)
+                    && checks.completed(capture[1].parse()?)
+                {
+                    event(
+                        json!({"state":"progress", "detail":format!("{} / {} chunks", checks.done.len(), chunks.len()), "progress":checks.done.len() as f64 / chunks.len() as f64}),
                     );
-                    if let Some(&index) = positions.get(&position)
-                        && checks.found(index)
-                    {
-                        event(
-                            json!({"state":"progress", "detail":format!("{} / {} chunks", checks.done.len(), chunks.len()), "progress":checks.done.len() as f64 / chunks.len() as f64}),
-                        );
-                    }
                 }
                 checks.finish(&text);
                 if let Some(capture) = nearest.captures(&text) {
@@ -582,8 +686,8 @@ fn generate(
             engine.send(&commands)?;
             configured = true;
         }
-        if configured && polled.elapsed() >= Duration::from_secs(1) && !stopping {
-            engine.send(&checks.commands(&edits))?;
+        if configured && polled.elapsed() >= Duration::from_millis(100) && !stopping {
+            engine.send(&checks.commands(chunks.len()))?;
             polled = Instant::now();
         }
         if configured && checks.done.len() == chunks.len() && !stopping {
@@ -651,6 +755,20 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
         manifest.version == VERSION && manifest.seed == request.seed,
         "This scenery cache belongs to another world"
     );
+    let completed = folder.join("completed");
+    private_directory(&completed)?;
+    let mut cache = Cache {
+        folder: completed,
+        regions: BTreeMap::new(),
+    };
+    for (dimension, x, z) in std::mem::take(&mut manifest.chunks) {
+        cache.region(dimension, x, z)?.insert([x, z]);
+    }
+    cache.save()?;
+    for &[x, z] in &request.refresh {
+        cache.region(request.dimension, x, z)?.remove(&[x, z]);
+    }
+    cache.save()?;
     atomic(&marker, &manifest)?;
     let link = payload.join("worlds");
     if link.is_symlink() {
@@ -683,7 +801,7 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
     fs::write(generator.join("sandbox.sb"), sandbox)?;
     let mut groups: BTreeMap<(i32, i32), Vec<[i32; 2]>> = BTreeMap::new();
     for &[x, z] in &request.chunks {
-        if !manifest.chunks.contains(&(request.dimension, x, z)) {
+        if !cache.region(request.dimension, x, z)?.contains(&[x, z]) {
             groups
                 .entry((x.div_euclid(8), z.div_euclid(8)))
                 .or_default()
@@ -701,6 +819,7 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
         manifest.destinations.extend(generate(
             &paths,
             &generator,
+            &folder,
             request.dimension,
             &[],
             &request.locate,
@@ -712,14 +831,16 @@ pub fn run(args: Vec<OsString>, cancelled: Arc<AtomicBool>) -> Result<()> {
         manifest.destinations.extend(generate(
             &paths,
             &generator,
+            &folder,
             request.dimension,
             &chunks,
             if index == 0 { &request.locate } else { &[] },
             &cancelled,
         )?);
-        manifest
-            .chunks
-            .extend(chunks.iter().map(|&[x, z]| (request.dimension, x, z)));
+        for &[x, z] in &chunks {
+            cache.region(request.dimension, x, z)?.insert([x, z]);
+        }
+        cache.save()?;
         atomic(&marker, &manifest)?;
     }
     atomic(&marker, &manifest)?;
@@ -734,29 +855,90 @@ mod tests {
     use super::*;
 
     #[test]
+    fn paged_manifest_retains_the_previous_builds_header_contract() {
+        let manifest = Manifest {
+            version: VERSION.into(),
+            seed: "42".into(),
+            chunks: BTreeSet::new(),
+            destinations: Vec::new(),
+        };
+        let value = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(value["chunks"], json!([]));
+        let restored: Manifest = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.seed, "42");
+    }
+
+    #[test]
+    fn chunk_index_is_paged_and_keeps_dimension_and_negative_coordinates() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut cache = Cache {
+            folder: folder.path().into(),
+            regions: BTreeMap::new(),
+        };
+        cache.region(0, -1, 32).unwrap().insert([-1, 32]);
+        cache.region(1, -1, 32).unwrap().insert([-1, 32]);
+        cache.save().unwrap();
+        let mut reopened = Cache {
+            folder: folder.path().into(),
+            regions: BTreeMap::new(),
+        };
+        assert!(reopened.region(0, -1, 32).unwrap().contains(&[-1, 32]));
+        assert!(!reopened.region(2, -1, 32).unwrap().contains(&[-1, 32]));
+        reopened.region(0, -1, 32).unwrap().remove(&[-1, 32]);
+        assert!(reopened.region(1, -1, 32).unwrap().contains(&[-1, 32]));
+        assert!(reopened.region(0, i32::MIN, 0).is_err());
+        let mut request: Request = serde_json::from_value(
+            json!({"seed":"0","dimension":0,"chunks":[[0,0]],"refresh":[[1,1]]}),
+        )
+        .unwrap();
+        assert!(request.validate().is_err());
+        request.refresh = vec![[0, 0]];
+        request.validate().unwrap();
+    }
+
+    #[test]
     fn checks_wait_for_console_drain_and_retry_only_unfinished_chunks() {
-        let edits = vec![vec!["edit".into(); 4]; 330];
         let mut checks = Checks::default();
-        assert_eq!(checks.commands(&edits).len(), 65);
+        assert_eq!(checks.commands(330).len(), 3);
         for _ in 0..100 {
-            assert!(checks.commands(&edits).is_empty());
+            assert!(checks.commands(330).is_empty());
         }
-        assert!(!checks.found(16));
-        for index in 0..15 {
-            assert!(checks.found(index));
-            assert!(!checks.found(index));
-        }
+        assert!(!checks.completed(15));
         checks.finish("[INFO] There are 0/1 players online:");
-        assert_eq!(checks.commands(&edits).len(), 65);
+        assert_eq!(checks.commands(330)[0], "function scenery/batch0");
         assert!(checks.pending.contains(&15));
-        while checks.done.len() < edits.len() {
-            for index in checks.pending.clone() {
-                assert!(checks.found(index));
-            }
+        while checks.done.len() < 330 {
+            assert!(checks.completed(checks.pending.len()));
+            assert!(!checks.completed(checks.pending.len()));
             checks.finish("[INFO] There are 0/1 players online:");
-            assert!(checks.commands(&edits).len() <= 65);
+            assert!(checks.commands(330).len() <= 3);
         }
-        assert!(checks.commands(&edits).is_empty());
+        assert!(checks.commands(330).is_empty());
+    }
+
+    #[test]
+    fn function_batches_restore_sentinels_in_the_requested_dimension() {
+        let folder = tempfile::tempdir().unwrap();
+        let retained = json!({"pack_id":"unrelated","version":[1,0,0]});
+        atomic(
+            &folder.path().join("world_behavior_packs.json"),
+            &vec![&retained],
+        )
+        .unwrap();
+        functions(folder.path(), 1, &[[2, -3]; 17]).unwrap();
+        let pack = folder
+            .path()
+            .join("behavior_packs/scenery/functions/scenery");
+        let first = fs::read_to_string(pack.join("batch0.mcfunction")).unwrap();
+        assert_eq!(first.lines().count(), 33);
+        assert!(first.contains("execute in nether run execute if block 32 0 -48 bedrock"));
+        let chunk = fs::read_to_string(pack.join("chunk16.mcfunction")).unwrap();
+        assert!(chunk.contains("barrier run setblock 32 0 -48 bedrock"));
+        assert!(chunk.ends_with("run scoreboard players add progress scenery 1\n"));
+        let entries: Vec<serde_json::Value> =
+            read_json(&folder.path().join("world_behavior_packs.json"), 65536).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0], retained);
     }
 
     #[test]

@@ -354,25 +354,20 @@ enum SceneryMotion {
 }
 
 struct ShortcutHint {
-    private(set) var showing = true
-    private var deadline: TimeInterval?
-
-    mutating func focus(at time: TimeInterval) {
-        if showing {
-            if let deadline, time >= deadline { showing = false; self.deadline = time+70 }
-            else if deadline == nil { deadline = time+60 }
-        } else { deadline = time+70 }
-    }
+    private(set) var showing = false
+    private(set) var occupied = false
+    private(set) var generation = 0
+    private var deadline = Double.infinity
 
     mutating func advance(at time: TimeInterval) {
-        guard let deadline, time >= deadline else { return }
-        showing.toggle()
-        self.deadline = time+(showing ? 60 : 70)
+        guard time >= deadline else { return }
+        if showing { showing = false; deadline = time+0.4 }
+        else { occupied = false; deadline = .infinity }
     }
 
-    mutating func dismiss(at time: TimeInterval) { showing = false; deadline = time+70 }
-    mutating func show(at time: TimeInterval) { showing = true; deadline = time+60 }
-    func delay(at time: TimeInterval) -> TimeInterval { max(0,(deadline ?? time)-time) }
+    mutating func dismiss(at time: TimeInterval) { showing = false; deadline = time+0.4 }
+    mutating func show(at time: TimeInterval) { showing = true; occupied = true; generation += 1; deadline = time+4 }
+    func delay(at time: TimeInterval) -> TimeInterval { max(0,deadline-time) }
 }
 
 private enum Blocks {
@@ -548,16 +543,15 @@ private struct Scenery: View {
 struct GenerationStatus: View {
     @ObservedObject var chart: Chart
     var body: some View {
-        if let text = chart.error ?? chart.message {
+        if let text = chart.error {
             GeometryReader { geometry in
                 let scale = min(1.5,max(1,geometry.size.width/1040))
                 VStack(spacing:16*scale) {
-                    Text(chart.error == nil ? "Loading scenery" : "Scenery couldn’t load")
+                    Text("Scenery couldn’t load")
                         .font(Blocks.type(24*scale)).foregroundStyle(Blocks.ink)
                     Text(text).font(Blocks.type(18*scale)).foregroundStyle(Blocks.ink)
                         .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
-                    if chart.error != nil { Button("Try again") {chart.retry?()}.buttonStyle(BlockButton()).font(Blocks.type(18*scale)) }
-                    if chart.error == nil, let progress = chart.progress { ProgressView(value:min(1,max(0,progress))).tint(.green) }
+                    Button("Try again") {chart.retry?()}.buttonStyle(BlockButton()).font(Blocks.type(18*scale))
                 }.padding(24*scale).frame(width:min(520*scale,geometry.size.width-48))
                     .background(Blocks.stone).border(.black,width:2)
                     .frame(maxWidth:.infinity,maxHeight:.infinity)
@@ -589,6 +583,7 @@ private struct Input: NSViewRepresentable {
     var controls = Controls()
     let changed: (Int) -> Void
     var action: (Controls.Action) -> Void = { _ in }
+    var skip: (() -> Void)? = nil
 
     final class Coordinator {
         weak var view: NSView?
@@ -598,6 +593,7 @@ private struct Input: NSViewRepresentable {
         var action: ((Controls.Action) -> Void)?
         var scrolling = Scrolling()
         var monitor: Any?
+        var skip: (() -> Void)?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -608,6 +604,12 @@ private struct Input: NSViewRepresentable {
                   event.window === window, window.isKeyWindow else { return event }
             if event.type == .keyDown || event.type == .flagsChanged {
                 if Controls.Key.quit(event) { return event }
+                if event.type == .keyDown, event.keyCode == 49,
+                   event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty,
+                   let skip = coordinator.skip {
+                    if !event.isARepeat {skip()}
+                    return nil
+                }
                 let actions: [Controls.Action] = [.look,.map,.previous,.next,.overworld,.nether,.end,.sift]
                 if let action = actions.first(where:{ coordinator.controls.matches($0,event:event) }) {
                     if event.type != .keyDown || !event.isARepeat { coordinator.action?(action) }
@@ -635,10 +637,11 @@ private struct Input: NSViewRepresentable {
         if context.coordinator.enabled != enabled { context.coordinator.scrolling = Scrolling() }
         context.coordinator.enabled = enabled; context.coordinator.changed = changed
         context.coordinator.controls = controls; context.coordinator.action = action
+        context.coordinator.skip = skip
     }
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
         if let monitor = coordinator.monitor { NSEvent.removeMonitor(monitor) }
-        coordinator.monitor = nil; coordinator.changed = nil; coordinator.action = nil; coordinator.view = nil
+        coordinator.monitor = nil; coordinator.changed = nil; coordinator.action = nil; coordinator.skip = nil; coordinator.view = nil
     }
 }
 
@@ -1050,9 +1053,6 @@ struct LauncherView: View {
         available && !launcher.loading && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery || launcher.settings || launcher.help,lowPower:lowPower,
             active:scenePhase == .active,visible:visible,playing:launcher.status.state == "playing")
     }
-    private var hintActive: Bool {
-        hintAvailable && visible && (hint.showing || focused && scenePhase == .active)
-    }
     private var hintAvailable: Bool {
         available && !launcher.settings && !launcher.help && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
     }
@@ -1124,13 +1124,13 @@ struct LauncherView: View {
                     }
                     if exploring, let assets = launcher.assets, !skinPath.isEmpty {
                         VStack { HStack { Spacer();
-                            Skin(assets:assets,skin:skinPath,cape:capePath,slim:slimSkin,active:scenePhase == .active && visible,failed:{ avatarError = $0 })
+                            Skin(assets:assets,skin:skinPath,cape:capePath,slim:slimSkin,active:scenePhase == .active && visible && !hint.occupied,position:position,failed:{ avatarError = $0 })
                                 .frame(width:96,height:144).accessibilityLabel("Your Minecraft character")
                                 .overlay {
                                     if !avatarError.isEmpty { Text(avatarError).font(Blocks.type(12)).multilineTextAlignment(.center).foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1) }
                                 }
                         }; Spacer() }
-                            .padding(.trailing,28).padding(.top,108).allowsHitTesting(false)
+                            .padding(.trailing,28).padding(.top,108).opacity(hint.occupied ? 0 : 1).allowsHitTesting(false)
                     }
                     if !exploring { VStack {
                         Spacer()
@@ -1165,7 +1165,7 @@ struct LauncherView: View {
             }.animation(reduceMotion ? nil : .easeOut(duration:0.18),value:launcher.loading)
         }
         .disabled(map || launcher.settings || launcher.help).accessibilityHidden(map || launcher.settings || launcher.help)
-        .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing" && launcher.journey.passage != .rift,controls:controls,changed:{ step in
+        .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing",controls:controls,changed:{ step in
             let index = (launcher.selection+step+launcher.worlds.count)%launcher.worlds.count
             launcher.journey.select(launcher.worlds[index],animated:moving)
         },action:{ action in
@@ -1181,7 +1181,9 @@ struct LauncherView: View {
                 launcher.journey.select(world,animated:moving)
             default: break
             }
-        }))
+        },skip:launcher.journey.passage != nil && !exploring ? {
+            if let skip = launcher.chart.skip {skip()} else {launcher.journey.skip()}
+        } : nil))
         .overlay {
             if map || launcher.settings || launcher.help {
                 GeometryReader { geometry in
@@ -1220,16 +1222,17 @@ struct LauncherView: View {
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didResignKeyNotification)) { notification in
             if (notification.object as? NSWindow)?.title == launcherName { focused = false }
         }
-        .task(id:[hintActive,exploring]) {
-            guard hintActive else { return }
-            hint.focus(at:ProcessInfo.processInfo.systemUptime)
-            while !Task.isCancelled {
+        .onReceive(launcher.chart.$arrival) { arrival in
+            if arrival != nil { hint.show(at:ProcessInfo.processInfo.systemUptime) }
+        }
+        .task(id:hint.generation) {
+            while hint.occupied && !Task.isCancelled {
                 do { try await Task.sleep(for:.seconds(hint.delay(at:ProcessInfo.processInfo.systemUptime))) } catch { return }
                 guard !Task.isCancelled else { return }
                 hint.advance(at:ProcessInfo.processInfo.systemUptime)
             }
         }
-        .animation(reduceMotion ? nil : .easeOut(duration:0.18),value:hint.showing)
+        .animation(reduceMotion ? nil : .easeOut(duration:0.4),value:hint.showing)
         .onExitCommand { if launcher.help { launcher.help = false } else if launcher.settings { launcher.settings = false } else if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
         .onReceive(NotificationCenter.default.publisher(for:.NSProcessInfoPowerStateDidChange)) { _ in lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didChangeOcclusionStateNotification)) { _ in
@@ -1285,7 +1288,7 @@ struct LauncherView: View {
             if let passage = launcher.journey.passage {
                 Marquee(text:sceneryTitle ?? (passage == .mine ? "Mineshaft" : passage == .stronghold ? "Stronghold" : "Rift valley"),active:focused,size:type,available:width)
                     .accessibilityAddTraits(.isHeader)
-                Button { launcher.journey.skip() } label: {
+                Button { if let skip = launcher.chart.skip {skip()} else {launcher.journey.skip()} } label: {
                     Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,12).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
             } else if exploring {
@@ -1337,8 +1340,6 @@ struct LauncherView: View {
 
     private func explore(_ enabled: Bool) {
         if enabled && (!available || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage == .rift) { return }
-        if enabled { hint.show(at:ProcessInfo.processInfo.systemUptime) }
-        else { hint.dismiss(at:ProcessInfo.processInfo.systemUptime) }
         exploring = enabled
     }
 
@@ -1360,7 +1361,7 @@ struct LauncherView: View {
             .overlay { ToastFrame().stroke(.black,lineWidth:2) }
             .overlay { ToastFrame().stroke(Color(white:0.35),lineWidth:3).padding(3) }
             .accessibilityElement(children:.combine)
-            .accessibilityLabel(exploring ? "Spectator mode. Mouse looks, \(controls.label(.map)) toggles the map, Escape returns to the menu" : "Press \(controls.label(.look)) to look around")
+            .accessibilityLabel("Achievement made. Exploring the world. \(launcher.chart.arrival ?? "")")
             .allowsHitTesting(false)
     }
 
@@ -1650,11 +1651,11 @@ struct Preferences: View {
     @FocusState private var focused: Page?
 
     private enum Page: String, CaseIterable {
-        case accessibility = "Accessibility", input = "Keyboard & Mouse", bindings = "Key bindings", video = "Video", audio = "Audio", character = "Character"
+        case accessibility = "Accessibility", input = "Keyboard & Mouse", video = "Video", audio = "Audio", character = "Character"
         var symbol: String {
             switch self {
             case .accessibility: return "figure.stand"
-            case .input,.bindings: return "keyboard"
+            case .input: return "keyboard"
             case .video: return "photo"
             case .audio: return "speaker.wave.2.fill"
             case .character: return "person.crop.square"
@@ -1663,7 +1664,7 @@ struct Preferences: View {
         var glyph: String {
             switch self {
             case .accessibility: return "accessibility_glyph_color"
-            case .input,.bindings: return "keyboard_and_mouse_glyph_color"
+            case .input: return "keyboard_and_mouse_glyph_color"
             case .video: return "video_glyph_color"
             case .audio: return "sound_glyph_color"
             case .character: return "character_glyph"
@@ -1673,7 +1674,6 @@ struct Preferences: View {
             switch self {
             case .accessibility: return "Make the launcher comfortable for you"
             case .input: return "Adjust the Look around controls"
-            case .bindings: return "Choose your controls"
             case .video: return "Choose how the launcher world moves and renders"
             case .audio: return "Music from your Minecraft installation"
             case .character: return "Your skin and cape in Look around"
@@ -1700,7 +1700,6 @@ struct Preferences: View {
                             category(.accessibility,scale:scale)
                             group("Controls",scale:scale)
                             category(.input,scale:scale)
-                            category(.bindings,scale:scale)
                             group("General",scale:scale)
                             category(.video,scale:scale)
                             category(.audio,scale:scale)
@@ -1718,10 +1717,8 @@ struct Preferences: View {
                             rule
                             content(scale:scale)
                             rule
-                            if page != .bindings {
-                                Button(action:reset) { Text("Reset defaults").font(Blocks.type(16*scale)).frame(maxWidth:.infinity,minHeight:46*scale) }
-                                    .buttonStyle(BlockButton(scale:scale)).padding(22*scale)
-                            }
+                            Button(action:reset) { Text("Reset defaults").font(Blocks.type(16*scale)).frame(maxWidth:.infinity,minHeight:46*scale) }
+                                .buttonStyle(BlockButton(scale:scale)).padding(22*scale)
                             Text("These settings apply to the launcher\nChange game settings inside Minecraft")
                                 .font(Blocks.type(12*scale)).foregroundStyle(Color(white:0.8))
                                 .fixedSize(horizontal:false,vertical:true).padding(.horizontal,22*scale).padding(.bottom,22*scale)
@@ -1732,7 +1729,7 @@ struct Preferences: View {
                 .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
         }.environment(\.colorScheme,.dark).onExitCommand(perform:close)
             .onAppear {
-                renderDistance = min(16,max(4,renderDistance))
+                renderDistance = min(512,max(8,renderDistance))
                 lookSensitivity = lookSensitivity.isFinite ? min(100,max(1,lookSensitivity)) : 50
                 musicVolume = musicVolume.isFinite ? min(1,max(0,musicVolume)) : 0.18
                 seedText = worldSeed
@@ -1777,7 +1774,7 @@ struct Preferences: View {
             rule
             toggle("Automatic travel",detail:"Tour the biomes while the menu is open",value:$rotateScenery,scale:scale).disabled(!animateScenery)
             rule
-            SettingSlider(title:"Render distance",detail:"Each chunk is 16 × 16 blocks",value:Binding(get:{Double(renderDistance)},set:{renderDistance = Int($0)}),range:4...16,scale:scale,format:{"\(Int($0)) chunks"})
+            SettingSlider(title:"Render distance",detail:"Nearby detail first · 16 blocks per chunk",value:Binding(get:{Double(renderDistance)},set:{renderDistance = Int($0)}),range:8...512,scale:scale,format:{"\(Int($0)) chunks"})
             rule
             VStack(alignment:.leading,spacing:12*scale) {
                 Text("World seed").font(Blocks.type(18*scale))
@@ -1802,7 +1799,7 @@ struct Preferences: View {
             rule
             Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\n\(controls.label(.map)) · Map\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
                 .font(Blocks.type(14*scale)).lineSpacing(10*scale).padding(22*scale)
-        case .bindings:
+            rule
             Keymap(data:$controlData,stone:launcher.stone).font(Blocks.type(15*scale)).padding(22*scale)
         case .character:
             VStack(alignment:.leading,spacing:18*scale) {
@@ -1859,8 +1856,7 @@ struct Preferences: View {
         switch page {
         case .video: animateScenery = true; rotateScenery = true; renderDistance = 8; worldSeed = "0"; seedText = "0"; seedError = false
         case .audio: musicEnabled = true; musicVolume = 0.18
-        case .input: lookSensitivity = 50; invertLook = false
-        case .bindings: controlData = Controls().data
+        case .input: lookSensitivity = 50; invertLook = false; controlData = Controls().data
         case .character: skinPath = ""; capePath = ""; slimSkin = false; skinError = nil
         case .accessibility: animateScenery = true
         }
@@ -1948,7 +1944,7 @@ private struct LauncherMenus: Commands {
                 }
             }
             .disabled(launcher.assets == nil || launcher.sceneryFailed)
-            Button("Skip Portal Journey") { launcher.journey.skip() }
+            Button("Skip Portal Journey") { if let skip = launcher.chart.skip {skip()} else {launcher.journey.skip()} }
                 .disabled(launcher.journey.passage == nil)
         }
         CommandGroup(before: .windowList) {

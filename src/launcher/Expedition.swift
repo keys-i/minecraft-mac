@@ -10,7 +10,10 @@ final class Chart: ObservableObject {
     @Published var message: String?
     @Published var error: String?
     @Published var progress: Double?
+    @Published var visible = false
+    @Published var arrival: String?
     var retry: (() -> Void)?
+    var skip: (() -> Void)?
     var owner = UUID()
 
     func install(_ data: WorldData) { self.data = data; revision += 1 }
@@ -100,6 +103,23 @@ struct Expedition: NSViewRepresentable {
         var greeting = false
         var wasExploring = false
         var idleAim = SCNVector3(12,1,-22)
+        var lastBiome: String?
+        var repairs: [Chunk:Int] = [:]
+        var horizonMap = Horizon()
+        var coverage = 0
+        var cruise = 3.0
+        var skipping = false
+        var portalCover: SCNNode?
+        var streaming = true {
+            didSet {if streaming && !oldValue, let eye = view?.pointOfView?.position {updateRegion(at:eye,force:true)}}
+        }
+        var near: Int { min(16,radius) }
+        func nearby(_ key: Chunk) -> Bool { region.map {Horizon.within(key,of:$0,radius:near)} ?? true }
+        func missing(_ key: Chunk) -> Bool {
+            if nearby(key) || prefetch.contains(key) {return data.chunks[key] == nil}
+            guard let tile = horizonMap.tiles[key], let region else {return true}
+            return tile.step>Horizon.step(key,near:region)
+        }
 
         init(chart: Chart, assets: Assets, root: URL) { self.chart = chart; self.assets = assets; self.root = root; chart.owner = identity }
 
@@ -128,7 +148,8 @@ struct Expedition: NSViewRepresentable {
 
         private func reset(world: World, seed: String, biome: Int) {
             request += 1; generation?.cancel(); generation = nil; mesh?.cancel(); mesh = nil
-            continuation = nil; doorGroups = [:]
+            horizonMap.clear(); coverage = 0
+            continuation = nil; doorGroups = [:]; repairs = [:]; skipping = false
             dragon = nil; healing = nil; crystals = []; greeting = false
             wasExploring = false; idleAim = .init(12,1,-22)
             passage?.cancel(); passage = nil; pending = nil; route = []; guide = nil; veil = nil; lamps = []; torches = []; doors = []; plans = []; restored = false; prefetch = []; revisit = false
@@ -136,7 +157,7 @@ struct Expedition: NSViewRepresentable {
             self.world = world; self.seed = seed; self.biome = biome
             data = WorldData(dimension:world.dimension!); nodes = [:]; wanted = []; region = nil
             database = nil; destinations = []; initial = true; installing = false; target = nil; landing = nil; speed = 0; reading = false
-            chart.error = nil; chart.install(data)
+            chart.error = nil; chart.visible = false; chart.install(data)
             visit()
         }
 
@@ -150,20 +171,24 @@ struct Expedition: NSViewRepresentable {
                 let result = Result { () -> (Trail,[Trail.Stop],SCNNode?,SCNNode,SCNNode) in
                     let kind = destination == .nether ? "nether" : "end"
                     guard let record = saved.first(where:{$0.kind == kind}) ?? Trail.anchor(data:snapshot,eye:eye,destination:destination,seed:seed) else { throw ChunkError.database("Explore a little farther before entering this portal") }
-                    let trail = Trail(record)
+                    let trail = Trail.plan(record,data:snapshot)
                     var approach = trail.approach(data:snapshot,eye:eye,chest:destination == .end)
                     approach += trail.route
-                    var plans = saved.filter { $0.kind != kind }; plans.append(record)
+                    var plans = saved.filter { $0.kind != kind }; plans.append(trail.record)
                     if (try? file.resourceValues(forKeys:[.isSymbolicLinkKey]).isSymbolicLink) == true { throw ChunkError.format }
+                    let backup = file.appendingPathExtension("v1")
+                    if saved.contains(where:{$0.version == nil}), FileManager.default.fileExists(atPath:file.path), !FileManager.default.fileExists(atPath:backup.path) {
+                        try FileManager.default.copyItem(at:file,to:backup)
+                    }
                     try JSONEncoder().encode(plans).write(to:file,options:[.atomic,.completeFileProtectionUnlessOpen])
                     let guide: SCNNode?
                     if destination == .end {
                         let plane = SCNPlane(width:0.28,height:0.28); plane.firstMaterial = try self.assets.texture("textures/items/ender_eye")
                         guide = SCNNode(geometry:plane); guide?.constraints = [SCNBillboardConstraint()]; guide?.name = "eye-of-ender"
                     } else { guide = nil }
-                    let material = try self.assets.texture("textures/blocks/portal",animated:true).copy() as! SCNMaterial
+                    let material = try self.assets.texture(destination == .end ? "textures/entity/end_portal" : "textures/blocks/portal",animated:true).copy() as! SCNMaterial
                     material.lightingModel = .constant; material.readsFromDepthBuffer = false; material.writesToDepthBuffer = false
-                    let plane = SCNPlane(width:6,height:4); plane.firstMaterial = material
+                    let plane = SCNPlane(width:1.2,height:0.8); plane.firstMaterial = material
                     let veil = SCNNode(geometry:plane); veil.name = "portal-distortion"; veil.position.z = -0.3; veil.opacity = 0; veil.renderingOrder = 1000
                     Landscape.animate(veil,material:material)
                     return (trail,approach,guide,try trail.decoration(assets:self.assets),veil)
@@ -181,6 +206,11 @@ struct Expedition: NSViewRepresentable {
                         self.prefetch = changed
                         for key in Array(self.nodes.keys) where changed.contains(key) { self.nodes.removeValue(forKey:key)?.removeFromParentNode() }
                         self.route = route; self.waypoint = 0; self.guide = guide
+                        let length = zip(route,route.dropFirst()).reduce(0.0) { sum,pair in
+                            let a = pair.0.point, b = pair.1.point
+                            return sum+hypot(hypot(b.x-a.x,b.z-a.z),b.y-a.y)
+                        }
+                        self.cruise = max(1,min(8,length/165))
                         self.veil = veil; self.view?.pointOfView?.addChildNode(veil)
                         self.view?.scene?.rootNode.childNode(withName:decoration.name!,recursively:false)?.removeFromParentNode()
                         self.view?.scene?.rootNode.addChildNode(decoration)
@@ -212,20 +242,37 @@ struct Expedition: NSViewRepresentable {
             else { target = landing; speed = 0 }
         }
 
-        func updateRegion(at point: SCNVector3) {
+        func updateRegion(at point: SCNVector3, force: Bool = false) {
             let next = WorldData.key(Int(floor(point.x)),Int(floor(point.z)))
-            guard next != region || wanted.count != (radius*2+1)*(radius*2+1) else { return }
+            guard force || next != region || coverage != radius else { return }
+            let moved = next != region || coverage != radius
+            let previous = region
+            let resized = coverage != radius
             region = next
-            wanted = Set((-radius...radius).flatMap { dx in (-radius...radius).map { Chunk(x:next.x+dx,z:next.z+$0) } })
-            for key in Array(nodes.keys) where !wanted.contains(key) { nodes.removeValue(forKey:key)?.removeFromParentNode(); doorGroups.removeValue(forKey:key) }
+            coverage = radius
+            if moved {
+                horizonMap.ring = near+1
+                horizonMap.cancel()
+                if let previous {horizonMap.dirty.formUnion(Horizon.boundary(previous,radius:near))}
+                horizonMap.dirty.formUnion(Horizon.boundary(next,radius:near))
+                if previous.map(Horizon.page) != Horizon.page(next) || resized {horizonMap.prune(near:next,radius:radius)}
+            }
+            wanted = Set((-near...near).flatMap { dx in (-near...near).map { Chunk(x:next.x+dx,z:next.z+$0) } })
+            while horizonMap.ring<=radius {
+                let ring = Horizon.shell(next,radius:horizonMap.ring)
+                if ring.allSatisfy({!missing($0) && !horizonMap.dirty.contains(Horizon.page($0)) && horizonMap.pending != Horizon.page($0)}) {horizonMap.ring += 1}
+                else {wanted.formUnion(ring); break}
+            }
+            for key in Array(nodes.keys) where !nearby(key) { nodes.removeValue(forKey:key)?.removeFromParentNode(); doorGroups.removeValue(forKey:key) }
             doors = doorGroups.values.flatMap {$0}
-            data.chunks = data.chunks.filter { wanted.contains($0.key) }
-            let missing = wanted.filter { data.chunks[$0] == nil }
+            data.chunks = data.chunks.filter { nearby($0.key) }
+            let missing = wanted.filter { self.missing($0) }
             if !missing.isEmpty {
                 let ordered = missing.sorted { hypot(Double($0.x-next.x),Double($0.z-next.z))<hypot(Double($1.x-next.x),Double($1.z-next.z)) }
                 generate(initial ? Array(ordered.prefix(9)) : ordered)
             }
             pump()
+            distant()
         }
 
         static func batch(_ chunks: Set<Chunk>, near centre: Chunk) -> [Chunk] {
@@ -237,8 +284,8 @@ struct Expedition: NSViewRepresentable {
         }
 
         func visibleDistance(at eye: SCNVector3) -> Double {
-            var distance = Double(radius*16)-8
-            for key in wanted where nodes[key] == nil {
+            var distance = Double(min(radius,max(near,horizonMap.ring-1))*16)-8
+            for key in wanted where nearby(key) && nodes[key] == nil {
                 let dx = max(0,Double(key.x*16)-eye.x,eye.x-Double((key.x+1)*16))
                 let dz = max(0,Double(key.z*16)-eye.z,eye.z-Double((key.z+1)*16))
                 distance = min(distance,hypot(dx,dz))
@@ -246,9 +293,9 @@ struct Expedition: NSViewRepresentable {
             return max(4,distance-1)
         }
 
-        func generate(_ chunks: [Chunk], locators: [[String:String]] = []) {
-            guard generation == nil, !reading, !disposed, !chunks.isEmpty || !locators.isEmpty else { return }
-            prefetch.formUnion(chunks)
+        func generate(_ chunks: [Chunk], locators: [[String:String]] = [], refresh: Set<Chunk> = []) {
+            guard generation == nil, !reading, !disposed, streaming || initial || !locators.isEmpty || !refresh.isEmpty,
+                  !chunks.isEmpty || !locators.isEmpty else { return }
             let chunks = Self.batch(Set(chunks),near:region ?? .init(x:0,z:0))
             let token = request
             var ready: [String:Any]?
@@ -256,7 +303,7 @@ struct Expedition: NSViewRepresentable {
             chart.message = locators.isEmpty ? "Preparing the next chunks" : "Finding your destination"
             chart.progress = nil
             let operation = Generation(root:root,request:["seed":seed,"dimension":data.dimension,
-                "chunks":chunks.map { [$0.x,$0.z] },"locate":locators],receive:{ [weak self] value in
+                "chunks":chunks.map { [$0.x,$0.z] },"refresh":chunks.filter {refresh.contains($0)}.map {[$0.x,$0.z]},"locate":locators],receive:{ [weak self] value in
                 guard let self, self.request == token, !self.disposed else { return }
                 if value["state"] as? String == "world_ready" { ready = value }
                 else if value["state"] as? String == "progress" {
@@ -280,16 +327,17 @@ struct Expedition: NSViewRepresentable {
         func load(_ chunks: [Chunk], manifest: URL, token: Int, discovered: Bool) {
             guard let database else { return }
             reading = true
-            let operation = BlockOperation(), dimension = data.dimension, restore = !restored
+            let operation = BlockOperation(), dimension = data.dimension, restore = !restored, centre = region ?? .init(x:0,z:0)
             operation.addExecutionBlock { [weak self,weak operation] in
                 guard let self, let operation, !operation.isCancelled else { return }
-                let result = Result { () -> ([Chunk:VoxelChunk],[[String:Any]],[Trail]) in
+                let result = Result { () -> ([Chunk:VoxelChunk],[[String:Any]],[Trail],Set<Chunk>,[Chunk:Horizon.Tile]) in
                     let database = try Database(database)
                     var loaded: [Chunk:VoxelChunk] = [:]
+                    var missing = Set<Chunk>()
                     for key in chunks {
                         guard !operation.isCancelled else { throw CancellationError() }
-                        guard let value = try database.chunk(key,dimension:dimension) else { throw ChunkError.missing }
-                        loaded[key] = value
+                        if let value = try database.chunk(key,dimension:dimension) { loaded[key] = value }
+                        else { missing.insert(key) }
                     }
                     let metadata = try Data(contentsOf:manifest)
                     guard metadata.count<=4*1024*1024, let value = try JSONSerialization.jsonObject(with:metadata) as? [String:Any] else { throw ChunkError.format }
@@ -297,26 +345,34 @@ struct Expedition: NSViewRepresentable {
                     let file = manifest.deletingLastPathComponent().appendingPathComponent("journeys-\(dimension).json")
                     if restore, FileManager.default.fileExists(atPath:file.path) {
                         let bytes = try Data(contentsOf:file)
-                        guard bytes.count<=64*1024 else { throw ChunkError.format }
+                        guard bytes.count<=2*1024*1024 else { throw ChunkError.format }
                         let records = try JSONDecoder().decode([Trail.Record].self,from:bytes)
                         guard records.count<=2, records.allSatisfy(\.valid) else { throw ChunkError.format }
                         trails = records.map(Trail.init)
                     }
-                    return (loaded,(value["destinations"] as? [[String:Any]] ?? []).filter { $0["dimension"] as? Int == dimension },trails)
+                    return (loaded,(value["destinations"] as? [[String:Any]] ?? []).filter { $0["dimension"] as? Int == dimension },trails,missing,loaded.mapValues {Horizon.Tile($0,near:centre)})
                 }
                 DispatchQueue.main.async {
                     guard !operation.isCancelled, !self.disposed, self.request == token else { return }
                     self.reading = false
                     switch result {
                     case .failure(let error): self.chart.error = error.localizedDescription; self.chart.message = nil
-                    case .success(let (loaded,destinations,trails)):
-                        self.data.chunks.merge(loaded) { _,new in new }; self.destinations = destinations
+                    case .success(let (loaded,destinations,trails,missing,tiles)):
+                        self.data.chunks.merge(loaded.filter {self.nearby($0.key)}) { _,new in new }; self.destinations = destinations
+                        self.horizonMap.insert(tiles)
                         self.prefetch.subtract(loaded.keys)
                         if restore {
                             self.restored = true; self.plans = trails.map(\.record)
                             for trail in trails { self.data.apply(trail.blocks) }
                         }
                         self.chart.install(self.data)
+                        if !missing.isEmpty {
+                            for key in missing {self.repairs[key,default:0] += 1}
+                            guard missing.allSatisfy({self.repairs[$0,default:0]<=2}) else {
+                                self.chart.error = "Some chunks couldn’t be saved; try again"; self.chart.message = nil; return
+                            }
+                            self.generate(Array(missing),refresh:missing); self.pump(); return
+                        }
                         if !self.initial {self.greet()}
                         if discovered {
                             if let locator = self.world?.biomes[self.world!.index(self.biome)].locator,
@@ -327,7 +383,8 @@ struct Expedition: NSViewRepresentable {
                         }
                         else if self.revisit { self.revisit = false; self.visit() }
                         else {
-                            let missing = self.wanted.union(self.prefetch).filter { self.data.chunks[$0] == nil }
+                            self.updateRegion(at:self.initial ? self.home : self.view?.pointOfView?.position ?? self.home,force:true)
+                            let missing = self.wanted.union(self.prefetch).filter { self.missing($0) }
                             if !missing.isEmpty { self.generate(Array(missing)) }
                             self.pump()
                         }
@@ -379,7 +436,7 @@ struct Expedition: NSViewRepresentable {
                     switch result {
                     case .failure(let error): self.chart.error = error.localizedDescription; self.chart.message = nil; return
                     case .success(let node):
-                        if self.wanted.contains(key) {
+                            if self.nearby(key) {
                             self.nodes[key] = node
                             if !self.initial {
                                 view.scene?.rootNode.addChildNode(node)
@@ -393,6 +450,40 @@ struct Expedition: NSViewRepresentable {
                 }
             }
             mesh = operation; assets.queue.addOperation(operation)
+        }
+
+        func distant() {
+            guard !initial, chart.error == nil, horizonMap.operation == nil, let centre = region, view?.scene != nil,
+                  let page = horizonMap.dirty.min(by:{hypot(Double($0.x*16-centre.x),Double($0.z*16-centre.z))<hypot(Double($1.x*16-centre.x),Double($1.z*16-centre.z))}) else {return}
+            horizonMap.dirty.remove(page); horizonMap.pending = page
+            var local: [Chunk:Horizon.Tile] = [:]
+            for x in (page.x*16-1)...(page.x*16+16) {for z in (page.z*16-1)...(page.z*16+16) {
+                let key = Chunk(x:x,z:z)
+                if let tile = horizonMap.tiles[key] {local[key] = tile}
+            } }
+            let tiles = local, operation = BlockOperation(), assets = assets, token = request, revision = horizonMap.revision, near = near
+            operation.queuePriority = .low
+            operation.addExecutionBlock { [weak self,weak operation] in
+                guard let self, let operation, !operation.isCancelled else {return}
+                let result = Result {try Horizon.node(page,tiles:tiles,centre:centre,near:near,assets:assets,cancelled:{operation.isCancelled})}
+                SCNTransaction.flush(); assets.releaseArchives()
+                DispatchQueue.main.async {
+                    guard !operation.isCancelled, !self.disposed, self.request == token, self.horizonMap.revision == revision,
+                          let scene = self.view?.scene else {return}
+                    self.horizonMap.operation = nil; self.horizonMap.pending = nil
+                    switch result {
+                    case .success(let node):
+                        self.horizonMap.pages.removeValue(forKey:page)?.removeFromParentNode()
+                        if node.geometry?.sources(for:.vertex).first?.vectorCount ?? 0 > 0 || !node.childNodes.isEmpty {
+                            self.horizonMap.pages[page] = node; scene.rootNode.addChildNode(node)
+                        }
+                    case .failure(let error): self.horizonMap.dirty.insert(page); self.chart.error = error.localizedDescription
+                    }
+                    if let eye = self.view?.pointOfView?.position {self.updateRegion(at:eye,force:true)}
+                    self.distant()
+                }
+            }
+            horizonMap.operation = operation; assets.queue.addOperation(operation)
         }
 
         private func install(at feet: SCNVector3) {
@@ -434,6 +525,11 @@ struct Expedition: NSViewRepresentable {
             for node in nodes.values { node.removeFromParentNode(); scene.rootNode.addChildNode(node) }
             camera.position = .init(feet.x,feet.y+FlightView.eyeHeight,feet.z)
             camera.look(at:.init(feet.x+12,feet.y+1.62,feet.z-22))
+            if let cover = portalCover {
+                cover.removeFromParentNode(); camera.addChildNode(cover)
+                cover.runAction(.sequence([.fadeOut(duration:transitions ? 0.7 : 0),.removeFromParentNode()]))
+                portalCover = nil
+            }
             if transitions, view.scene != nil {
                 let colour = Landscape.colour(world == .nether ? 0x54217E : world == .end ? 0x121023 : 0x5B806A)
                 view.present(scene,with:.fade(with:colour,duration:1.25),incomingPointOfView:camera,completionHandler:nil)
@@ -447,7 +543,7 @@ struct Expedition: NSViewRepresentable {
                 let next = self.data.move(from:start,to:end)
                 return self.nodes[WorldData.key(Int(floor(next.x)),Int(floor(next.z)))] == nil ? start : next
             }
-            initial = false; home = camera.position
+            initial = false; chart.visible = true; home = camera.position
             doors = Door.collect(scene.rootNode)
             torches = data.edits.values.flatMap {$0.filter {$0.value.model.contains("torch")}.keys.map {SCNVector3(Double($0.x)+0.5,Double($0.y)+0.5,Double($0.z)+0.5)}}
             lamps = (0..<6).map { _ in
@@ -458,6 +554,7 @@ struct Expedition: NSViewRepresentable {
             populate(at:camera.position)
             greet()
             onReady?()
+            distant()
             if let continuation {self.continuation = nil; pending = continuation; begin(continuation.0)}
         }
 
@@ -537,7 +634,9 @@ struct Expedition: NSViewRepresentable {
             elapsed += dt
             if let dragon {
                 let angle = elapsed/48*Double.pi*2, desired = SCNVector3(cos(angle)*34,94+sin(angle*2)*10,sin(angle)*34)
-                let start = dragon.position, next = data.move(from:start,to:desired,radius:3.5,height:3)
+                let start = dragon.position, dx = desired.x-start.x, dy = desired.y-start.y, dz = desired.z-start.z
+                let distance = hypot(hypot(dx,dz),dy), fraction = distance>0 ? min(1,dt*14/distance) : 0
+                let next = SCNVector3(start.x+dx*fraction,start.y+dy*fraction,start.z+dz*fraction)
                 dragon.position = next
                 if hypot(next.x-start.x,next.z-start.z)>0.0001 {dragon.eulerAngles.y = atan2(next.x-start.x,next.z-start.z)}
                 healing?(CGFloat(elapsed))
@@ -552,18 +651,20 @@ struct Expedition: NSViewRepresentable {
             wasExploring = view.exploring
             if !view.exploring {
                 if !route.isEmpty, let pending {
+                    if skipping {completeJourney(pending); return}
                     if waypoint>=route.count {
-                        let destination = pending
-                        reset(world:destination.0,seed:seed,biome:destination.1); arrived(destination.0); return
+                        completeJourney(pending); return
                     }
                     let stop = route[waypoint], dx = stop.point.x-eye.x, dy = stop.point.y-eye.y, dz = stop.point.z-eye.z
+                    guide?.isHidden = stop.title.contains("house chest")
                     if waypoint>=route.count-2 { veil?.opacity = min(0.8,(veil?.opacity ?? 0)+dt*0.35) }
                     let remaining = hypot(hypot(dx,dz),dy)
-                    if remaining<0.35 { waypoint += 1 }
+                    if remaining<0.08 { waypoint += 1 }
                     else {
                         let nextKey = WorldData.key(Int(floor(eye.x+dx/remaining*4)),Int(floor(eye.z+dz/remaining*4)))
                         if nodes[nextKey] != nil {
-                            speed = min(waypoint<route.count-2 ? 10 : 3,speed+dt*5)
+                            let desired = waypoint<route.count-2 ? cruise : min(2,cruise)
+                            speed += (desired-speed)*(1-exp(-dt*2))
                             let step = min(remaining,dt*speed)
                             let next = SCNVector3(eye.x+dx/remaining*step,eye.y+dy/remaining*step,eye.z+dz/remaining*step)
                             let moved = data.move(from:.init(eye.x,eye.y-1.62,eye.z),to:.init(next.x,next.y-1.62,next.z))
@@ -622,7 +723,14 @@ struct Expedition: NSViewRepresentable {
                 reported = elapsed
                 let x = Int(floor(eye.x)), z = Int(floor(eye.z)), key = WorldData.key(x,z)
                 let id = data.chunks[key]?.biome(x-key.x*16,Int(floor(eye.y)),z-key.z*16)
-                if route.isEmpty { location(Biome.identifiers[id ?? -1]?.replacingOccurrences(of:"_",with:" ").capitalized ?? world.title) }
+                if route.isEmpty {
+                    let title = Biome.identifiers[id ?? -1]?.replacingOccurrences(of:"_",with:" ").capitalized ?? world.title
+                    location(title)
+                    if let id {
+                        let identity = "\(data.dimension):\(id)"
+                        if identity != lastBiome { lastBiome = identity; chart.arrival = title }
+                    }
+                }
                 report?(eye,Double(camera.eulerAngles.y))
                 for door in doors { door.approach(eye) }
             }
@@ -662,9 +770,23 @@ struct Expedition: NSViewRepresentable {
             view?.pointOfView?.camera?.zFar = Double(radius*16+32)
         }
 
+        func skip() {
+            guard pending != nil else {return}
+            skipping = true
+        }
+
+        private func completeJourney(_ destination: (World,Int)) {
+            portalCover = veil?.clone()
+            portalCover?.opacity = 0.85
+            if let cover = portalCover {view?.pointOfView?.addChildNode(cover)}
+            reset(world:destination.0,seed:seed,biome:destination.1)
+            arrived(destination.0)
+        }
+
         func interrupt() {
             passage?.cancel(); passage = nil; route = []; pending = nil; target = nil; speed = 0
             guide?.removeFromParentNode(); guide = nil; veil?.removeFromParentNode(); veil = nil
+            portalCover?.removeFromParentNode(); portalCover = nil; skipping = false
             chart.message = nil
             if let world {arrived(world)}
             activity(false)
@@ -672,9 +794,10 @@ struct Expedition: NSViewRepresentable {
 
         func dispose() {
             disposed = true; request += 1
+            horizonMap.clear()
             generation?.cancel(); mesh?.cancel(); population?.cancel(); passage?.cancel(); generation = nil; mesh = nil; population = nil; passage = nil; crowd = nil; guide = nil; doors = []
             view?.scene = nil; view?.pointOfView = nil; view?.dispose(); nodes = [:]; data = WorldData(dimension:0); report = nil; onReady = nil; lamps = []; torches = []; veil = nil; doorGroups = [:]; continuation = nil
-            if chart.owner == identity {chart.retry = nil; chart.install(data)}
+            if chart.owner == identity {chart.retry = nil; chart.skip = nil; chart.visible = false; chart.install(data)}
             dragon = nil; healing = nil; crystals = []
         }
     }
@@ -695,7 +818,7 @@ struct Expedition: NSViewRepresentable {
         coordinator.arrived = arrived
         chart.retry = { [weak coordinator] in
             guard let coordinator else {return}
-            coordinator.chart.error = nil; coordinator.chart.message = nil
+            coordinator.chart.error = nil; coordinator.chart.message = nil; coordinator.repairs = [:]
             if let pending = coordinator.pending {coordinator.begin(pending.0)}
             else {
                 coordinator.region = nil; coordinator.visit()
@@ -703,7 +826,9 @@ struct Expedition: NSViewRepresentable {
                 coordinator.pump()
             }
         }
-        coordinator.radius = min(16,max(4,distance))
+        chart.skip = { [weak coordinator] in coordinator?.skip() }
+        coordinator.radius = min(512,max(8,distance))
+        coordinator.streaming = active && !ProcessInfo.processInfo.isLowPowerModeEnabled
         view.controls = controls; view.sensitivity = Float(min(100,max(1,sensitivity)))*0.003; view.inverted = inverted
         view.finish = finish; view.exploring = exploring
         let animated = moving || active && exploring

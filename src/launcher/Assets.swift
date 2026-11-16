@@ -55,6 +55,7 @@ final class Assets: @unchecked Sendable {
     private var tilesets: [String: [SCNMaterial]] = [:]
     private var tables: [String: [String: Any]] = [:]
     private var families: [String:(mask:Bool,blend:Bool)] = [:]
+    private var origins: [String:Int] = [:]
     private var registeredUI = false
 
     init(data: URL, classic: Bool = false) throws {
@@ -169,15 +170,29 @@ final class Assets: @unchecked Sendable {
     }
 
     func file(_ path: String, behaviour: Bool = false) throws -> Data {
-        guard !path.hasPrefix("/"), !path.split(separator:"/").contains(".."), !path.contains("\\") else { throw AssetError.missing(path) }
-        let directory = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
-        for pack in (behaviour ? behaviours : resources).reversed() {
-            let bundle = pack.appendingPathComponent("__brarchive/"+directory+".brarchive")
-            if FileManager.default.fileExists(atPath:bundle.path), let data = try archive(bundle)[name] { return data }
+        try file([path],behaviour:behaviour)
+    }
+
+    private func file(_ paths: [String], behaviour: Bool = false) throws -> Data {
+        guard paths.allSatisfy({ !$0.hasPrefix("/") && !$0.split(separator:"/").contains("..") && !$0.contains("\\") }) else { throw AssetError.model }
+        let packs = behaviour ? behaviours : resources
+        for index in packs.indices.reversed() {
+            let pack = packs[index]
+            for path in paths {
+            let directory = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
             let plain = pack.appendingPathComponent(path)
-            if FileManager.default.fileExists(atPath:plain.path) { return try Data(contentsOf:plain,options:.mappedIfSafe) }
+            if FileManager.default.fileExists(atPath:plain.path) {
+                if !behaviour { origins[path] = index }
+                return try Data(contentsOf:plain,options:.mappedIfSafe)
+            }
+            let bundle = pack.appendingPathComponent("__brarchive/"+directory+".brarchive")
+            if FileManager.default.fileExists(atPath:bundle.path), let data = try archive(bundle)[name] {
+                if !behaviour { origins[path] = index }
+                return data
+            }
+            }
         }
-        throw AssetError.missing(path)
+        throw AssetError.missing(paths.joined(separator:", "))
     }
 
     func json(_ path: String) throws -> [String: Any] {
@@ -204,12 +219,10 @@ final class Assets: @unchecked Sendable {
         return names
     }
 
-    func texture(_ path: String, tint: UInt32? = nil, animated: Bool = false) throws -> SCNMaterial {
-        let key = path+"-"+(tint.map(String.init) ?? "none")+(animated ? "-animated" : "")
+    func texture(_ path: String, tint: UInt32? = nil, animated: Bool = false, colourMask: Bool = false) throws -> SCNMaterial {
+        let key = path+"-"+(tint.map(String.init) ?? "none")+(animated ? "-animated" : "")+(colourMask ? "-mask" : "")
         if let material = materials[key] { return material }
-        let data: Data
-        do { data = try file(path+".png") }
-        catch AssetError.missing { data = try file(path+".tga") }
+        let data = try file([path+".png",path+".tga"])
         guard data.count <= 8*1024*1024, let image = NSImage(data:data),
               let decoded = image.cgImage(forProposedRect:nil,context:nil,hints:nil),
               decoded.width <= 2048, decoded.height <= 4096 else { throw AssetError.image }
@@ -221,8 +234,24 @@ final class Assets: @unchecked Sendable {
                   let data = context.data else { throw AssetError.image }
             context.draw(bitmap,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
             let pixels = data.assumingMemoryBound(to:UInt8.self)
+            var mask: [UInt8] = []
+            if colourMask {
+                mask = stride(from:3,to:bitmap.width*bitmap.height*4,by:4).map { pixels[$0] }
+                // Bedrock's colour-mask alpha selects tint, not transparency
+                guard bitmap.alphaInfo == .first || bitmap.alphaInfo == .last,
+                      let opaque = CGImage(width:bitmap.width,height:bitmap.height,bitsPerComponent:bitmap.bitsPerComponent,
+                        bitsPerPixel:bitmap.bitsPerPixel,bytesPerRow:bitmap.bytesPerRow,space:bitmap.colorSpace!,
+                        bitmapInfo:CGBitmapInfo(rawValue:(bitmap.bitmapInfo.rawValue & ~CGBitmapInfo.alphaInfoMask.rawValue) |
+                            (bitmap.alphaInfo == .last ? CGImageAlphaInfo.noneSkipLast : .noneSkipFirst).rawValue),
+                        provider:bitmap.dataProvider!,decode:nil,shouldInterpolate:false,intent:.defaultIntent) else { throw AssetError.image }
+                context.draw(opaque,in:CGRect(x:0,y:0,width:bitmap.width,height:bitmap.height))
+            }
             for i in stride(from:0,to:bitmap.width*bitmap.height*4,by:4) {
-                for channel in 0..<3 { pixels[i+channel] = UInt8(UInt32(pixels[i+channel])*((tint >> ((2-channel)*8)) & 255)/255) }
+                let amount = colourMask ? UInt32(mask[i/4]) : 255
+                for channel in 0..<3 {
+                    let multiplier = (tint >> ((2-channel)*8)) & 255
+                    pixels[i+channel] = UInt8(UInt32(pixels[i+channel])*(255*(255-amount)+multiplier*amount)/65025)
+                }
             }
             guard let tinted = context.makeImage() else { throw AssetError.image }
             bitmap = tinted
@@ -637,8 +666,14 @@ final class Assets: @unchecked Sendable {
             return name.hasPrefix(stem) || name.hasPrefix(prefix) || name.hasPrefix("baby"+stem)
         }
             .map { "models/entity/"+$0 } + ["models/mobs.json"]
-        for candidate in candidates {
-            let object = try json(candidate)
+        let definitions = try candidates.compactMap { path -> (String,[String:Any])? in
+            do { return (path,try json(path)) }
+            catch AssetError.missing { return nil }
+        }.sorted {
+            let a = origins[$0.0] ?? -1, b = origins[$1.0] ?? -1
+            return a == b ? $0.0<$1.0 : a>b
+        }
+        for (_,object) in definitions {
             if let definition = object[identifier] as? [String: Any] { return definition }
             if let modern = object["minecraft:geometry"] as? [[String: Any]],
                let definition = modern.first(where: { ($0["description"] as? [String: Any])?["identifier"] as? String == identifier }) { return definition }
@@ -770,6 +805,17 @@ final class Assets: @unchecked Sendable {
 }
 
 extension Assets {
+    private func overlay(_ base: [String:Any], _ changes: [String:Any], depth: Int = 0) throws -> [String:Any] {
+        guard depth<16 else {throw AssetError.model}
+        var result = base
+        for (key,value) in changes {
+            if let before = result[key] as? [String:Any], let after = value as? [String:Any] {
+                result[key] = try overlay(before,after,depth:depth+1)
+            } else {result[key] = value}
+        }
+        return result
+    }
+
     private func table(_ name: String) throws -> [String: Any] {
         if let table = tables[name] { return table }
         var table: [String: Any] = [:]
@@ -780,10 +826,10 @@ extension Assets {
             guard data.count <= 8*1024*1024,
                   let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String: Any] else { throw AssetError.model }
             if name == "biomes_client.json" {
-                table.merge(object["biomes"] as? [String: Any] ?? [:]) { _,value in value }
+                table = try overlay(table,object["biomes"] as? [String: Any] ?? [:])
             } else if name == "textures/terrain_texture.json" {
-                table.merge(object["texture_data"] as? [String: Any] ?? [:]) { _,value in value }
-            } else { table.merge(object) { _,value in value } }
+                table = try overlay(table,object["texture_data"] as? [String: Any] ?? [:])
+            } else { table = try overlay(table,object) }
         }
         tables[name] = table
         return table
@@ -899,6 +945,8 @@ extension Assets {
         if name == "chain" || name == "iron_chain" { return Array(repeating:try texture("textures/blocks/chain1"),count:6) }
         if name == "planks" { name = (states["variant"] ?? "oak")+"_planks" }
         if name == "wooden_door" { name = "oak_door" }
+        if name == "sugar_cane" {name = "reeds"}
+        if name == "dead_bush" {name = "deadbush"}
         let pane = name == "glass_pane" || name == "stained_glass_pane" || name.hasSuffix("_stained_glass_pane")
         if pane || name == "glass" || name == "stained_glass" || name.hasSuffix("_stained_glass") || name == "tinted_glass" {
             let stained = name.contains("stained")
@@ -921,7 +969,7 @@ extension Assets {
             return [skin,skin,skin,skin,skin,try texture("textures/blocks/mushroom_block_inside")]
         }
         if name == "grass_block" || name == "grass" {
-            let side = try texture("textures/blocks/grass_side_carried")
+            let side = try texture("textures/blocks/grass_side",tint:0x91BD59,colourMask:true)
             return [side,side,side,side,try texture("textures/blocks/grass_top",tint:0x91BD59),try texture("textures/blocks/dirt")]
         }
         if ["short_grass","tallgrass","fern","tall_grass","large_fern"].contains(name) {
@@ -972,7 +1020,8 @@ extension Assets {
             else { key = mapped }
             let entry = catalog[key] as? [String: Any]
             let value = entry?["textures"]
-            let path = value as? String ?? (value as? [String])?.first ?? (value as? [String:Any])?["path"] as? String ?? "textures/blocks/"+key
+            let variant = (value as? [Any])?.first ?? value
+            let path = variant as? String ?? (variant as? [String:Any])?["path"] as? String ?? (key.hasPrefix("textures/") ? key : "textures/blocks/"+key)
             return try texture(path,tint:name == "mangrove_leaves" ? 0x78A73F : nil)
         }
     }
