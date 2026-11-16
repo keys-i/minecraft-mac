@@ -433,10 +433,11 @@ enum Landscape {
     }
 
     static func flow(assets: Assets, lava: Bool, biome: Biome = .meadow) throws -> SCNMaterial {
+        let water = lava ? nil : try assets.water(biome)
         let material = try assets.texture(lava ? "textures/blocks/lava_still" : "textures/blocks/water_still_grey",
-            tint:lava ? nil : assets.water(biome),animated:true).copy() as! SCNMaterial
-        // The original water atlas already carries alpha; multiplying it again washes out the colour
-        material.transparency = 1
+            tint:water?.colour,animated:true).copy() as! SCNMaterial
+        // Bedrock combines atlas alpha with the biome's surface opacity
+        material.transparency = water?.opacity ?? 1
         material.lightingModel = .constant
         material.writesToDepthBuffer = lava
         return material

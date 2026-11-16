@@ -753,7 +753,7 @@ struct LauncherView: View {
                                 .accessibilityLabel("Developer Keys-i, open keysi.dev")
                             }
                             Spacer()
-                            Hover(anchor:.trailing) { _ in Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.15.0")) }
+                            Hover(anchor:.trailing) { _ in Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.16.0")) }
                         }.font(Blocks.type(13*scale)).foregroundStyle(.white)
                             .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                             .padding(.horizontal,24).padding(.bottom,16)

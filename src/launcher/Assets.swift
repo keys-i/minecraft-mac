@@ -627,15 +627,17 @@ extension Assets {
         return table
     }
 
-    func water(_ biome: Biome) throws -> UInt32 {
+    func water(_ biome: Biome) throws -> (colour: UInt32, opacity: CGFloat) {
         let names: [Biome:String] = [.swamp:"swampland",.mangrove:"mangrove_swamp",.river:"river",.reef:"warm_ocean",
             .monument:"deep_ocean",.coast:"beach",.desert:"desert",.jungle:"jungle",.snow:"taiga",.ice:"frozen_ocean"]
         let biomes = try table("biomes_client.json")
         let entry = biomes["minecraft:"+(names[biome] ?? "plains")] as? [String:Any]
         let fallback = biomes["default"] as? [String:Any]
         let colour = entry?["water_surface_color"] as? String ?? fallback?["water_surface_color"] as? String ?? "#44AFF5"
-        guard colour.count == 7, colour.first == "#", let value = UInt32(colour.dropFirst(),radix:16) else { throw AssetError.model }
-        return value
+        let opacity = entry?["water_surface_transparency"] as? Double ?? fallback?["water_surface_transparency"] as? Double ?? 0.65
+        guard colour.count == 7, colour.first == "#", let value = UInt32(colour.dropFirst(),radix:16),
+              opacity.isFinite, (0...1).contains(opacity) else { throw AssetError.model }
+        return (value,CGFloat(opacity))
     }
 
     func tiles(_ name: String, states: [String: String] = [:]) throws -> [SCNMaterial] {

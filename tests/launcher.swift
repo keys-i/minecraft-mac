@@ -250,6 +250,13 @@ struct LauncherChecks {
             try Data([UInt8(value)]).write(to:pack.appendingPathComponent("precedence"))
         }
         let art = try Assets(data:fixture)
+        try write("biomes_client.json",["biomes":["default":["water_surface_color":"#44AFF5","water_surface_transparency":0.65],
+            "minecraft:river":["water_surface_color":"#0084FF","water_surface_transparency":0.8]]])
+        let defaultWater = try art.water(.meadow), tintedWater = try art.water(.river)
+        precondition(defaultWater.colour == 0x44AFF5 && defaultWater.opacity == 0.65)
+        precondition(tintedWater.colour == 0x0084FF && tintedWater.opacity == 0.8)
+        try write("biomes_client.json",["biomes":["default":["water_surface_transparency":1.1]]])
+        rejects { _ = try Assets(data:fixture).water(.meadow) }
         let menus = Launcher(status:.init(state:"ready",title:"Ready",detail:"",progress:nil),background:NSImage(),assets:art)
         menus.showSettings(); precondition(menus.settings && !menus.help)
         let delegate = AppDelegate(); delegate.launcher = menus
@@ -470,6 +477,8 @@ struct LauncherChecks {
         let tour = SCNRenderer(device:nil,options:nil); tour.scene = map.scene
         precondition(tour.prepare(map.scene,shouldAbortBlock:nil))
         map.visit(1)
+        map.update(3); map.update(3.1)
+        precondition(abs(mapCamera.simdWorldFront.y)<0.95,"Guided climbs must keep scenery in view")
         for frame in 0..<900 {
             map.update(3+Double(frame)/30)
             tour.update(atTime:Double(frame)/30)
@@ -583,7 +592,8 @@ struct LauncherChecks {
         precondition(heights.max()!-heights.min()!>0.8 && base.position.y == basePosition.y,"Crystal shells float while the base stays still")
         airborneAnimation.scene = nil
         let plainsWater = try assets.water(.meadow), riverWater = try assets.water(.river)
-        precondition(plainsWater == 0x44AFF5 && riverWater == 0x0084FF)
+        precondition(plainsWater.colour == 0x44AFF5 && riverWater.colour == 0x0084FF)
+        precondition(plainsWater.opacity == 0.65)
         let breeze = try factory.make(.breeze)
         let fish = try factory.make(.tropical,variant:3)
         precondition(fish.childNode(withName:"fish-pattern",recursively:true) != nil)
@@ -663,7 +673,7 @@ struct LauncherChecks {
             let image = material.diffuse.contents as! CGImage
             precondition(image.height > image.width && image.height%image.width == 0)
             precondition(abs(material.diffuse.contentsTransform.m22-Double(image.width)/Double(image.height)) < 0.0001)
-            precondition(material.transparency == 1 && material.lightingModel == .constant)
+            precondition(abs(material.transparency-(lava ? 1 : plainsWater.opacity))<0.0001 && material.lightingModel == .constant)
             if lava { precondition(material.emission.contentsTransform.m22 == material.diffuse.contentsTransform.m22) }
         }
         let start = Date()

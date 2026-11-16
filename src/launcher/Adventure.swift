@@ -355,7 +355,13 @@ final class Atlas {
                     let p = SIMD3<Double>(start.x,start.y,start.z)+delta/distance*min(distance,32*dt)
                     let next = Collision.move(scene.rootNode,from:start,to:.init(p.x,p.y,p.z),radius:0.3)
                     camera.worldPosition = next
-                    camera.look(at:target,up:.init(0,1,0),localFront:.init(0,0,-1))
+                    // Keep terrain in view while climbing or descending between habitats
+                    let ahead = points.first { hypot($0.x-next.x,$0.z-next.z)>4 }
+                    let index = Self.index(at:next.x,count:world.biomes.count)
+                    let landmark = Landscape.pose(world.biomes[index],at:0).aim
+                    let aim = ahead.map { SCNVector3($0.x,min(next.y,$0.y)-4,$0.z) }
+                        ?? SCNVector3(landmark.x+Double(index)*Self.span,landmark.y,landmark.z)
+                    camera.look(at:aim,up:.init(0,1,0),localFront:.init(0,0,-1))
                     if hypot(next.x-start.x,next.z-start.z)+abs(next.y-start.y)<0.001 { cancelTravel() }
                 }
             }

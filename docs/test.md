@@ -5,6 +5,53 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Water and guided travel in 0.16
+
+Version 0.16.0/build 26 retains the build 25 runtime and authorised account helper
+The installed `water_still_grey` atlas has alpha 240/255, while the installed
+default biome declares `water_surface_transparency` 0.65. The launcher now applies
+both factors instead of treating atlas alpha as the complete surface opacity
+Biome colour/opacity overrides and the default fallback share one cached lookup
+Out-of-range or non-finite opacity is rejected
+The [Minecraft Wiki water article](https://minecraft.wiki/w/Water), read through
+its public API with curl, confirms animated biome-tinted translucency and
+double-sided exterior water planes. Double-sided surfaces are retained
+
+Guided map travel aims ahead across terrain during vertical legs and toward the
+local landmark on final approach. A native regression prevents the initial climb
+from facing straight into the sky. Synthetic checks cover biome opacity,
+fallbacks and invalid values; installed-art checks cover the resulting material
+alongside all 75 species, 42 areas and three passages. All native checks and
+101 Python checks pass. The installed-art habitat/passages sweep took 57,417 ms
+This is test execution time, not launcher or game startup time
+
+Computer Use inspected the actual installed 0.16.0 title screen, translucent
+village fountain, opaque mobs and grey controls, then entered spectator mode,
+sent a held movement key and returned with Escape. Earlier in the same session,
+the identical Settings implementation opened with Command-comma and closed
+with Escape. Pointer hover, VoiceOver and Reduced Motion were not exercised
+
+At 0.929 seconds after the Play click, the first captured frame showed the full
+dirt/loading screen. By 11.819 seconds its status read Starting game; a later
+process check confirmed the Windows executable. These are observation times,
+not exact transition timings. No sign-in/security prompt was accepted by automation
+The Wine game was absent from the Computer Use inventory and its bundle lookup
+was rejected, so its first rendered frame and menu could not be inspected
+The test session then ended and an older app on the mounted disk image launched
+another game. That session was preserved. Handoff, exit restoration, black-frame
+elimination and end-to-end startup improvement therefore remain unverified
+
+REA re-inspected the actual signed Wine loader as x86_64 Mach-O, SHA-256
+`e8d5c0be93e480ba0838c820cf2cdf3550125a24f4c4e4df4f524d7bd9a6815a`
+Parent Evidence `ev_783c455de5232d07e828cc485932a38e7bb6efd419a77b3882867c6b4b255bca`
+This confirms the inspected artifact identity, without establishing live OS
+permission labels. Full-game native decompilation remains unavailable
+
+The assembled app preserves all 1,053 build 25 resource digests and passes strict
+deep signature verification. Its verified DMG is 128,664,927 bytes, SHA-256
+`30655370cad9ad3c66378d2e2f346ff74d26a29b00f68b7df3e568a4dbff11a6`
+The bundle remains an ad-hoc signed macOS 27 local preview
+
 ## Connected map and loading screen in build 25
 
 Build 25 replaces the whole launcher scene with the installed Bedrock loading
@@ -403,7 +450,7 @@ To check the art from your own installation as well:
 BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
 ```
 
-This read-only integration constructs all 65 resident types, the dragon, 40
+This read-only integration constructs all 75 resident types, the dragon, 42
 independent habitats and three passages. It checks distinct Blaze rods, Breeze
 wind layers, mirrored dragon bounds, mob placement away from void, node/triangle
 budgets, sampled camera ground/headroom, swimming placement, original fluid atlas

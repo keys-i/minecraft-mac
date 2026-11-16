@@ -136,6 +136,8 @@ Camera routes stay at player height or low spectator height, including underwate
 Texture tint is baked once into cached RGB pixels while preserving original
 alpha. Fluids use original biome colours, one alpha application and native atlas
 frames at 20 fps for water / 10 fps for lava, without doubled lava emission
+Water also applies the installed biome's surface-opacity setting; near-opaque
+atlas alpha alone does not define the intended translucency
 `Daylight` owns a twenty-minute Overworld sky rig with original sun/moon art,
 batched stars and once-per-second lighting/fog updates. A shared asset epoch
 preserves time between areas; motion gates pause visible updates. Nether, End
