@@ -11,9 +11,10 @@ enum Species: String, CaseIterable {
     case cod, salmon, sniffer, husk, ravager, silverfish, tropical, snowGolem, cat
     case camelHusk, parched, nautilus, zombieNautilus, happyGhast
     case caveSpider, evoker, elderGuardian, pufferfish, stray
+    case donkey, mule, phantom, tadpole, traderLlama, trader, wither, zoglin, zombieHorse, zombieVillager, sulfurCube
 
-    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .drowned, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus].contains(self) }
+    var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast, .phantom, .wither].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .drowned, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus, .tadpole].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -46,9 +47,10 @@ final class Mobs {
         guard seed>=0 else { throw AssetError.model }
         let condition: Int
         switch species {
-        case .pig,.cow,.axolotl,.bat,.bee: condition = 0
+        case .pig,.cow,.axolotl,.bat,.bee,.zombieHorse,.sulfurCube: condition = 0
         case .sheep: condition = biome == .meadow || biome == .cherry ? 1 : 0
         case .horse: condition = biome == .savanna ? 1 : 0
+        case .donkey: condition = biome == .meadow ? 2 : biome == .savanna ? 1 : 0
         case .enderman:
             if [.central,.highlands,.midlands,.islands,.barrens,.city].contains(biome) { condition = 3 }
             else if biome == .warped { condition = 2 }
@@ -57,7 +59,8 @@ final class Mobs {
         default: return nil
         }
         let data: Data
-        do { data = try assets.file("spawn_rules/"+species.rawValue+".json",behaviour:true) }
+        let ruleName = species == .sulfurCube ? "sulfur_cube" : species == .zombieHorse ? "zombie_horse" : species.rawValue
+        do { data = try assets.file("spawn_rules/"+ruleName+".json",behaviour:true) }
         catch AssetError.missing { return nil }
         guard data.count<=2*1024*1024,
               let document = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String:Any],
@@ -146,6 +149,13 @@ final class Mobs {
         }
         let name: String
         switch species {
+        case .donkey: name = "donkey_v3"
+        case .mule: name = "mule_v3"
+        case .traderLlama: name = "trader_llama"
+        case .trader: name = "wandering_trader"
+        case .zombieHorse: name = "zombie_horse_v3"
+        case .zombieVillager: name = "zombie_villager_v2"
+        case .sulfurCube: name = "sulfur_cube"
         case .camelHusk: name = "camel_husk"
         case .zombieNautilus: name = "zombie_nautilus"
         case .happyGhast: name = "happy_ghast"
@@ -169,6 +179,12 @@ final class Mobs {
         }
         let texture: String
         switch species {
+        case .donkey: texture = "donkey"
+        case .mule: texture = "mule"
+        case .zombieHorse: texture = "zombie"
+        case .zombieNautilus: texture = biome == .reef ? "coral" : "default"
+        case .panda: texture = ["default","lazy","worried","playful","brown","weak","aggressive"][variant%7]
+        case .mooshroom: texture = variant%2 == 0 ? "default" : "brown"
         case .happyGhast: texture = "happy_ghast"
         case .horse: texture = ["base_white","base_creamy","base_chestnut","base_brown","base_black","base_gray","base_darkbrown"][variant%7]
         case .cat: texture = biome == .swamp ? "all_black" : ["white","black","red","siamese","british","calico","persian","ragdoll","tabby","all_black","jellie"][variant%11]
@@ -188,13 +204,13 @@ final class Mobs {
             else if biome == .desert { texture = "gold" }
             else if [.snow,.ice,.peaks].contains(biome) { texture = ["white","white_splotched"][variant%2] }
             else { texture = ["brown","black","salt"][variant%3] }
-        case .llama: texture = ["creamy","white","brown","gray"][variant%4]
-        case .frog: texture = biome == .mangrove ? "warm" : "temperate"
+        case .llama,.traderLlama: texture = ["creamy","white","brown","gray"][variant%4]
+        case .frog: texture = biome == .mangrove ? "warm" : [.snow,.ice,.peaks].contains(biome) ? "cold" : "temperate"
         case .parrot: texture = ["red_blue","green","blue","yellow_blue","grey"][variant%5]
         case .ocelot: texture = "wild"
         case .axolotl: texture = ["lucy","wild","gold","cyan"][variant%4]
         case .pig,.cow,.chicken: texture = [.desert,.savanna,.jungle,.badlands].contains(biome) ? "warm" : [.snow,.peaks,.ice].contains(biome) ? "cold" : "default"
-        case .villager:
+        case .villager,.zombieVillager:
             switch biome {
             case .desert,.badlands: texture = "desert"
             case .jungle: texture = "jungle"
@@ -220,6 +236,11 @@ final class Mobs {
         // Native kitten geometry cancels its behaviour scale through the client script
         if species == .cat && (!baby || infantScale != nil) { model.scale = .init(0.8,0.8,0.8) }
         if species == .villager && (!baby || infantScale != nil) { model.scale = .init(0.9375,0.9375,0.9375) }
+        if !baby {
+            if species == .donkey { model.scale = .init(0.87,0.87,0.87) }
+            if species == .mule { model.scale = .init(0.92,0.92,0.92) }
+            if species == .wither { model.scale = .init(2,2,2) }
+        }
         if let infantScale { model.scale = .init(model.scale.x*infantScale,model.scale.y*infantScale,model.scale.z*infantScale) }
         return try self.named(model,species:species,baby:baby,name:named)
     }
@@ -356,20 +377,41 @@ final class Mobs {
             }
         }
         if name == "bat" { try flap(model) }
+        if name == "spider" || name == "cave_spider" { try spider(model) }
+        let equine = ["horse_v3","skeleton_horse_v3","zombie_horse_v3","donkey_v3","mule_v3"].contains(name)
         var index = 0
         model.enumerateChildNodes { node,_ in
             let name = node.name?.lowercased() ?? ""
             if name.contains("tentacle") {
                 VoxelAdventure.sway(node,x:0.15,z:0.1,period:4,phase:Double(index)*0.7)
                 index += 1
-            } else if name.contains("wing") && key != "ender_dragon-default" && key != "bat-default" {
+            } else if name.contains("wing") && key != "ender_dragon-default" && key != "bat-default" && key != "phantom-default" {
                 VoxelAdventure.sway(node,z:0.4,period:key.hasPrefix("bee-") ? 0.3 : 1.2)
-            } else if name.contains("tail") && key != "ender_dragon-default" {
+            } else if name.contains("tail") && key != "ender_dragon-default" && key != "phantom-default" {
                 VoxelAdventure.sway(node,y:0.13,period:2.8)
-            } else if name == "head" && key != "bat-default" && !key.contains("horse_v3-") { VoxelAdventure.sway(node,y:0.07,period:7) }
+            } else if name == "head" && key != "bat-default" && !equine { VoxelAdventure.sway(node,y:0.07,period:7) }
         }
         models[key] = model
         return model.clone()
+    }
+
+    private func spider(_ model: SCNNode) throws {
+        guard let animations = try assets.json("animations/spider.animation.json")["animations"] as? [String:[String:Any]],
+              let pose = animations["animation.spider.default_leg_pose"]?["bones"] as? [String:[String:Any]],
+              pose.count == 8 else { throw AssetError.model }
+        for (name,tracks) in pose {
+            guard let node = model.childNode(withName:name,recursively:true),
+                  let values = tracks["rotation"] as? [Any], values.count == 3 else { throw AssetError.model }
+            let angles = try values.map { value -> Double in
+                let number: Double?
+                if let value = value as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID() { number = value.doubleValue }
+                else if let value = value as? String, value.hasSuffix(" - this") { number = Double(value.dropLast(7)) }
+                else { throw AssetError.model }
+                guard let number, number.isFinite, abs(number)<=360 else { throw AssetError.model }
+                return number * Double.pi/180
+            }
+            node.eulerAngles = .init(-angles[0],angles[1],-angles[2])
+        }
     }
 
     private func flap(_ model: SCNNode) throws {
@@ -399,7 +441,7 @@ final class Mobs {
                           index == 0 || time>previous else { throw AssetError.model }
                     let factor = rotation ? Double.pi/180 : 1.0/16
                     let value = SCNVector3(base.x+values[0]*factor*(rotation ? -1 : 1),
-                        base.y+values[1]*factor*(rotation ? -1 : 1),base.z+values[2]*factor)
+                        base.y+values[1]*factor,base.z+values[2]*factor*(rotation ? -1 : 1))
                     if index == 0 {
                         if rotation { node.eulerAngles = value } else { node.position = value }
                     } else {
@@ -421,7 +463,8 @@ final class Mobs {
             .illager:"pillager",.polarBear:"polar_bear",.witherSkeleton:"wither_skeleton",.piglinBrute:"piglin_brute",
             .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish",.villager:"villager_v2",
             .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast",
-            .caveSpider:"cave_spider",.evoker:"evocation_illager",.elderGuardian:"elder_guardian"]
+            .caveSpider:"cave_spider",.evoker:"evocation_illager",.elderGuardian:"elder_guardian",.traderLlama:"trader_llama",
+            .trader:"wandering_trader",.zombieHorse:"zombie_horse",.zombieVillager:"zombie_villager_v2",.sulfurCube:"sulfur_cube"]
         let path = "entities/"+(aliases[species] ?? species.rawValue)+".json"
         let data = try assets.file(path,behaviour:true)
         guard data.count <= 2*1024*1024,
@@ -607,7 +650,8 @@ final class Mobs {
         guard var components = entity["components"] as? [String:Any] else { throw AssetError.model }
         if let raw = entity["component_groups"], !(raw is NSNull) {
             guard let groups = raw as? [String:Any] else { throw AssetError.model }
-            let active: [Species:String] = [.enderman:"minecraft:enderman_calm",.armadillo:"minecraft:unrolled",.happyGhast:"minecraft:adult_mobile"]
+            let active: [Species:String] = [.enderman:"minecraft:enderman_calm",.armadillo:"minecraft:unrolled",.happyGhast:"minecraft:adult_mobile",
+                .sulfurCube:"minecraft:sulfur_cube_medium",.zoglin:"zoglin_adult",.zombieHorse:"minecraft:horse_adult"]
             for name in ["adult","minecraft:adult",active[species]].compactMap({ $0 }) {
                 if let raw = groups[name] {
                     guard let group = raw as? [String:Any] else { throw AssetError.model }
@@ -635,34 +679,45 @@ final class Mobs {
         let height = try number("minecraft:collision_box","height",fallback:1.8)
         guard (0...16).contains(movement), (0...16).contains(multiplier),
               (0.01...16).contains(width), (0.01...16).contains(height) else { throw AssetError.model }
-        let result = (speed:min(2,movement*multiplier*4),width:width,height:height)
+        // shortcut: the bat's 20-tick visual speed is approximate; float_wander does not publish a world-speed conversion
+        let result = (speed:min(2,movement*multiplier*(species == .bat ? 20 : 4)),width:width,height:height)
         locomotions[species] = result
         return result
     }
 
     // shortcut: original dimensions and calm speed guide scenery routes, use the game engine for full behaviour
     func wander(_ actor: SCNNode, model: SCNNode, species: Species, area: Biome, seed: Int,
-                root: SCNNode, point: (Double,Double) -> SCNVector3) throws {
+                root: SCNNode, ground: ((Double,Double) -> Double)? = nil, point: (Double,Double) -> SCNVector3) throws {
         let terrain = Terrain(biome:area), origin = actor.position, motion = try locomotion(species)
         let height = model.childNode(withName:"jockey-rider",recursively:true) == nil ? motion.height : max(1.5,motion.height)
         guard motion.speed > 0 else { return }
         Self.face(actor)
         if species == .bat {
-            var target = origin, previous = 0.0, choice = 0
+            guard let components = try entity(.bat)["components"] as? [String:Any],
+                  let goal = components["minecraft:behavior.float_wander"] as? [String:Any],
+                  let duration = goal["float_duration"] as? [Double], duration.count == 2,
+                  duration.allSatisfy({ $0.isFinite && (0.05...60).contains($0) }), duration[1]>=duration[0],
+                  let horizontal = goal["xz_dist"] as? Double, horizontal.isFinite, (0.1...32).contains(horizontal),
+                  let vertical = goal["y_dist"] as? Double, vertical.isFinite, (0.1...32).contains(vertical),
+                  let offset = goal["y_offset"] as? Double, offset.isFinite, abs(offset)<=32,
+                  let reselect = goal["random_reselect"] as? Bool else { throw AssetError.model }
+            var target = origin, previous = 0.0, elapsed = 0.0, nextChoice = 0.0, choice = 0
             actor.runAction(.repeatForever(.customAction(duration:60) { [weak root] node,time in
                 guard let root else { return }
                 let now = Double(time), delta = min(0.1,now>=previous ? now-previous : now)
-                previous = now
-                if hypot(hypot(node.position.x-target.x,node.position.z-target.z),node.position.y-target.y)<0.15 {
-                    for _ in 0..<12 {
+                previous = now; elapsed += delta
+                let near = hypot(hypot(node.position.x-target.x,node.position.z-target.z),node.position.y-target.y)<0.15
+                if elapsed>=nextChoice && (reselect || near) {
+                    for _ in 0..<4 {
                         choice += 1
-                        let x = origin.x+(Terrain.random(seed,choice,seed:211)-0.5)*12
-                        let z = origin.z+(Terrain.random(seed,choice,seed:212)-0.5)*12
-                        let candidate = SCNVector3(x,origin.y+(Terrain.random(seed,choice,seed:213)-0.5)*6,z)
+                        let x = origin.x+(Terrain.random(seed,choice,seed:211)-0.5)*horizontal*2
+                        let z = origin.z+(Terrain.random(seed,choice,seed:212)-0.5)*horizontal*2
+                        let candidate = SCNVector3(x,origin.y+offset+(Terrain.random(seed,choice,seed:213)-0.5)*vertical*2,z)
                         if Collision.clear(root,from:node.position,to:candidate,radius:motion.width/2,height:height+0.2) {
                             target = candidate; break
                         }
                     }
+                    nextChoice = elapsed+duration[0]+Terrain.random(seed,choice,seed:214)*(duration[1]-duration[0])
                 }
                 let start = node.position, dx = target.x-start.x, dy = target.y-start.y, dz = target.z-start.z
                 let distance = sqrt(dx*dx+dy*dy+dz*dz)
@@ -680,7 +735,7 @@ final class Mobs {
             let name = node.name?.lowercased() ?? ""
             if name.contains("leg") && !mounted.contains(ObjectIdentifier(node)) {
                 let sign: Double
-                if species == .horse {
+                if [.horse,.donkey,.mule,.zombieHorse].contains(species) {
                     sign = ["legbl":-28.6/45.8,"legbr":28.6/45.8,"legfl":1,"legfr":-1][name] ?? 0
                 } else if let number = name.last?.wholeNumberValue { sign = [0,3].contains(number%4) ? 1 : -1 }
                 else {
@@ -689,7 +744,7 @@ final class Mobs {
                 }
                 legs.append((node,node.eulerAngles,sign))
             }
-            if name == "head" && species != .horse {
+            if name == "head" && ![.horse,.donkey,.mule,.zombieHorse].contains(species) {
                 node.removeAllActions()
                 VoxelAdventure.sway(node,y:0.16,period:7+Double(seed%7),phase:Double(seed)*1.7)
             }
@@ -701,7 +756,7 @@ final class Mobs {
                 let angle = Terrain.random(seed,index*12+attempt,seed:85)*2 * .pi
                 let distance = 1+Terrain.random(seed,index*12+attempt,seed:86)*4
                 let candidate = point(origin.x+cos(angle)*distance,origin.z+sin(angle)*distance)
-                if Self.walkable(from:start,to:candidate,species:species,terrain:terrain)
+                if Self.walkable(from:start,to:candidate,species:species,terrain:terrain,ground:ground)
                     && Collision.clear(root,from:start,to:candidate,radius:motion.width/2,height:height) { end = candidate; break }
             }
             if index < 6 { visited.append(end) }
@@ -711,13 +766,19 @@ final class Mobs {
                 let heading = atan2(end.x-start.x,end.z-start.z)
                 if !species.flying { steps.append(.rotateTo(x:0,y:heading,z:0,duration:0.35,usesShortestUnitArc:true)) }
                 let a = start, b = end, duration = length/motion.speed, distance = travelled
-                let hopping = [.rabbit,.frog,.slime,.magma].contains(species)
+                let hopping = [.rabbit,.frog,.slime,.magma,.sulfurCube].contains(species)
                 let travel = SCNAction.customAction(duration:duration) { node,time in
                     let t = min(1,Double(time)/duration)
                     node.eulerAngles = .init(0,heading,0)
                     node.position = .init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
-                    let stride = sin(species == .horse ? (distance+length*t)*7 : Double(time)*7)
-                    for (leg,base,sign) in legs { leg.eulerAngles.x = base.x+stride*(species == .enderman ? 0.35 : 0.5)*sign }
+                    let stride = sin([.horse,.donkey,.mule,.zombieHorse].contains(species) ? (distance+length*t)*7 : Double(time)*7)
+                    for (leg,base,sign) in legs {
+                        if [.spider,.caveSpider].contains(species), let index = leg.name?.last?.wholeNumberValue {
+                            let moved = distance+length*t, phase = Double(index/2)*Double.pi/2, side = index%2 == 0 ? 1.0 : -1
+                            leg.eulerAngles = .init(base.x,base.y-side*abs(cos(moved*76.34*Double.pi/180+phase))*22.92*Double.pi/180,
+                                base.z-side*abs(sin(moved*38.17*Double.pi/180+phase))*22.92*Double.pi/180)
+                        } else { leg.eulerAngles = .init(base.x+stride*(species == .enderman ? 0.35 : 0.5)*sign,base.y,base.z) }
+                    }
                     if hopping { node.position.y += abs(stride)*(species == .slime || species == .magma ? 0.65 : 0.3) }
                     if species.swimming || species.flying { node.position.y += sin(Double(time)*2+Double(seed))*0.12 }
                 }
@@ -740,10 +801,11 @@ final class Mobs {
 
     static func classicChance(daylight: Double) -> Double { 0.10+0.05*(1-min(1,max(0,daylight))) }
 
-    static func walkable(from start: SCNVector3, to end: SCNVector3, species: Species, terrain: Terrain) -> Bool {
+    static func walkable(from start: SCNVector3, to end: SCNVector3, species: Species, terrain: Terrain,
+                         ground sample: ((Double,Double) -> Double)? = nil) -> Bool {
         for index in 1...8 {
             let t = Double(index)/8, x = start.x+(end.x-start.x)*t, z = start.z+(end.z-start.z)*t
-            let ground = terrain.height(x.rounded(),z.rounded())
+            let ground = sample?(x.rounded(),z.rounded()) ?? terrain.height(x.rounded(),z.rounded())
             if species.swimming {
                 if ground >= min(start.y,end.y)-0.5 { return false }
             } else if !species.flying && species != .strider {

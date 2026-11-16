@@ -1,7 +1,9 @@
 import AppKit
 import SwiftUI
 import CoreText
+import SceneKit
 import notify
+import UniformTypeIdentifiers
 
 private let launcherName = "Minecraft Launcher"
 
@@ -378,7 +380,7 @@ private enum Blocks {
     static let ink = Color(white:0.12)
     static let gold = Color(red:1,green:0.83,blue:0.37)
 
-    static func type(_ size: CGFloat) -> Font { .custom("Monocraft",size:size,relativeTo:.body) }
+    static func type(_ size: CGFloat) -> Font { .custom(NSFont(name:"Mojangles",size:size) == nil ? "Monocraft" : "Mojangles",size:size,relativeTo:.body) }
     static func action(_ size: CGFloat) -> Font { type(size) }
 }
 
@@ -403,7 +405,7 @@ private struct Hover<Content:View>: View {
     }
 }
 
-private struct BlockButton: ButtonStyle {
+struct BlockButton: ButtonStyle {
     var selected = false
     var texture: NSImage?
     var scale: CGFloat = 1
@@ -414,9 +416,9 @@ private struct BlockButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Hover { hovered in
             configuration.label
-                .foregroundStyle(hovered ? .white : Blocks.ink)
+                .foregroundStyle(hovered || focused ? .white : Blocks.ink)
                 .background {
-                    (hovered ? Blocks.play : Blocks.stone)
+                    (hovered || focused ? Blocks.play : Blocks.stone)
                         .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3*scale)
                     if let texture {
                         Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.14)
@@ -424,8 +426,8 @@ private struct BlockButton: ButtonStyle {
                 }
                 .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2*scale) }
                 .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.45)).frame(height:4*scale) }
-                .overlay { Rectangle().strokeBorder(selected ? Blocks.gold : .black.opacity(0.7),lineWidth:2*scale) }
-                .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(focused ? 1 : 0) }
+                .overlay { Rectangle().strokeBorder(.black.opacity(0.85),lineWidth:2*scale) }
+                .overlay { Rectangle().strokeBorder(.white,lineWidth:2*scale).padding(3*scale).opacity(hovered || focused || selected ? 1 : 0) }
                 .offset(y:configuration.isPressed && !reduced ? 2*scale : 0)
                 .opacity(enabled ? 1 : 0.45)
                 .contentShape(Rectangle())
@@ -491,12 +493,19 @@ private struct Slot: View {
 private struct Scenery: View {
     let journey: Journey
     let moving: Bool
+    let active: Bool
     let exploring: Bool
     let travel: (Int) -> Void
     let finish: () -> Void
     let renderDistance: Int
+    let seed: Int
     let farLands: Int
     let location: (String?) -> Void
+    let report: ((SCNVector3,Double) -> Void)?
+    let sensitivity: Double
+    let inverted: Bool
+    let controls: Controls
+    let activity: (Bool) -> Void
     @ObservedObject var launcher: Launcher
 
     var body: some View {
@@ -520,8 +529,193 @@ private struct Scenery: View {
         if let assets = launcher.assets, !launcher.sceneryFailed {
             Adventure(world:journey.world,biome:journey.biome,moving:moving,passage:journey.passage,assets:assets,exploring:exploring,
                 travel:travel,arrived:{ launcher.journey.area($0) },finish:finish,
-                renderDistance:renderDistance,farLands:farLands,location:location) { launcher.sceneryFailed = true }
+                renderDistance:renderDistance,seed:seed,farLands:farLands,location:location,activity:activity,report:report,
+                sensitivity:sensitivity,inverted:inverted,controls:controls,active:active) { launcher.sceneryFailed = true }
         }
+    }
+}
+
+struct Scrolling {
+    private var input = -Double.infinity
+    private var changed = -Double.infinity
+    private var delta = 0.0
+
+    mutating func step(_ amount: Double, precise: Bool, at time: Double) -> Int {
+        guard amount.isFinite, time.isFinite, amount != 0 else { return 0 }
+        if time-input>0.25 || time<input { delta = 0 }
+        input = time
+        guard time-changed>=0.12 || time<changed else { return 0 }
+        delta += precise ? amount : (amount>0 ? 12 : -12)
+        guard abs(delta)>=12 else { return 0 }
+        let step = delta>0 ? -1 : 1
+        delta = 0; changed = time
+        return step
+    }
+}
+
+private struct Input: NSViewRepresentable {
+    let enabled: Bool
+    var controls = Controls()
+    let changed: (Int) -> Void
+    var action: (Controls.Action) -> Void = { _ in }
+
+    final class Coordinator {
+        weak var view: NSView?
+        var enabled = false
+        var changed: ((Int) -> Void)?
+        var controls = Controls()
+        var action: ((Controls.Action) -> Void)?
+        var scrolling = Scrolling()
+        var monitor: Any?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(); context.coordinator.view = view
+        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching:[.scrollWheel,.keyDown,.flagsChanged]) { [weak coordinator = context.coordinator] event in
+            guard let coordinator, coordinator.enabled, let window = coordinator.view?.window,
+                  event.window === window, window.isKeyWindow else { return event }
+            if event.type == .keyDown || event.type == .flagsChanged {
+                if Controls.Key.quit(event) { return event }
+                let actions: [Controls.Action] = [.look,.map,.previous,.next,.overworld,.nether,.end,.sift]
+                if let action = actions.first(where:{ coordinator.controls.matches($0,event:event) }) {
+                    if event.type != .keyDown || !event.isARepeat { coordinator.action?(action) }
+                    return nil
+                }
+                if event.type == .keyDown, let flight = window.firstResponder as? FlightView, flight.exploring,
+                   Controls.Action.allCases.contains(where:{ $0.movement && coordinator.controls.key($0).code == Controls.Key.canonical(event.keyCode)
+                       && coordinator.controls.pressed($0,keys:flight.keys.union([Controls.Key.canonical(event.keyCode)]),modifiers:event.modifierFlags) }) {
+                    flight.keyDown(with:event)
+                    return nil
+                }
+                return event
+            }
+            guard
+                  event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
+                  event.momentumPhase.isEmpty else { return event }
+            let amount = Double(event.scrollingDeltaY)*(event.isDirectionInvertedFromDevice ? -1 : 1)
+            let step = coordinator.scrolling.step(amount,precise:event.hasPreciseScrollingDeltas,at:event.timestamp)
+            if step != 0 { coordinator.changed?(step) }
+            return nil
+        }
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) {
+        if context.coordinator.enabled != enabled { context.coordinator.scrolling = Scrolling() }
+        context.coordinator.enabled = enabled; context.coordinator.changed = changed
+        context.coordinator.controls = controls; context.coordinator.action = action
+    }
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        if let monitor = coordinator.monitor { NSEvent.removeMonitor(monitor) }
+        coordinator.monitor = nil; coordinator.changed = nil; coordinator.action = nil; coordinator.view = nil
+    }
+}
+
+final class Position: ObservableObject {
+    @Published var sample = (point:SCNVector3Zero,yaw:0.0)
+}
+
+private struct Disc: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cell = min(rect.width,rect.height)/32
+        var path = Path()
+        for row in 0..<32 {
+            let half = floor(sqrt(256-pow(Double(row)-15.5,2)))
+            let left = CGFloat(16-half)*cell, right = CGFloat(16+half)*cell
+            if row == 0 { path.move(to:.init(x:left,y:0)) }
+            path.addLine(to:.init(x:left,y:CGFloat(row)*cell))
+            path.addLine(to:.init(x:left,y:CGFloat(row+1)*cell))
+            if row == 31 { path.addLine(to:.init(x:right,y:32*cell)) }
+        }
+        for row in (0..<32).reversed() {
+            let half = floor(sqrt(256-pow(Double(row)-15.5,2)))
+            let right = CGFloat(16+half)*cell
+            path.addLine(to:.init(x:right,y:CGFloat(row+1)*cell))
+            path.addLine(to:.init(x:right,y:CGFloat(row)*cell))
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct Minimap: View {
+    let world: World
+    @ObservedObject var position: Position
+    var seed: Int = 0
+    var size: CGFloat = 208
+    var shortcut = "M"
+    @State private var image: CGImage?
+
+    private var point: SCNVector3 { position.sample.point }
+    private var yaw: Double { position.sample.yaw }
+    private var x: Int { Int(floor(point.x/8)) }
+    private var z: Int { Int(floor(point.z/8)) }
+    private var historical: Bool { Region.at(point)?.historical(world) == true }
+    private var key: String { "\(world.rawValue):\(seed):\(x):\(z):\(Int(floor((point.y+16)/32)))" }
+
+    static func image(world: World, at point: SCNVector3, seed: Int = 0) -> CGImage? {
+        guard point.x.isFinite, point.y.isFinite, point.z.isFinite,
+              abs(point.x)<=30_000_000, abs(point.z)<=30_000_000,
+              Region.at(point)?.historical(world) != true else { return nil }
+        let x = floor(point.x/8)*8, z = floor(point.z/8)*8
+        var pixels = [UInt8](); pixels.reserveCapacity(33*33*4)
+        for row in -16...16 { for column in -16...16 {
+            let sample = Terrain.sample(world:world,at:.init(x+Double(column*8),point.y,z+Double(row*8)),seed:seed)
+            let name = sample.surface
+            let colour: UInt32
+            if sample.height <= -90 { colour = 0x12121D }
+            else if sample.fluid { colour = world == .nether ? 0xE85B18 : 0x387BC4 }
+            else if name.contains("snow") || name == "ice" { colour = 0xDAE7EA }
+            else if name.contains("sand") && !name.contains("soul") { colour = 0xDACE8C }
+            else if name.contains("soul") { colour = 0x685144 }
+            else if name.contains("gravel") || name.contains("stone") && world == .overworld { colour = 0x858780 }
+            else if name.contains("deepslate") { colour = 0x42454A }
+            else if name.contains("netherrack") { colour = 0x813E3A }
+            else if name.contains("nylium") { colour = name.contains("warped") ? 0x218979 : 0x9E314E }
+            else if world == .end { colour = 0xC6C58B }
+            else if name.contains("terracotta") { colour = 0xBC733F }
+            else if name.contains("mycelium") { colour = 0x877C88 }
+            else if sample.biome.underground { colour = 0x6C7361 }
+            else { colour = 0x76A448 }
+            let shade = min(1.15,max(0.65,0.85+sample.height*0.006))
+            pixels += [UInt8(min(255,Double((colour>>16)&255)*shade)),
+                       UInt8(min(255,Double((colour>>8)&255)*shade)),
+                       UInt8(min(255,Double(colour&255)*shade)),255]
+        } }
+        guard let provider = CGDataProvider(data:Data(pixels) as CFData) else { return nil }
+        return CGImage(width:33,height:33,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:33*4,
+            space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent)
+    }
+
+    var body: some View {
+        VStack(spacing:0) {
+            ZStack {
+                if let image { Image(decorative:image,scale:1).resizable().interpolation(.none) }
+                else { Color(white:0.2) }
+                if historical {
+                    Text("Far Lands\nHistorical terrain\nMap unavailable").font(Blocks.type(12)).multilineTextAlignment(.center).foregroundStyle(.white)
+                }
+                Path { path in
+                    path.move(to:.init(x:8,y:0)); path.addLine(to:.init(x:13,y:14))
+                    path.addLine(to:.init(x:8,y:11)); path.addLine(to:.init(x:3,y:14)); path.closeSubpath()
+                }.fill(.white).shadow(color:.black,radius:0,x:1,y:1)
+                    .frame(width:16,height:16).rotationEffect(.radians(-yaw))
+                    .offset(x:(point.x/8-Double(x))*Double(size/33),y:(point.z/8-Double(z))*Double(size/33))
+            }.frame(width:size,height:size).clipShape(Disc())
+                .padding(4).background(Disc().fill(Blocks.stone))
+                .padding(3).background(Disc().fill(.black))
+                .overlay(alignment:.top) {
+                    Text("N").font(Blocks.type(15)).foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1).padding(.top,10)
+                }
+            Text("\(Int(point.x))  \(Int(point.y))  \(Int(point.z))").font(Blocks.type(13))
+                .foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1).padding(.top,10)
+            Text("\(shortcut) · Map").font(Blocks.type(12)).foregroundStyle(.white)
+                .shadow(color:.black,radius:0,x:1,y:1).padding(.top,6)
+        }
+            .task(id:key) { image = Self.image(world:world,at:point,seed:seed) }
+            .accessibilityElement(children:.ignore)
+            .accessibilityLabel("Minimap, north up, position \(Int(point.x)), \(Int(point.y)), \(Int(point.z))")
     }
 }
 
@@ -575,7 +769,7 @@ struct Loading: View {
                         Text(status.state == "playing" ? "Starting game…" : status.title)
                             .font(Blocks.type(16*scale)).multilineTextAlignment(.center)
                         if !status.detail.isEmpty && status.state != "playing" {
-                            Text(status.detail).font(.system(size:14*scale))
+                            Text(status.detail).font(Blocks.type(14*scale))
                                 .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
                         }
                         TimelineView(.animation(minimumInterval:0.1,paused:!animated)) { tick in
@@ -614,12 +808,35 @@ struct GameTitle: View {
     let moving: Bool
 
     static func width(in size: CGSize) -> CGFloat {
-        min(size.width*0.7,size.height*1.25)
+        min(size.width*0.58,size.height*0.95)
+    }
+
+    static func formatted(_ text: String) -> AttributedString {
+        let palette: [UInt32] = [0x000000,0x0000AA,0x00AA00,0x00AAAA,0xAA0000,0xAA00AA,0xFFAA00,0xAAAAAA,
+                                 0x555555,0x5555FF,0x55FF55,0x55FFFF,0xFF5555,0xFF55FF,0xFFFF55,0xFFFFFF]
+        var characters = text.makeIterator()
+        var colour = Color.yellow
+        var result = AttributedString()
+        while let character = characters.next() {
+            var text = String(character)
+            if character == "§", let code = characters.next() {
+                if code == "r" || code == "R" { colour = .yellow; continue }
+                if let index = Int(String(code),radix:16), palette.indices.contains(index) {
+                    let rgb = palette[index]
+                    colour = Color(red:Double((rgb>>16)&255)/255,green:Double((rgb>>8)&255)/255,blue:Double(rgb&255)/255)
+                    continue
+                }
+                text.append(code)
+            }
+            var run = AttributedString(text); run.foregroundColor = colour
+            result.append(run)
+        }
+        return result
     }
 
     private var splashText: some View {
-        Text(splash).font(Blocks.type(width*0.033)).foregroundStyle(.yellow)
-            .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.3)
+        Text(Self.formatted(splash)).font(Blocks.type(width*0.033))
+            .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.5)
             .frame(width:width*0.48).shadow(color:.black.opacity(0.65),radius:0,x:1,y:1)
     }
 
@@ -673,7 +890,7 @@ private struct Marquee: View {
     let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduced
     @State private var offset: CGFloat = 0
-    private var width: CGFloat { (text as NSString).size(withAttributes:[.font:NSFont(name:"Monocraft",size:18) ?? .monospacedSystemFont(ofSize:18,weight:.regular)]).width }
+    private var width: CGFloat { (text as NSString).size(withAttributes:[.font:NSFont(name:"Mojangles",size:18) ?? NSFont(name:"Monocraft",size:18) ?? .monospacedSystemFont(ofSize:18,weight:.regular)]).width }
 
     var body: some View {
         Group {
@@ -706,11 +923,22 @@ struct LauncherView: View {
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @StateObject private var music = Music()
     @AppStorage("renderDistance") private var renderDistance = 8
+    @AppStorage("worldSeed") private var worldSeed = 0
+    @AppStorage("controls") private var controlData = Data()
+    @AppStorage("skinPath") private var skinPath = ""
+    @AppStorage("capePath") private var capePath = ""
+    @AppStorage("slimSkin") private var slimSkin = false
+    @AppStorage("lookSensitivity") private var lookSensitivity = 50.0
+    @AppStorage("invertLook") private var invertLook = false
     @State private var farLands = 0
+    @State private var position = Position()
     @State private var sceneryTitle: String?
     @State private var visible = true
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var exploring = false
+    @State private var mapVisible = true
+    @State private var navigating = false
+    @State private var avatarError = ""
     @State private var map = false
     @State private var focused = false
     @State private var hint = ShortcutHint()
@@ -723,16 +951,17 @@ struct LauncherView: View {
     }
     #endif
     private var fresh: Bool { launcher.status.state == "new" }
+    private var controls: Controls { Controls(data:controlData) }
     private var available: Bool { launcher.assets != nil && !launcher.sceneryFailed }
     private var moving: Bool {
-        available && !launcher.loading && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery || launcher.settings,lowPower:lowPower,
+        available && !launcher.loading && SceneryMotion.enabled(reduced:reduceMotion,paused:!animateScenery || launcher.settings || launcher.help,lowPower:lowPower,
             active:scenePhase == .active,visible:visible,playing:launcher.status.state == "playing")
     }
     private var hintActive: Bool {
         hintAvailable && visible && (hint.showing || focused && scenePhase == .active)
     }
     private var hintAvailable: Bool {
-        available && !launcher.settings && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
+        available && !launcher.settings && !launcher.help && launcher.journey.passage == nil && !launcher.running && launcher.status.state != "error"
     }
     private var musicActive: Bool {
         available && !launcher.loading && Music.enabled(muted:!musicEnabled,active:focused && scenePhase == .active,
@@ -754,7 +983,7 @@ struct LauncherView: View {
     static func scale(in size: CGSize, extra: CGFloat = 0) -> CGFloat {
         let title = GameTitle.width(in:size)
         let reserved: CGFloat = size.width-title >= 560 ? 168 : 248
-        return max(1,min(CGFloat(5).squareRoot(),(size.width-80)/364,(size.height-title*0.25-reserved-extra)/154))
+        return max(1,min(CGFloat(5).squareRoot(),(size.width-80)/364,(size.height-title*0.25-reserved-extra)/270))
     }
 
     var body: some View {
@@ -770,9 +999,12 @@ struct LauncherView: View {
                         .transition(.opacity)
                 } else {
                 ZStack {
-                    Scenery(journey:launcher.journey,moving:moving,exploring:exploring,
+                    Scenery(journey:launcher.journey,moving:moving,
+                        active:scenePhase == .active && visible && !launcher.settings && !launcher.help && launcher.status.state != "playing",exploring:exploring,
                         travel:{ launcher.journey.travel($0) },finish:{ explore(false) },
-                        renderDistance:renderDistance,farLands:farLands,location:{ sceneryTitle = $0 },launcher:launcher)
+                        renderDistance:renderDistance,seed:worldSeed,farLands:farLands,location:{ sceneryTitle = $0 },
+                        report:exploring ? { point,yaw in position.sample = (point,yaw) } : nil,
+                        sensitivity:lookSensitivity,inverted:invertLook,controls:controls,activity:{ navigating = $0 },launcher:launcher)
                         .frame(width:geometry.size.width,height:geometry.size.height).clipped().ignoresSafeArea().allowsHitTesting(exploring)
                     if exploring {
                         ZStack {
@@ -784,7 +1016,7 @@ struct LauncherView: View {
                     VStack(spacing:0) {
                         header(in:geometry.size).padding(.horizontal,28).padding(.top,28)
                         if hintAvailable && hint.showing && !map && !sideHint {
-                            HStack { Spacer(); achievement }.padding(.trailing,28).padding(.top,16)
+                            HStack { Spacer(); achievement }.padding(.trailing,exploring ? 140 : 28).padding(.top,16)
                                 .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
                         }
                         Spacer(minLength:16)
@@ -793,13 +1025,27 @@ struct LauncherView: View {
                             hotbar(scale:scale)
                         }.frame(maxWidth:640*scale).padding(.horizontal,28).padding(.bottom,footer)
                     }
-                    VStack {
+                    if exploring && mapVisible {
+                        VStack { HStack { Minimap(world:launcher.journey.world,position:position,seed:worldSeed,size:min(260,max(192,geometry.size.width*0.16)),shortcut:controls.label(.map)); Spacer() }; Spacer() }
+                            .padding(.leading,28).padding(.top,108).allowsHitTesting(false)
+                    }
+                    if exploring, let assets = launcher.assets, !skinPath.isEmpty {
+                        VStack { HStack { Spacer();
+                            Skin(assets:assets,skin:skinPath,cape:capePath,slim:slimSkin,active:scenePhase == .active && visible,failed:{ avatarError = $0 })
+                                .frame(width:96,height:144).accessibilityLabel("Your Minecraft character")
+                                .overlay {
+                                    if !avatarError.isEmpty { Text(avatarError).font(Blocks.type(12)).multilineTextAlignment(.center).foregroundStyle(.white).shadow(color:.black,radius:0,x:1,y:1) }
+                                }
+                        }; Spacer() }
+                            .padding(.trailing,28).padding(.top,108).allowsHitTesting(false)
+                    }
+                    if !exploring { VStack {
                         Spacer()
                         HStack {
                             Spacer()
                             look(scale:scale).padding(.trailing,24).padding(.bottom,footer)
                         }
-                    }
+                    } }
                     VStack {
                         Spacer()
                         HStack {
@@ -808,8 +1054,8 @@ struct LauncherView: View {
                                 .accessibilityLabel("Developer Keys-i, open keysi.dev")
                             }
                             Spacer()
-                            Hover(anchor:.trailing) { _ in Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.16.0")) }
-                        }.font(Blocks.type(13*scale)).foregroundStyle(.white)
+                            Hover(anchor:.trailing) { _ in Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.17.0")) }
+                        }.font(Blocks.type(max(24,20*scale))).foregroundStyle(.white)
                             .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                             .padding(.horizontal,24).padding(.bottom,16)
                     }
@@ -824,13 +1070,32 @@ struct LauncherView: View {
                 }
             }.animation(reduceMotion ? nil : .easeOut(duration:0.18),value:launcher.loading)
         }
-        .disabled(map || launcher.settings).accessibilityHidden(map || launcher.settings)
+        .disabled(map || launcher.settings || launcher.help).accessibilityHidden(map || launcher.settings || launcher.help)
+        .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing" && launcher.journey.passage == nil,controls:controls,changed:{ step in
+            let index = (launcher.selection+step+launcher.worlds.count)%launcher.worlds.count
+            launcher.journey.select(launcher.worlds[index],animated:moving)
+        },action:{ action in
+            switch action {
+            case .look: explore(!exploring)
+            case .map:
+                if exploring { mapVisible.toggle() }
+                else { mapVisible = true; explore(true) }
+            case .previous: launcher.journey.travel(-1)
+            case .next: launcher.journey.travel(1)
+            case .overworld,.nether,.end,.sift:
+                let world: World = action == .overworld ? .overworld : action == .nether ? .nether : action == .end ? .end : .sift
+                launcher.journey.select(world,animated:moving)
+            default: break
+            }
+        }))
         .overlay {
-            if map || launcher.settings {
+            if map || launcher.settings || launcher.help {
                 GeometryReader { geometry in
                     ZStack {
-                        Color.black.opacity(0.65).onTapGesture { map = false; launcher.settings = false }
-                        if launcher.settings {
+                        Color.black.opacity(0.65).onTapGesture { map = false; launcher.settings = false; launcher.help = false }
+                        if launcher.help {
+                            Help(launcher:launcher,close:{ launcher.help = false })
+                        } else if launcher.settings {
                             Preferences(launcher:launcher,close:{ launcher.settings = false })
                                 .frame(width:min(1040,geometry.size.width-48),height:min(800,geometry.size.height-48))
                         } else {
@@ -853,7 +1118,6 @@ struct LauncherView: View {
         .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onDisappear { music.stop() }
-        .sheet(isPresented:$launcher.help) { Help(launcher:launcher) }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
             focused = (notification.object as? NSWindow)?.title == launcherName
         }
@@ -870,13 +1134,16 @@ struct LauncherView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration:0.18),value:hint.showing)
-        .onExitCommand { if launcher.settings { launcher.settings = false } else if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
+        .onExitCommand { if launcher.help { launcher.help = false } else if launcher.settings { launcher.settings = false } else if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
         .onReceive(NotificationCenter.default.publisher(for:.NSProcessInfoPowerStateDidChange)) { _ in lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didChangeOcclusionStateNotification)) { _ in
             visible = NSApp.windows.contains { $0.title == launcherName && $0.occlusionState.contains(.visible) }
         }
         .onChange(of:launcher.settings) {
             if launcher.settings { map = false; explore(false) }
+        }
+        .onChange(of:launcher.help) {
+            if launcher.help { map = false; explore(false) }
         }
         .onChange(of:reduceMotion) { if reduceMotion { launcher.journey.skip() } }
         .onChange(of:lowPower) { if lowPower { launcher.journey.skip() } }
@@ -888,7 +1155,7 @@ struct LauncherView: View {
             while !Task.isCancelled {
                 do { try await Task.sleep(for:.seconds(1)) } catch { return }
                 guard !Task.isCancelled else { return }
-                launcher.journey.tick(rotate:rotateScenery)
+                if !navigating { launcher.journey.tick(rotate:rotateScenery) }
             }
         }
     }
@@ -898,10 +1165,12 @@ struct LauncherView: View {
             HStack(alignment:.top,spacing:8) {
                 location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
                 Spacer()
-                Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
-                    .help("Help").accessibilityLabel("Help")
-                Button { launcher.showSettings() } label: { glyph("icon_setting",fallback:"gearshape.fill").frame(width:44,height:44) }
-                    .help("Settings").accessibilityLabel("Settings")
+                if !exploring {
+                    Button { launcher.showHelp() } label: { Text("?").font(Blocks.type(24)).frame(width:44,height:44) }
+                        .help("Help").accessibilityLabel("Help")
+                } else {
+                    Text("Esc · Menu").font(Blocks.type(16)).shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
+                }
             }.buttonStyle(BlockButton(texture:launcher.stone))
             if !exploring {
                 GameTitle(image:launcher.frames["title"],font:launcher.gameFont,splash:launcher.splash,
@@ -923,6 +1192,9 @@ struct LauncherView: View {
                 Button { launcher.journey.skip() } label: {
                     Text("Skip journey").font(Blocks.action(13)).padding(.horizontal,12).frame(height:44)
                 }.buttonStyle(BlockButton(texture:launcher.stone))
+            } else if exploring {
+                Marquee(text:sceneryTitle ?? launcher.journey.title,active:moving && focused)
+                    .frame(minHeight:44).shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
             } else {
                 Button { map = true } label: {
                     HStack(spacing:8) {
@@ -943,12 +1215,11 @@ struct LauncherView: View {
         HStack(spacing:0) {
             ForEach(launcher.worlds.indices,id:\.self) { index in
                 let world = launcher.worlds[index]
-                Button { launcher.journey.select(world,animated:moving && !exploring) } label: {
+                Button { launcher.journey.select(world,animated:moving) } label: {
                     Slot(world:world,image:launcher.items[world],scale:scale)
                 }
                 .buttonStyle(InventoryButton(selected:launcher.selection == index,
                     slot:launcher.frames["hotbar_0"],selection:launcher.frames["selected_hotbar_slot"],scale:scale))
-                .keyboardShortcut(KeyEquivalent(Character(String(index+1))),modifiers:[])
                 .disabled(!available)
                 .accessibilityLabel("\(world.title) scenery")
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
@@ -963,52 +1234,57 @@ struct LauncherView: View {
             glyph("spyglass",fallback:exploring ? "eye.fill" : "eye",size:32.4*scale).frame(width:56*scale,height:56*scale)
         }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone,scale:scale))
             .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
-            .keyboardShortcut("l",modifiers:.command)
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
             .accessibilityHint("WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns")
-            .help(exploring ? "Return · Esc" : "Look around · ⌘L")
+            .help(exploring ? "Return · Esc" : "Look around · \(controls.label(.look))")
     }
 
     private func explore(_ enabled: Bool) {
+        if enabled && (!available || launcher.loading || launcher.status.state == "playing" || launcher.journey.passage != nil) { return }
         if enabled { hint.show(at:ProcessInfo.processInfo.systemUptime) }
         else { hint.dismiss(at:ProcessInfo.processInfo.systemUptime) }
         exploring = enabled
     }
 
     private var achievement: some View {
-        HStack(spacing:12) {
-            glyph("spyglass",fallback:"eye").frame(width:40,height:40).foregroundStyle(Blocks.gold)
+        HStack(spacing:14) {
+            glyph("spyglass",fallback:"eye",size:44).frame(width:48,height:48).foregroundStyle(Blocks.gold)
             if exploring {
                 VStack(alignment:.leading,spacing:5) {
-                    Text("Spectator mode").font(Blocks.type(13)).foregroundStyle(Blocks.gold)
-                    Text("WASD fly · Mouse to look").font(Blocks.type(11))
-                    Text("Space/Shift · Esc to return").font(Blocks.type(10))
+                    Text("Spectator mode").font(Blocks.type(16)).foregroundStyle(Blocks.gold)
+                    Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly").font(Blocks.type(14))
+                    Text("\(controls.label(.map)) · Map    Esc · Menu").font(Blocks.type(12))
                 }
             } else {
                 VStack(alignment:.leading,spacing:5) {
-                    Text("Advancement made!").font(Blocks.type(12)).foregroundStyle(Blocks.gold)
-                    Text("\(Text("⌘ + L").font(.system(size:13,weight:.semibold))) to look around")
-                        .font(Blocks.type(12)).lineLimit(1)
+                    HStack(spacing:6) {
+                        glyph("achievements_pause_menu_icon",fallback:"trophy.fill",size:16)
+                        Text("Advancement made!").font(Blocks.type(15))
+                    }.foregroundStyle(Blocks.gold)
+                    Text("\(controls.label(.look)) to look around").font(Blocks.type(14)).lineLimit(1)
                 }
             }
-        }.padding(.horizontal,14).frame(height:exploring ? 88 : 64)
+        }.padding(.horizontal,16).frame(width:360,height:exploring ? 96 : 80,alignment:.leading)
             .background {
-                Rectangle().fill(Color(white:0.12))
+                Rectangle().fill(Color(white:0.16))
                     .shadow(color:.black.opacity(0.3),radius:2,y:3)
             }
-            .overlay { Rectangle().strokeBorder(Color(white:0.5),lineWidth:2) }
-            .overlay { Rectangle().strokeBorder(.black.opacity(0.75),lineWidth:1).padding(3) }
+            .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
+            .overlay { Rectangle().strokeBorder(Color(white:0.5),lineWidth:2).padding(3) }
             .accessibilityElement(children:.combine)
-            .accessibilityLabel(exploring ? "Spectator mode: WASD flies, mouse movement turns the view, Space and Shift change height, Control sprints, Escape returns" : "Press Command L to look around")
+            .accessibilityLabel(exploring ? "Spectator mode. Mouse looks, \(controls.label(.map)) toggles the map, Escape returns to the menu" : "Press \(controls.label(.look)) to look around")
             .allowsHitTesting(false)
     }
 
     @ViewBuilder private func installation(scale: CGFloat) -> some View {
         if !launcher.running && ["ready","new","cancelled"].contains(launcher.status.state) {
-            VStack(spacing:12) {
+            VStack(spacing:9*scale) {
                 playButton(width:320,scale:scale)
+                Button { launcher.showSettings() } label: {
+                    Text("Settings").font(Blocks.type(20*scale)).frame(width:320*scale,height:54*scale)
+                }.buttonStyle(BlockButton(texture:launcher.stone,scale:scale))
                 if !detail.isEmpty {
-                    Text(detail).font(.system(size:13,weight:.medium)).multilineTextAlignment(.center)
+                    Text(detail).font(Blocks.type(14*scale)).multilineTextAlignment(.center)
                         .frame(maxWidth:500).shadow(color:.black.opacity(0.25),radius:2,y:1).textSelection(.enabled)
                 }
                 if fresh || launcher.status.state == "cancelled" { setupSteps }
@@ -1030,7 +1306,7 @@ struct LauncherView: View {
                     Image(systemName:launcher.status.stage.map { index < $0 } == true ? "checkmark" : ["person.fill","arrow.down","hammer.fill","play.fill"][index])
                         .foregroundStyle(launcher.status.stage == index ? Blocks.gold : Blocks.grass)
                     Text(["Sign in","Download","Prepare","Play"][index])
-                }.font(.system(size:11,weight:.medium))
+                }.font(Blocks.type(12))
                     .accessibilityLabel("\(["Sign in","Download","Prepare","Play"][index]), \(launcher.status.stage.map { index < $0 ? "complete" : index == $0 ? "current" : "upcoming" } ?? "upcoming")")
             }
         }
@@ -1045,11 +1321,11 @@ struct LauncherView: View {
                     if !detail.isEmpty {
                         if detail.count > 240 {
                             ScrollView {
-                                Text(detail).font(.system(size:13)).foregroundStyle(Blocks.ink)
+                                Text(detail).font(Blocks.type(14)).foregroundStyle(Blocks.ink)
                                     .frame(maxWidth:.infinity,alignment:.leading).textSelection(.enabled)
                             }.frame(height:80)
                         } else {
-                            Text(detail).font(.system(size:13)).foregroundStyle(Blocks.ink)
+                            Text(detail).font(Blocks.type(14)).foregroundStyle(Blocks.ink)
                                 .fixedSize(horizontal:false,vertical:true).textSelection(.enabled)
                         }
                     }
@@ -1070,7 +1346,7 @@ struct LauncherView: View {
                     Text(launcher.status.stage.map { ["Microsoft sign-in","Downloading your game","Preparing Minecraft","Ready"][min(3,$0)] } ?? "Getting ready")
                     Spacer()
                     Text(fraction,format:.percent.precision(.fractionLength(0))).monospacedDigit()
-                }.font(.system(size:12,weight:.medium)).foregroundStyle(Blocks.ink)
+                }.font(Blocks.type(12)).foregroundStyle(Blocks.ink)
                 ProgressView(value:fraction).progressViewStyle(Experience()).accessibilityLabel("Overall setup")
             }
             if fresh || launcher.status.state == "busy" || launcher.status.state == "cancelled" {
@@ -1176,12 +1452,9 @@ struct Biomes: View {
                     .onChange(of:focused) { if let focused { scroll.scrollTo(focused) } }
                     .onAppear { scroll.scrollTo(selected,anchor:.center) }
             }.padding(.horizontal,20)
-            HStack {
-                let count = matches.count+(farLandsMatch ? 1 : 0)
-                Text("\(count) \(count == 1 ? "destination" : "destinations")").font(Blocks.type(11))
-                Spacer()
-                if world == .sift { Text("Sift interpretation").font(Blocks.type(11)) }
-            }.foregroundStyle(Blocks.ink).padding(20)
+            if world == .sift {
+                Text("Sift interpretation").font(Blocks.type(11)).foregroundStyle(Blocks.ink).padding(20)
+            } else { Color.clear.frame(height:20) }
         }.foregroundStyle(Blocks.ink).background(Blocks.stone)
             .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
             .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
@@ -1200,6 +1473,72 @@ struct Biomes: View {
     }
 }
 
+private struct Switch: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing:20) {
+                configuration.label.frame(maxWidth:.infinity,alignment:.leading)
+                ZStack(alignment:configuration.isOn ? .trailing : .leading) {
+                    Rectangle().fill(configuration.isOn ? Blocks.play : Color(white:0.5))
+                        .frame(width:64,height:30).overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
+                    Text(configuration.isOn ? "I" : "O").font(Blocks.type(14)).foregroundStyle(.black)
+                        .offset(x:configuration.isOn ? -39 : 39)
+                    Rectangle().fill(Blocks.stone).frame(width:34,height:36)
+                        .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
+                        .overlay { Rectangle().strokeBorder(.white.opacity(0.55),lineWidth:2).padding(4) }
+                }.frame(width:68,height:40)
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityRepresentation { Toggle(isOn:configuration.$isOn) { configuration.label } }
+    }
+}
+
+private struct SettingSlider: View {
+    let title: String
+    let detail: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double = 1
+    let scale: CGFloat
+    let format: (Double) -> String
+    @FocusState private var focused: Bool
+
+    private var fraction: Double { min(1,max(0,(value-range.lowerBound)/(range.upperBound-range.lowerBound))) }
+    private func set(_ next: Double) { value = min(range.upperBound,max(range.lowerBound,(next/step).rounded()*step)) }
+
+    var body: some View {
+        VStack(alignment:.leading,spacing:12*scale) {
+            HStack(alignment:.firstTextBaseline) {
+                Text(title).font(Blocks.type(18*scale))
+                Spacer(minLength:12)
+                Text(format(value)).font(Blocks.type(18*scale)).monospacedDigit()
+            }
+            Text(detail).font(Blocks.type(13*scale)).foregroundStyle(Color(white:0.78))
+                .fixedSize(horizontal:false,vertical:true).lineSpacing(4)
+            GeometryReader { geometry in
+                let thumb = 30*scale, travel = max(1,geometry.size.width-thumb)
+                ZStack(alignment:.leading) {
+                    Rectangle().fill(.black).frame(height:12*scale)
+                    Rectangle().fill(Color(white:0.58)).frame(height:6*scale).padding(.horizontal,3*scale)
+                    Rectangle().fill(Blocks.grass).frame(width:thumb/2+travel*fraction,height:6*scale).padding(.leading,3*scale)
+                    Rectangle().fill(Blocks.stone).frame(width:thumb,height:34*scale)
+                        .overlay { Rectangle().strokeBorder(.black,lineWidth:2*scale) }
+                        .overlay { Rectangle().strokeBorder(focused ? .white : .white.opacity(0.45),lineWidth:2*scale).padding(4*scale) }
+                        .offset(x:travel*fraction)
+                }.frame(height:44*scale).contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance:0).onChanged { drag in
+                        focused = true
+                        set(range.lowerBound+Double((drag.location.x-thumb/2)/travel)*(range.upperBound-range.lowerBound))
+                    })
+            }.frame(height:44*scale).focusable().focused($focused)
+                .accessibilityElement().accessibilityLabel(title).accessibilityValue(format(value))
+                .accessibilityAdjustableAction { set(value+($0 == .increment ? step : -step)) }
+                .onKeyPress(.leftArrow) { set(value-step); return .handled }
+                .onKeyPress(.rightArrow) { set(value+step); return .handled }
+        }.padding(22*scale)
+    }
+}
+
 struct Preferences: View {
     @ObservedObject var launcher: Launcher
     let close: () -> Void
@@ -1208,118 +1547,274 @@ struct Preferences: View {
     @AppStorage("musicEnabled") private var musicEnabled = true
     @AppStorage("musicVolume") private var musicVolume = 0.18
     @AppStorage("renderDistance") private var renderDistance = 8
+    @AppStorage("worldSeed") private var worldSeed = 0
+    @AppStorage("controls") private var controlData = Data()
+    @AppStorage("skinPath") private var skinPath = ""
+    @AppStorage("capePath") private var capePath = ""
+    @AppStorage("slimSkin") private var slimSkin = false
+    @AppStorage("lookSensitivity") private var lookSensitivity = 50.0
+    @AppStorage("invertLook") private var invertLook = false
     @Environment(\.accessibilityReduceMotion) private var reduced
-    @FocusState private var volumeFocused: Bool
+    @State private var page: Page = .video
+    @State private var seedText = ""
+    @State private var seedError = false
+    @State private var skinError: String?
+    @FocusState private var focused: Page?
 
-    static func scale(in size: CGSize) -> CGFloat {
-        min(1.5,max(1,min(size.width/700,size.height/560)))
+    private enum Page: String, CaseIterable {
+        case accessibility = "Accessibility", input = "Keyboard & Mouse", bindings = "Key bindings", video = "Video", audio = "Audio", character = "Character"
+        var symbol: String {
+            switch self {
+            case .accessibility: return "figure.stand"
+            case .input,.bindings: return "keyboard"
+            case .video: return "photo"
+            case .audio: return "speaker.wave.2.fill"
+            case .character: return "person.crop.square"
+            }
+        }
+        var glyph: String {
+            switch self {
+            case .accessibility: return "accessibility_glyph"
+            case .input,.bindings: return "keyboard_and_mouse_glyph"
+            case .video: return "video_glyph"
+            case .audio: return "sound_glyph"
+            case .character: return "character_glyph"
+            }
+        }
+        var detail: String {
+            switch self {
+            case .accessibility: return "Make the launcher comfortable for you"
+            case .input: return "Adjust the Look around controls"
+            case .bindings: return "Choose your controls"
+            case .video: return "Choose how the launcher world moves and renders"
+            case .audio: return "Music from your Minecraft installation"
+            case .character: return "Your skin and cape in Look around"
+            }
+        }
     }
+
+    static func scale(in size: CGSize) -> CGFloat { min(1.5,max(1,min(size.width/700,size.height/560))) }
 
     var body: some View {
         GeometryReader { geometry in
             let scale = Self.scale(in:geometry.size)
             VStack(spacing:0) {
                 HStack {
-                    Text("Settings").font(Blocks.type(32*scale)).accessibilityAddTraits(.isHeader)
+                    Text("Settings").font(heading(26*scale)).accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Button(action:close) { Image(systemName:"xmark").font(.system(size:22*scale,weight:.bold)).frame(width:48*scale,height:48*scale) }
-                        .buttonStyle(BlockButton(texture:launcher.stone)).accessibilityLabel("Close settings")
-                        .keyboardShortcut(.cancelAction)
-                }.padding(24*scale)
-                ScrollView {
-                    VStack(spacing:24*scale) {
-                        VStack(spacing:14*scale) {
-                            Toggle(isOn:$animateScenery) {
-                                Text("Background animation: \(animateScenery ? "ON" : "OFF")")
-                                    .frame(maxWidth:.infinity,minHeight:60*scale)
+                    Button(action:close) { Image(systemName:"xmark").font(.system(size:20*scale,weight:.bold)).frame(width:44*scale,height:44*scale) }
+                        .buttonStyle(BlockButton()).accessibilityLabel("Close settings").keyboardShortcut(.cancelAction)
+                }.padding(.horizontal,20*scale).padding(.vertical,12*scale)
+                    .foregroundStyle(Blocks.ink).background(Blocks.stone)
+                HStack(spacing:0) {
+                    ScrollView {
+                        VStack(spacing:0) {
+                            category(.accessibility,scale:scale)
+                            group("Controls",scale:scale)
+                            category(.input,scale:scale)
+                            category(.bindings,scale:scale)
+                            group("General",scale:scale)
+                            category(.video,scale:scale)
+                            category(.audio,scale:scale)
+                            category(.character,scale:scale)
+                        }.padding(.top,12*scale)
+                    }.frame(width:geometry.size.width*0.31).background(Color(white:0.19))
+                    Rectangle().fill(.black.opacity(0.65)).frame(width:4*scale)
+                    ScrollView {
+                        VStack(alignment:.leading,spacing:0) {
+                            VStack(alignment:.leading,spacing:10*scale) {
+                                Text(page.rawValue).font(heading(23*scale)).accessibilityAddTraits(.isHeader)
+                                Text(page.detail).font(Blocks.type(14*scale)).foregroundStyle(Color(white:0.8))
+                                    .fixedSize(horizontal:false,vertical:true)
+                            }.padding(22*scale)
+                            rule
+                            content(scale:scale)
+                            rule
+                            if page != .bindings {
+                                Button(action:reset) { Text("Reset defaults").font(Blocks.type(16*scale)).frame(maxWidth:.infinity,minHeight:46*scale) }
+                                    .buttonStyle(BlockButton(scale:scale)).padding(22*scale)
                             }
-                            Toggle(isOn:$rotateScenery) {
-                                Text("Travel between biomes: \(rotateScenery ? "ON" : "OFF")")
-                                    .frame(maxWidth:.infinity,minHeight:60*scale)
-                            }.disabled(!animateScenery)
-                        }.toggleStyle(.button).buttonStyle(BlockButton(texture:launcher.stone))
-                            .controlSize(.large).font(Blocks.type(20*scale))
-                        HStack(spacing:16*scale) {
-                            Button { renderDistance = max(4,renderDistance-1) } label: {
-                                Image(systemName:"minus").frame(width:48*scale,height:48*scale)
-                            }.disabled(renderDistance<=4).accessibilityLabel("Decrease render distance")
-                            Text("Render distance: \(renderDistance) chunks").font(Blocks.type(18*scale))
-                                .frame(maxWidth:.infinity).lineLimit(1).minimumScaleFactor(0.75)
-                            Button { renderDistance = min(16,renderDistance+1) } label: {
-                                Image(systemName:"plus").frame(width:48*scale,height:48*scale)
-                            }.disabled(renderDistance>=16).accessibilityLabel("Increase render distance")
-                        }.buttonStyle(BlockButton(texture:launcher.stone)).accessibilityElement(children:.contain)
-                        VStack(spacing:14*scale) {
-                            Text("Master volume: \(musicEnabled ? Int(musicVolume*100) : 0)%").font(Blocks.type(22*scale))
-                            GeometryReader { geometry in
-                                let thumb = 32*scale, travel = max(1,geometry.size.width-thumb)
-                                ZStack(alignment:.leading) {
-                                    Rectangle().fill(.black.opacity(0.75))
-                                    Rectangle().fill(Blocks.grass.opacity(0.65)).frame(width:thumb+travel*(musicEnabled ? musicVolume : 0))
-                                    Rectangle().fill(Color(white:0.65)).frame(width:thumb)
-                                        .overlay { Rectangle().strokeBorder(.black,lineWidth:2) }
-                                        .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.5)).frame(height:2) }
-                                        .offset(x:travel*(musicEnabled ? musicVolume : 0))
-                                }.overlay { Rectangle().strokeBorder(volumeFocused ? Blocks.gold : .black,lineWidth:2) }
-                                    .contentShape(Rectangle())
-                                    .gesture(DragGesture(minimumDistance:0).onChanged { value in
-                                        musicVolume = min(1,max(0,(value.location.x-thumb/2)/travel)); musicEnabled = musicVolume>0
-                                    })
-                            }.frame(height:48*scale).focusable().focused($volumeFocused)
-                                .accessibilityElement().accessibilityLabel("Master volume")
-                                .accessibilityValue("\(musicEnabled ? Int(musicVolume*100) : 0) percent")
-                                .accessibilityAdjustableAction { direction in
-                                    musicVolume = min(1,max(0,(musicEnabled ? musicVolume : 0)+(direction == .increment ? 0.05 : -0.05))); musicEnabled = musicVolume>0
-                                }
-                                .onKeyPress(.leftArrow) { musicVolume = max(0,(musicEnabled ? musicVolume : 0)-0.05); musicEnabled = musicVolume>0; return .handled }
-                                .onKeyPress(.rightArrow) { musicVolume = min(1,(musicEnabled ? musicVolume : 0)+0.05); musicEnabled = musicVolume>0; return .handled }
-                            Text("Minecraft menu and game music from your installation")
-                        }
-                        Text(reduced ? "macOS Reduced Motion is on" : "Scenery rests in Low Power Mode, while hidden and while Minecraft runs")
-                        Text("Game graphics, sound and controls are in Minecraft’s Settings")
-                    }.font(.system(size:16*scale)).foregroundStyle(Blocks.ink)
-                        .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
-                        .padding(.horizontal,24*scale).padding(.bottom,24*scale)
+                            Text("These settings apply to the launcher\nChange game settings inside Minecraft")
+                                .font(Blocks.type(12*scale)).foregroundStyle(Color(white:0.8))
+                                .fixedSize(horizontal:false,vertical:true).padding(.horizontal,22*scale).padding(.bottom,22*scale)
+                        }.frame(maxWidth:.infinity,alignment:.leading)
+                    }.id(page).background(Color(white:0.28))
                 }
-            }.foregroundStyle(Blocks.ink)
-                .background {
-                    Blocks.stone
-                    if let stone = launcher.stone { Image(nsImage:stone).resizable(resizingMode:.tile).interpolation(.none).opacity(0.12) }
-                }
+            }.foregroundStyle(.white).background(Color(white:0.19))
                 .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
-                .overlay { Rectangle().strokeBorder(.white.opacity(0.3),lineWidth:2).padding(3) }
-        }.environment(\.colorScheme,.light).onExitCommand(perform:close)
-            .onAppear { renderDistance = min(16,max(4,renderDistance)) }
+        }.environment(\.colorScheme,.dark).onExitCommand(perform:close)
+            .onAppear {
+                renderDistance = min(16,max(4,renderDistance))
+                lookSensitivity = lookSensitivity.isFinite ? min(100,max(1,lookSensitivity)) : 50
+                musicVolume = musicVolume.isFinite ? min(1,max(0,musicVolume)) : 0.18
+                seedText = String(worldSeed)
+            }
+    }
+
+    private var rule: some View { Rectangle().fill(.black.opacity(0.35)).frame(height:2).overlay(alignment:.bottom) { Rectangle().fill(.white.opacity(0.1)).frame(height:1) } }
+    private func heading(_ size: CGFloat) -> Font { launcher.gameFont.map { Font(CTFontCreateCopyWithAttributes($0,size,nil,nil)) } ?? Blocks.type(size) }
+    private func group(_ title: String, scale: CGFloat) -> some View {
+        Text(title).font(Blocks.type(14*scale)).foregroundStyle(Color(white:0.75))
+            .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,16*scale).padding(.top,28*scale).padding(.bottom,12*scale)
+    }
+    private func category(_ item: Page, scale: CGFloat) -> some View {
+        Hover { hovered in
+            Button { page = item } label: {
+                HStack(spacing:12*scale) {
+                    if let image = launcher.frames[item.glyph] {
+                        Image(nsImage:image).resizable().interpolation(.none).scaledToFit().frame(width:28*scale,height:28*scale).accessibilityHidden(true)
+                    } else { Image(systemName:item.symbol).font(.system(size:20*scale)).frame(width:28*scale).accessibilityHidden(true) }
+                    Text(item.rawValue).font(Blocks.type(15*scale)).fixedSize(horizontal:false,vertical:true)
+                    Spacer(minLength:0)
+                }.padding(.horizontal,16*scale).frame(minHeight:68*scale)
+                    .background(hovered ? Blocks.play : Color(white:page == item ? 0.3 : 0.19))
+                    .overlay { Rectangle().strokeBorder(.white,lineWidth:2).opacity(focused == item ? 1 : 0) }
+            }.buttonStyle(.plain).focused($focused,equals:item)
+                .accessibilityAddTraits(page == item ? .isSelected : [])
+        }
+    }
+    private func toggle(_ title: String, detail: String, value: Binding<Bool>, scale: CGFloat) -> some View {
+        Toggle(isOn:value) {
+            VStack(alignment:.leading,spacing:8*scale) {
+                Text(title).font(Blocks.type(18*scale))
+                Text(detail).font(Blocks.type(13*scale)).foregroundStyle(Color(white:0.8))
+                    .fixedSize(horizontal:false,vertical:true).lineSpacing(4)
+            }
+        }.toggleStyle(Switch()).padding(22*scale)
+    }
+    @ViewBuilder private func content(scale: CGFloat) -> some View {
+        switch page {
+        case .video:
+            toggle("Background animation",detail:"Let the world, weather and mobs move",value:$animateScenery,scale:scale)
+            rule
+            toggle("Automatic travel",detail:"Tour the biomes while the menu is open",value:$rotateScenery,scale:scale).disabled(!animateScenery)
+            rule
+            SettingSlider(title:"Render distance",detail:"Each chunk is 16 × 16 blocks",value:Binding(get:{Double(renderDistance)},set:{renderDistance = Int($0)}),range:4...16,scale:scale,format:{"\(Int($0)) chunks"})
+            rule
+            VStack(alignment:.leading,spacing:12*scale) {
+                Text("World seed").font(Blocks.type(18*scale))
+                Text("Grow a different launcher landscape").font(Blocks.type(13*scale)).foregroundStyle(Color(white:0.8))
+                HStack(spacing:12*scale) {
+                    TextField("Seed",text:$seedText).textFieldStyle(.plain).font(Blocks.type(16*scale))
+                        .padding(12*scale).background(.black.opacity(0.5))
+                        .overlay { Rectangle().strokeBorder(seedError ? .red : .white.opacity(0.4),lineWidth:2) }
+                        .accessibilityLabel("World seed").onSubmit(applySeed)
+                    Button(action:applySeed) { Text("Generate").font(Blocks.type(15*scale)).padding(.horizontal,16*scale).frame(minHeight:44*scale) }
+                        .buttonStyle(BlockButton(scale:scale))
+                }
+                if seedError { Text("Enter a whole number").font(Blocks.type(13*scale)).foregroundStyle(.white) }
+            }.padding(22*scale)
+        case .audio:
+            SettingSlider(title:"Master volume",detail:"Adjust menu and game music in the launcher",value:Binding(get:{musicEnabled ? musicVolume : 0},set:{musicVolume = $0; musicEnabled = $0>0}),range:0...1,step:0.01,scale:scale,format:{"\(Int(($0*100).rounded()))%"})
+        case .input:
+            let controls = Controls(data:controlData)
+            SettingSlider(title:"Camera sensitivity",detail:"Adjust the speed of mouse look",value:$lookSensitivity,range:1...100,scale:scale,format:{"\(Int($0))"})
+            rule
+            toggle("Invert camera Y-axis",detail:"Reverse up and down when looking around",value:$invertLook,scale:scale)
+            rule
+            Text("\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) · Fly\n\(controls.label(.rise)) / \(controls.label(.descend)) · Up / Down\n\(controls.label(.sprint)) · Sprint\n\(controls.label(.map)) · Map\nScroll · Select a realm\nControl + Scroll · Flight speed\nEscape · Return to menu")
+                .font(Blocks.type(14*scale)).lineSpacing(10*scale).padding(22*scale)
+        case .bindings:
+            Keymap(data:$controlData,stone:launcher.stone).font(Blocks.type(15*scale)).padding(22*scale)
+        case .character:
+            VStack(alignment:.leading,spacing:18*scale) {
+                Text("Paper doll").font(Blocks.type(18*scale))
+                Text("Choose your exported PNG files\nYour images stay on this Mac").font(Blocks.type(14*scale)).lineSpacing(6*scale)
+                character("Skin",path:skinPath,scale:scale,cape:false)
+                character("Cape",path:capePath,scale:scale,cape:true)
+                if let skinError { Text(skinError).font(Blocks.type(14*scale)).fixedSize(horizontal:false,vertical:true) }
+            }.padding(22*scale)
+            rule
+            toggle("Slim arms",detail:"Use the three-pixel arm skin model",value:$slimSkin,scale:scale)
+        case .accessibility:
+            toggle("Background animation",detail:"Turn off moving scenery and splash animation",value:$animateScenery,scale:scale)
+            rule
+            Text(reduced ? "macOS Reduced Motion is on" : "The launcher follows macOS Reduced Motion")
+                .font(Blocks.type(16*scale)).fixedSize(horizontal:false,vertical:true).padding(22*scale)
+            rule
+            Text("Use Tab to move between controls\nSpace activates a button or switch\nArrow keys adjust sliders\nEscape closes this menu")
+                .font(Blocks.type(14*scale)).lineSpacing(10*scale).padding(22*scale)
+        }
+    }
+    private func applySeed() {
+        guard let seed = Int(seedText.trimmingCharacters(in:.whitespacesAndNewlines)) else { seedError = true; return }
+        seedError = false; worldSeed = seed
+    }
+    private func character(_ title: String, path: String, scale: CGFloat, cape: Bool) -> some View {
+        VStack(alignment:.leading,spacing:8*scale) {
+            Text(title).font(Blocks.type(16*scale))
+            Text(path.isEmpty ? "Not selected" : URL(fileURLWithPath:path).lastPathComponent)
+                .font(Blocks.type(13*scale)).lineLimit(1).truncationMode(.middle)
+            HStack(spacing:10*scale) {
+                Button { chooseSkin(cape:cape) } label: { Text("Choose \(title.lowercased())").font(Blocks.type(14*scale)).padding(.horizontal,14*scale).frame(minHeight:44*scale) }
+                    .buttonStyle(BlockButton(scale:scale))
+                if !path.isEmpty {
+                    Button { if cape { capePath = "" } else { skinPath = "" }; skinError = nil } label: { Text("Clear").font(Blocks.type(14*scale)).padding(.horizontal,14*scale).frame(minHeight:44*scale) }
+                        .buttonStyle(BlockButton(scale:scale))
+                }
+            }
+        }
+    }
+    private func chooseSkin(cape: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png]; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.title = cape ? "Choose your Minecraft cape" : "Choose your Minecraft skin"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            _ = try Skin.image(at:url,cape:cape)
+            if cape { capePath = url.path } else { skinPath = url.path }
+            skinError = nil
+        } catch { skinError = error.localizedDescription }
+    }
+    private func reset() {
+        switch page {
+        case .video: animateScenery = true; rotateScenery = true; renderDistance = 8; worldSeed = 0; seedText = "0"; seedError = false
+        case .audio: musicEnabled = true; musicVolume = 0.18
+        case .input: lookSensitivity = 50; invertLook = false
+        case .bindings: controlData = Controls().data
+        case .character: skinPath = ""; capePath = ""; slimSkin = false; skinError = nil
+        case .accessibility: animateScenery = true
+        }
     }
 }
 
 struct Help: View {
     @ObservedObject var launcher: Launcher
-    @Environment(\.dismiss) private var dismiss
+    let close: () -> Void
+    @AppStorage("controls") private var controlData = Data()
 
     var body: some View {
+        let controls = Controls(data:controlData)
         VStack(spacing:20) {
-            Text("How to play").font(Blocks.type(26)).accessibilityAddTraits(.isHeader)
+            HStack {
+                Text("How to play").font(Blocks.type(26)).accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(action:close) { Image(systemName:"xmark").frame(width:44,height:44) }
+                    .buttonStyle(BlockButton()).accessibilityLabel("Close help").keyboardShortcut(.cancelAction)
+            }
             ScrollView {
                 VStack(alignment:.leading,spacing:20) {
                     guide("Start your game", "Choose Install & play, then sign in with the Microsoft account that owns Minecraft for Windows. Your worlds and account stay on this Mac")
-                    guide("Look around · ⌘L", "WASD moves · Mouse looks · Space rises · Shift descends · Control sprints · Scroll changes speed · Escape returns")
-                    guide("Explore another biome", "Choose the biome name at the top left, or fly towards the edge of an area. The inventory slots choose a realm. Brackets visit neighbouring biomes")
+                    guide("Look around · \(controls.label(.look))", "\(controls.label(.forward)) \(controls.label(.left)) \(controls.label(.back)) \(controls.label(.right)) flies · Mouse looks · \(controls.label(.rise)) rises · \(controls.label(.descend)) descends · \(controls.label(.sprint)) sprints · \(controls.label(.map)) shows the map · Escape returns")
+                    guide("Explore another biome", "Choose the biome name in the menu, or fly there. Scroll chooses a realm. \(controls.label(.previous)) and \(controls.label(.next)) start a flight to a neighbouring biome")
+                    guide("Your character", "Choose your skin and cape PNGs in Settings → Character. Your paper doll appears in Look around")
                     guide("Music and motion", "Open Settings to change master volume, background animation and automatic travel. macOS Reduced Motion and Low Power Mode also pause the scenery")
                     guide("Having trouble?", "Use Open setup logs below to inspect a launch failure. Save and quit Minecraft normally before replacing an app or runtime")
                 }.padding(.vertical,4)
             }.frame(maxHeight:360)
             HStack(spacing:12) {
                 Button { launcher.showLog() } label: { Text("Open setup logs").frame(maxWidth:.infinity,minHeight:44) }
-                Button { dismiss() } label: { Text("Done").frame(maxWidth:.infinity,minHeight:44) }.keyboardShortcut(.defaultAction)
+                Button(action:close) { Text("Done").frame(maxWidth:.infinity,minHeight:44) }.keyboardShortcut(.defaultAction)
             }.font(Blocks.type(14)).buttonStyle(BlockButton(texture:launcher.stone))
-        }.padding(28).frame(width:600).foregroundStyle(Blocks.ink).background(Blocks.stone).environment(\.colorScheme,.light)
+        }.padding(28).frame(width:600).foregroundStyle(Blocks.ink).background(Blocks.stone)
+            .overlay { Rectangle().strokeBorder(.black,lineWidth:3) }
+            .environment(\.colorScheme,.light).onExitCommand(perform:close)
     }
 
     private func guide(_ title: String, _ text: String) -> some View {
         VStack(alignment:.leading,spacing:8) {
             Text(title).font(Blocks.type(15)).foregroundStyle(Blocks.ink).accessibilityAddTraits(.isHeader)
-            Text(text).font(.system(size:14)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+            Text(text).font(Blocks.type(15)).lineSpacing(6).fixedSize(horizontal:false,vertical:true)
         }
     }
 }

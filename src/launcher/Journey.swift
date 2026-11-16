@@ -3,7 +3,7 @@ import SceneKit
 
 enum Passage: String, Sendable {
     case mine, stronghold, rift
-    var duration: Int { self == .mine ? 22 : self == .stronghold ? 28 : 16 }
+    var duration: Int { self == .mine ? 26 : self == .stronghold ? 28 : 16 }
     var title: String {
         switch self {
         case .mine: return "Into the mineshaft · Nether portal"
@@ -12,35 +12,59 @@ enum Passage: String, Sendable {
         }
     }
 
-    // A shared path drives both live animation and deterministic render checks
+    // Cover the authored corridors without generating a second floor through them
+    func height(_ x: Int, _ z: Int) -> Double {
+        let terrain = Terrain(biome:self == .rift ? .valley : .forest)
+        if self == .rift { return abs(x)<3 ? 2 : terrain.height(Double(x),Double(z)) }
+        let mine = self == .mine
+        let width = z < (mine ? -22 : -9) ? (mine ? 8 : 7) : mine ? 4 : 5
+        if abs(x)<width && z<=(mine ? 42 : 100) { return -100 }
+        if mine && abs(x)<16 && abs(z+16)<4 { return -100 }
+        if !mine && abs(x)<14 && abs(z)<7 { return -100 }
+        let level = max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
+        let edge = min(1,max(0,(Double(abs(x))-55)/40))
+        return floor(level*(1-edge)+4*edge)
+    }
+
+    // Distance-weighted progress avoids stopping at every camera keyframe
     func pose(at time: Double) -> (eye: SCNVector3, aim: SCNVector3) {
-        let eyes: [SCNVector3], aims: [SCNVector3]
+        let route: [SCNVector3]
         switch self {
         case .mine:
-            eyes = [.init(0,15,42),.init(0,12.62,30),.init(0,7.62,10),.init(0,3.62,-6),.init(0,1.62,-23),.init(0,1.62,-33.8),.init(0,2.2,-33.85),.init(0,2.3,-33.9)]
-            aims = [.init(0,12,31),.init(0,6,5),.init(0,2,-10),.init(0,2,-27),.init(0,2.4,-34),.init(0,2.3,-35),.init(0,8,-64),.init(0,11,-75)]
+            route = [.init(0,14.62,42),.init(0,1.62,-12),.init(0,1.62,-33.92)]
         case .stronghold:
-            eyes = [.init(0,46.62,92),.init(0,38.12,75),.init(0,23.12,45),.init(0,8.12,15),.init(0,1.62,-4),.init(0,2.6,-11),.init(0,5,-17),.init(0,4.8,-21),.init(0,3.36,-21.5)]
-            aims = [.init(0,38,75),.init(0,23,45),.init(0,8,15),.init(-2,3,-5),.init(0,3,-17),.init(0,3.2,-21),.init(0,3.2,-21),.init(0,2,-21.5),.init(0,-2,-21.6)]
+            route = [.init(0,46.62,100),.init(0,1.62,6),.init(0,1.62,-11.5),
+                     .init(0,4.62,-17.5),.init(0,4.62,-18.25),.init(0,4.9325,-18.75),
+                     .init(0,4.9325,-19.4),.init(0,4.85,-19.7)]
         case .rift:
-            eyes = [.init(0,3.62,30),.init(0,3.62,19),.init(0,3.62,5),.init(0,3.62,-8),.init(0,3.62,-13.86),.init(0,3.62,-13.9)]
-            aims = [.init(0,6,-12),.init(0,5,-14),.init(0,4.8,-14),.init(0,4.8,-15),.init(0,4.8,-16),.init(0,5,-22)]
+            route = [.init(0,3.62,30),.init(0,3.62,-13.9)]
         }
-        let segments = eyes.count-1
-        let t = min(Double(segments),max(0,time/Double(duration)*Double(segments))), index = min(segments-1,Int(t))
-        let fraction = t-Double(index), eased = fraction*fraction*(3-2*fraction)
-        func blend(_ a: SCNVector3, _ b: SCNVector3) -> SCNVector3 {
-            .init(a.x+(b.x-a.x)*eased,a.y+(b.y-a.y)*eased,a.z+(b.z-a.z)*eased)
+        let lengths = zip(route,route.dropFirst()).map { a,b in
+            sqrt(pow(b.x-a.x,2)+pow(b.y-a.y,2)+pow(b.z-a.z,2))
         }
-        var eye = blend(eyes[index],eyes[index+1])
-        if self == .mine, eye.z > -32, eye.z < 43 {
-            // Follow the rail slope below the original-height support beams
-            eye.y = min(13,max(0,(eye.z+12)/4))+1.62
-        } else if self == .stronghold, eye.z > 2, eye.z < 95 {
-            eye.y = max(0,(eye.z-2)/2)+1.62
+        let length = lengths.reduce(0,+), travel = Double(duration)-(self == .mine ? 4 : 0)
+        let distance = min(1,max(0,time/travel))*length
+        func point(_ distance: Double) -> SCNVector3 {
+            var remaining = distance
+            for index in lengths.indices {
+                if remaining <= lengths[index] {
+                    let t = remaining/lengths[index], a = route[index], b = route[index+1]
+                    return .init(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
+                }
+                remaining -= lengths[index]
+            }
+            let last = route.last!
+            return .init(last.x,last.y,last.z-remaining)
         }
-        return (eye,blend(aims[index],aims[index+1]))
+        func approach(_ point: SCNVector3) -> SCNVector3 {
+            var point = point
+            if self == .mine, point.z > -12 { point.y = min(13,max(0,(point.z+12)/4))+1.62 }
+            if self == .stronghold, point.z > 6 { point.y = min(45,max(0,(point.z-6)/2))+1.62 }
+            return point
+        }
+        return (approach(point(distance)),approach(point(distance+5)))
     }
+
 }
 
 struct Journey {
@@ -122,18 +146,16 @@ extension Passage {
             let turn = SCNNode(); turn.position = at; turn.eulerAngles.y = .pi/4
             mesh.transform(from:first,origin:at,by:turn)
         }
-        func lamp(_ at: SCNVector3, soul: Bool = false) throws {
+        func lamp(_ at: SCNVector3, soul: Bool = false, facing: String = "west") throws {
             let light = SCNNode(); light.name = "passage-light"; light.light = SCNLight(); light.light?.type = .omni
             light.light?.color = Landscape.colour(soul ? 0x86D7DF : 0xF2BD7D)
             light.light?.intensity = 230; light.light?.attenuationEndDistance = 12
             light.position = at; scene.rootNode.addChildNode(light)
-            try Structures.fixture(soul ? "soul_wall_torch" : "wall_torch",states:["facing":"west"],at:.init(at.x-0.5,at.y-0.5,at.z-0.5),assets:assets,mesh:&mesh)
+            try Structures.fixture(soul ? "soul_wall_torch" : "wall_torch",states:["facing":facing],at:.init(at.x-0.5,at.y-0.5,at.z-0.5),assets:assets,mesh:&mesh)
         }
         if self == .rift {
             let terrain = Terrain(biome:.valley)
-            scene.rootNode.addChildNode(try terrain.node(assets:assets) { x,z in
-                abs(x)<3 ? 2 : terrain.height(Double(x),Double(z))
-            })
+            scene.rootNode.addChildNode(try terrain.node(assets:assets,height:height))
             for index in 0..<28 {
                 let x = Terrain.random(index,7,seed:4)*64-32, z = Terrain.random(index,9,seed:5)*90-45
                 if abs(x)>5 {
@@ -163,17 +185,10 @@ extension Passage {
         } else {
             let mine = self == .mine
             let terrain = Terrain(biome:.forest)
-            let approach = try terrain.node(assets:assets,x:-96..<96,z:-128..<128) { x,z in
-                if abs(x)<4 && z<(mine ? 42 : 95) { return -100 }
-                if abs(x)<(mine ? 16 : 13) && abs(z+(mine ? 12 : 0))<(mine ? 4 : 6) { return -100 }
-                if !mine && abs(x)<8 && z < -9 { return -100 }
-                let level = max(mine ? 13 : 45,terrain.height(Double(x),Double(z))+9)
-                let edge = min(1,max(0,(Double(abs(x))-55)/40))
-                return floor(level*(1-edge)+4*edge)
-            }
+            let approach = try terrain.node(assets:assets,x:-96..<96,z:-128..<128,height:height)
             scene.rootNode.addChildNode(approach)
-            for z in (mine ? 35 : 91)...(mine ? 42 : 96) {
-                let floor = min(mine ? 13 : 45,max(0,ceil(mine ? (Double(z)+12)/4 : (Double(z)-2)/2)))
+            for z in (mine ? 35 : 95)...(mine ? 42 : 100) {
+                let floor = min(mine ? 13 : 45,max(0,ceil(mine ? (Double(z)+12)/4 : (Double(z)-6)/2)))
                 try cube(.init(7,1,1),.init(0,floor-0.5,Double(z)),"stone")
             }
             for index in 0..<65 {
@@ -185,36 +200,38 @@ extension Passage {
                 try cube(.init(5,2,5),.init(x,y+tall-1,z),"oak_leaves")
                 try cube(.init(3,1,3),.init(x,y+tall+0.5,z),"oak_leaves")
             }
-            for z in stride(from:mine ? 34.0 : 90,through:mine ? -34 : -30,by:-1) {
-                let index = Int((mine ? 34 : 90)-z)
-                let floor = mine ? max(0,ceil((z+12)/4)) : max(0,ceil((z-2)/2))
+            for z in stride(from:mine ? 34.0 : 94,through:mine ? -34 : -30,by:-1) {
+                let index = Int((mine ? 34 : 94)-z)
+                let floor = mine ? max(0,ceil((z+12)/4)) : max(0,ceil((z-6)/2))
                 let chamber = mine ? z < -22 : z < -9
-                let radius = chamber ? (mine ? 6.0 : 7) : mine ? 2 : 3
-                let stone = mine ? (z < -10 ? "deepslate" : "stone") : index%7 == 0 ? "mossy_stone_bricks" : index%5 == 0 ? "cracked_stone_bricks" : "stone_bricks"
-                try cube(.init(radius*2+1,1,1),.init(0,floor-0.5,z),stone)
+                let radius = chamber ? (mine ? 6.0 : 5) : mine ? 2 : 3
+                let stone = mine ? (z < -10 ? "deepslate" : "stone") : z>8 ? "stone" : index%7 == 0 ? "mossy_stone_bricks" : index%5 == 0 ? "cracked_stone_bricks" : "stone_bricks"
+                let bridge = !mine && (-6...6).contains(z)
+                if !bridge { try cube(.init(radius*2+1,1,1),.init(0,floor-0.5,z),stone) }
                 for side in [-1.0,1] {
-                    let opening = mine ? (-15 ... -10).contains(z) : (-4 ... 5).contains(z)
+                    let opening = mine ? (-19 ... -13).contains(z) : (-4 ... 5).contains(z)
                     if !opening {
                         if !mine && chamber && index%3 == 0 {
-                            try cube(.init(2,2.5,1),.init(side*(radius+1),floor+1.25,z),stone)
-                            try cube(.init(2,3.5,1),.init(side*(radius+1),floor+6.25,z),stone)
+                            try cube(.init(1,2.5,1),.init(side*(radius+1),floor+1.25,z),stone)
+                            try cube(.init(1,3.5,1),.init(side*(radius+1),floor+6.25,z),stone)
                             try cube(.init(1,8,3),.init(side*(radius+4),floor+4,z),stone)
                         } else if mine {
                             for level in 0..<(chamber ? 8 : 5) {
                                 let vein = Terrain.noise(z,Double(level),scale:2.5,seed:24)>0.35
                                 let ore = z < -20 ? "diamond_ore" : z < -10 ? "gold_ore" : z < 10 ? "iron_ore" : "coal_ore"
                                 let block = vein ? (z < -10 ? "deepslate_" : "")+ore : stone
-                                try cube(.init(2,1,1),.init(side*(radius+1),floor+Double(level)+0.5,z),block)
+                                try cube(.init(1,1,1),.init(side*(radius+1),floor+Double(level)+0.5,z),block)
                             }
-                        } else { try cube(.init(2,chamber ? 8 : 5,1),.init(side*(radius+1),floor+(chamber ? 4 : 2.5),z),stone) }
+                        } else { try cube(.init(1,chamber ? 8 : 5,1),.init(side*(radius+1),floor+(chamber ? 4 : 2.5),z),stone) }
                     }
                 }
-                if z < (mine ? 22 : 86) {
-                    let ceiling = floor+(chamber ? 8 : 5), roof = mine ? ceiling+1 : max(45,ceiling+1)
-                    try cube(.init(radius*2+4,roof-ceiling,1),.init(0,(ceiling+roof)/2,z),stone)
+                if z < (mine ? 22 : 86) && !(mine && (-19 ... -13).contains(z)) {
+                    let ceiling = bridge ? 7 : floor+(chamber ? 8 : 5)
+                    let roof = max(mine ? 13 : 45,ceiling+1)
+                    try cube(.init(bridge ? 7 : radius*2+3,roof-ceiling,1),.init(0,(ceiling+roof)/2,z),stone)
                 }
                 if mine {
-                    if index%5 == 0 && !chamber {
+                    if index%5 == 0 && !chamber && !(-19 ... -13).contains(z) {
                         for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(side*1.5,floor+1.5,z),"oak_fence") }
                         try cube(.init(3.375,1,1),.init(0,floor+3.5,z),"oak_planks")
                         if index%10 == 0 { try sprite("web",.init(1.5,floor+2.8,z),size:1.5) }
@@ -230,69 +247,63 @@ extension Passage {
                     }
                 } else if chamber && index%3 == 0 {
                     for side in [-1.0,1] {
-                        for bar in -1...1 { try cube(.init(0.125,2,0.125),.init(side*7.05,3.5,z+Double(bar)*0.4),"iron_bars") }
-                        for level in [2.6,4.4] { try cube(.init(0.125,0.125,1),.init(side*7.05,level,z),"iron_bars") }
+                        for level in 0..<2 {
+                            try Structures.fixture("iron_bars",states:["north":"true","south":"true"],
+                                at:.init(side*6-0.5,2.5+Double(level),z-0.5),assets:assets,mesh:&mesh)
+                        }
                     }
                 }
-                if index%9 == 0 { try lamp(.init(radius-0.4,floor+2.3,z)) }
+                if index%9 == 0 && !(mine && (-19 ... -13).contains(z)) && !bridge { try lamp(.init(radius,floor+2.3,z)) }
             }
             if mine {
                 for x in -14...14 {
-                    try cube(.init(1,1,5),.init(Double(x),-0.5,-12),"oak_planks")
-                    try cube(.init(1,9,7),.init(Double(x),9,-12),"stone")
-                    if abs(x)>3 { for side in [-1.0,1] { try cube(.init(1,5,1),.init(Double(x),2,side*3-12),"stone") } }
+                    if abs(x)>2 { try cube(.init(1,1,5),.init(Double(x),-0.5,-16),"oak_planks") }
+                    try cube(.init(1,8,7),.init(Double(x),9,-16),"stone")
+                    if abs(x)>3 { for side in [-1.0,1] { try cube(.init(1,5,1),.init(Double(x),2.5,side*3-16),"stone") } }
                     if abs(x)>2 {
                         let rail = try assets.texture("textures/blocks/rail_normal"), first = mesh.vertices.count
-                        mesh.cube(.init(1,0,1),at:.init(Double(x),0.02,-12),material:rail,faces:16)
-                        let turn = SCNNode(); turn.position = .init(Double(x),0.02,-12); turn.eulerAngles.y = .pi/2
+                        mesh.cube(.init(1,0,1),at:.init(Double(x),0.02,-16),material:rail,faces:16)
+                        let turn = SCNNode(); turn.position = .init(Double(x),0.02,-16); turn.eulerAngles.y = .pi/2
                         mesh.transform(from:first,origin:turn.position,by:turn)
                     }
-                    if x%4 == 0 {
-                        for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(Double(x),1.5,side*2-12),"oak_fence") }
-                        try cube(.init(1,1,4.375),.init(Double(x),3.5,-12),"oak_planks")
+                    if x%4 == 0 && abs(x)>3 {
+                        for side in [-1.0,1] { try cube(.init(0.375,3,0.375),.init(Double(x),1.5,side*2-16),"oak_fence") }
+                        try cube(.init(1,1,4.375),.init(Double(x),3.5,-16),"oak_planks")
                     }
                 }
-                for side in [-1.0,1] { try cube(.init(1,14,7),.init(side*15,6.5,-12),"stone") }
+                for side in [-1.0,1] { try cube(.init(1,14,7),.init(side*15,6,-16),"stone") }
                 for (x,z) in [(-2.0,-13.0),(1,-19)] { try cube(.init(1,1,1),.init(x,0.5,z),"barrel") }
-                let cart = try factory.actor("minecart"); cart.position = .init(5,0.02-cart.boundingBox.min.y,-12); cart.eulerAngles.y = .pi/2; scene.rootNode.addChildNode(cart)
-                try sprite("web",.init(13,3.5,-10),size:1.5)
-                try sprite("web",.init(-13,3.5,-14),size:1.5)
+                let cart = try factory.actor("minecart"); cart.position = .init(5,0.02-cart.boundingBox.min.y,-16); cart.eulerAngles.y = .pi/2; scene.rootNode.addChildNode(cart)
+                try sprite("web",.init(13,3.5,-14),size:1.5)
+                try sprite("web",.init(-13,3.5,-18),size:1.5)
                 for side in [-1.0,1] { try cube(.init(4,8,1),.init(side*4,4,-34),"deepslate") }
-                try cube(.init(4,3,1),.init(0,6.5,-34),"deepslate")
-                try Structures.portal(scene.rootNode,at:.init(0,0,-34),assets:assets)
-                try lamp(.init(-3,3,-32),soul:true)
-                try Landscape.liquid(scene,assets:assets,lava:true,at:.init(0,-1,-71),size:.init(width:90,height:72))
-                try cube(.init(7,1,40),.init(0,-0.5,-54),"netherrack")
-                try cube(.init(92,4,80),.init(0,35,-76),"netherrack")
-                try cube(.init(92,36,3),.init(0,16,-110),"netherrack")
-                for side in [-1.0,1] {
-                    try cube(.init(20,28,75),.init(side*37,13,-75),"netherrack")
-                    try Landscape.liquid(scene,assets:assets,lava:true,at:.init(side*22,15,-65),size:.init(width:2,height:32),vertical:true)
-                }
-                let fortress = try Structures.build(.wastes,x:0,y:2,assets:assets); fortress.position.z -= 62
-                scene.rootNode.addChildNode(fortress)
-                for index in 0..<4 {
-                    try resident(index == 0 ? .ghast : .strider,at:.init(Double(index*9-15),index == 0 ? 16 : -1,-Double(index)*8-60))
-                }
+                try cube(.init(4,4,1),.init(0,6,-34),"deepslate")
+                try Structures.portal(scene.rootNode,at:.init(0,-1,-34),assets:assets)
+                try lamp(.init(-6,3,-32),facing:"east")
                 for index in 0..<5 {
                     try resident(.bat,at:.init(Double(index%3-1),3.1,-Double(index)*5-8))
                 }
             } else {
-                try cube(.init(17,9,2),.init(0,4,-31),"stone_bricks")
+                try cube(.init(13,9,2),.init(0,4,-31),"stone_bricks")
                 try Landscape.liquid(scene,assets:assets,lava:true,at:.init(0,0.15,-21),size:.init(width:3,height:3))
+                try cube(.init(7,1,13),.init(0,-0.5,0),"stone_bricks")
                 for side in [-1.0,1] {
-                    try cube(.init(8,1,13),.init(side*8,-0.5,0),"oak_planks")
-                    try cube(.init(1,7,13),.init(side*12,3,0),"stone_bricks")
-                    try cube(.init(8,39,13),.init(side*8,26,0),"stone_bricks")
+                    try cube(.init(9,1,11),.init(side*8,-0.5,0),"oak_planks")
+                    try cube(.init(1,7,13),.init(side*13,3.5,0),"stone_bricks")
+                    try cube(.init(10,38,13),.init(side*8.5,26,0),"stone_bricks")
                     for z in -5...5 where z%3 != 0 { for level in [0.0,1,2,4,5] { try cube(.init(1,1,1),.init(side*10,level+0.5,Double(z)),"bookshelf") } }
-                    for z in [-5.0,5] {
-                        try cube(.init(8,7,1),.init(side*8,3,z),"oak_planks")
+                    for z in [-6.0,6] {
+                        try cube(.init(10,7,1),.init(side*8.5,3.5,z),"oak_planks")
                         try sprite("web",.init(side*9,6,z-0.1),size:2)
                     }
-                    try lamp(.init(side*7,3,0))
+                    try lamp(.init(side*12,3,0),facing:side>0 ? "west" : "east")
                     try Landscape.liquid(scene,assets:assets,lava:true,at:.init(side*4,0.02,-21),size:.init(width:1,height:1))
                 }
-                for step in 0..<5 { try cube(.init(5,0.5,1),.init(0,Double(step)*0.5+0.25,-12-Double(step)),"stone_bricks") }
+                for step in 0..<6 {
+                    let height = Double(step+1)*0.5
+                    try cube(.init(3,height,1),.init(0,height/2,-12-Double(step)),"stone_bricks")
+                }
+                try cube(.init(5,3,1),.init(0,1.5,-18),"stone_bricks")
                 for side in [-1.0,1] {
                     try cube(.init(7,1,1),.init(0,2,-21+side*3),"stone_bricks")
                     try cube(.init(1,1,5),.init(side*3,2,-21),"stone_bricks")

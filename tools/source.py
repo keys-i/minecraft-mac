@@ -69,6 +69,8 @@ ALLOWED_FILES = (
     'tools/build.py',
     'src/launcher/BedrockLauncher.swift',
     'src/launcher/Music.swift',
+    'src/launcher/Input.swift',
+    'src/launcher/Skin.swift',
     'src/launcher/Adventure.swift',
     'src/launcher/Assets.swift',
     'src/launcher/NBT.swift',

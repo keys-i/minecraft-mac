@@ -10,9 +10,48 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Minecraft Launcher 0.17.0
+
+The current local preview is **0.17.0/build 30**
+Shared model transforms and mirrored texture faces correct equine ears, spider
+legs, villager hats and dragon wings using the installed original models
+Torches attach to their supports; chests have textured bodies, lids and latches
+Bed faces, door hinges, brewing arms and connected End cage bars are corrected
+
+Seeded terrain uses 384-block regions, repeated climates and occasional
+landmarks, with lakes, channels, banks, bamboo and five underground habitats
+Dry grassland stays grassy; mixed gravel/sand/clay/dirt is confined to waterbeds
+Clear and stained panes use separate original face and edge atlases
+Guided flights accelerate smoothly and wait for terrain to load; the automatic
+tour waits for arrival, and retained-camera recovery preserves walls and roofs
+Eight village residents include four workers and four moving street residents
+
+One corner spyglass enters Look around; pointer controls hide during capture
+The left pixel-circle minimap toggles with M, and settings include editable key
+bindings, a committed world seed and local skin/cape PNGs for a paper doll
+Help, settings, status and credits use the same pixel typography
+
+These are authored scenery and seeded climate/noise approximations, not recovered
+Bedrock world generation or full mob AI; the Sift remains an artistic interpretation
+The runtime and authorised helper are unchanged from build 27
+The game still owns a separate native window, and Rosetta remains required
+All 107 Python checks and the native synthetic/installed-art suites pass for
+86 species, 43 areas and three passages, including retained-camera recovery
+All habitats stay within the existing geometry budgets
+At 2080 × 1520 with 4× MSAA, default and maximum streamed-map wall-time p95
+measure 10.48 and 13.52 ms in short local offscreen samples
+Build 30 is installed locally, with the preceding build 28 retained as a recovery copy
+Computer Use inspected the menus, key recording, map toggle, final character
+preview and normal/fullscreen presentation; held-key live movement remains unverified
+The candidate, installed app and reopened read-only DMG pass payload, executable,
+internal-link, helper, graphics-bridge and strict deep-signature checks
+The 127,564,044-byte local DMG has SHA-256
+`ca7e2aa63aff71c6c41cda3dcfe9de493efe280ca77c0c558931740a607ad9eb`
+See [the 0.17 evidence](test.md#terrain-and-controls-in-017)
+
 ## Minecraft Launcher 0.16.0
 
-The current local preview is **0.16.0/build 27**
+The preceding local preview is **0.16.0/build 27**
 It adds 16 × 16-block terrain streaming beyond the authored core, a 4–16 chunk
 render radius, bounded caches, floating origin and a historical Far Lands visit
 Moving residents face their final displacement; clouds are translucent and non-solid

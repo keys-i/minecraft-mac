@@ -19,27 +19,41 @@ enum Biome: String, CaseIterable {
     case islands = "Small End islands", barrens = "End barrens", city = "End City & ship"
     case terraces = "Coral terraces", grove = "Luminous grove", valley = "Rift valley"
     case shards = "Floating shards", ruins = "Illager expedition", sculk = "Sculk fissures"
+    case sulfur = "Sulfur caves"
 
-    var underground: Bool { [.lush, .deep, .trial, .dripstone, .mine, .stronghold].contains(self) }
+    var underground: Bool { [.lush, .deep, .trial, .dripstone, .mine, .stronghold,.sulfur].contains(self) }
+
+    var level: Double { [.lush,.deep,.trial,.dripstone,.sulfur].contains(self) ? -64 : 0 }
+
+    var cover: Biome? {
+        switch self {
+        case .lush: return .jungle
+        case .deep: return .forest
+        case .trial: return .savanna
+        case .dripstone: return .badlands
+        case .sulfur: return .forest
+        default: return nil
+        }
+    }
 
     var passage: Passage? { self == .mine ? .mine : self == .stronghold ? .stronghold : nil }
 
     var residents: [Species] {
         switch self {
-        case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem, .cat, .pig, .horse]
+        case .meadow: return [.cow, .sheep, .chicken, .villager, .golem, .ironGolem, .cat, .pig, .horse, .donkey, .mule, .trader, .traderLlama]
         case .forest: return [.pig, .wolf, .bee, .creeper, .sniffer]
         case .cherry: return [.bee, .sheep, .rabbit]
         case .snow: return [.fox, .wolf, .rabbit]
         case .peaks: return [.goat, .llama]
         case .desert: return [.camel, .rabbit, .villager, .husk, .camelHusk, .parched]
         case .badlands: return [.armadillo, .caveSpider]
-        case .mangrove: return [.frog, .slime, .bee]
+        case .mangrove: return [.frog, .slime, .bee, .tadpole]
         case .jungle: return [.panda, .parrot, .ocelot]
         case .mushroom: return [.mooshroom]
         case .pale: return [.creaking, .spider, .zombie]
         case .coast: return [.turtle, .dolphin, .squid, .drowned, .cod, .nautilus]
-        case .savanna: return [.horse, .llama, .armadillo, .illager, .ravager]
-        case .swamp: return [.witch, .cat, .frog, .slime, .bogged]
+        case .savanna: return [.horse, .llama, .armadillo, .illager, .ravager, .donkey, .zombieHorse, .phantom]
+        case .swamp: return [.witch, .cat, .frog, .slime, .bogged, .tadpole, .zombieVillager]
         case .reef: return [.tropical, .pufferfish, .dolphin, .turtle]
         case .river: return [.salmon, .squid, .drowned, .bee, .cow]
         case .ice: return [.polarBear, .rabbit, .snowGolem, .stray]
@@ -51,10 +65,10 @@ enum Biome: String, CaseIterable {
         case .deep: return [.warden]
         case .mine: return [.bat, .caveSpider]
         case .stronghold: return [.silverfish]
-        case .wastes: return [.piglin, .zombifiedPiglin, .strider, .blaze, .witherSkeleton]
+        case .wastes: return [.piglin, .zombifiedPiglin, .strider, .blaze, .witherSkeleton, .zoglin]
         case .crimson: return [.hoglin, .piglin, .piglinBrute, .strider]
         case .warped: return [.enderman, .strider, .happyGhast]
-        case .soul: return [.skeleton, .ghast]
+        case .soul: return [.skeleton, .ghast, .wither]
         case .basalt: return [.magma, .strider]
         case .central: return [.enderman, .endermite]
         case .highlands, .midlands, .islands, .barrens: return [.enderman, .endermite]
@@ -63,6 +77,7 @@ enum Biome: String, CaseIterable {
         case .valley, .shards: return [.allay, .vex]
         case .ruins: return [.illager, .vindicator, .allay]
         case .sculk: return [.illager, .vex, .allay]
+        case .sulfur: return [.sulfurCube,.bat]
         }
     }
 
@@ -78,6 +93,7 @@ enum Biome: String, CaseIterable {
         case .mushroom: return "mycelium"
         case .lush: return "moss_block"
         case .deep: return "sculk"
+        case .sulfur: return "sulfur"
         case .wastes: return "netherrack"
         case .crimson: return "crimson_nylium"
         case .warped: return "warped_nylium"
@@ -119,6 +135,7 @@ enum Biome: String, CaseIterable {
         case .swamp, .mansion: return 0x81999A
         case .reef,.monument: return 0x5D9BAF
         case .deep: return 0x101E2C
+        case .sulfur: return 0x33483A
         case .wastes, .crimson, .basalt: return 0x4B2536
         case .warped: return 0x24474B
         case .soul: return 0x40535B
@@ -133,7 +150,7 @@ extension World {
     var biomes: [Biome] {
         switch self {
         case .overworld: return [.meadow, .forest, .cherry, .snow, .peaks, .desert, .badlands,
-                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .river, .coast, .reef, .monument, .ice, .lush, .dripstone, .trial, .deep, .mine, .stronghold]
+                                .savanna, .mangrove, .swamp, .jungle, .mushroom, .pale, .mansion, .river, .coast, .reef, .monument, .ice, .lush, .dripstone, .trial, .deep, .mine, .stronghold,.sulfur]
         case .nether: return [.wastes, .crimson, .warped, .soul, .basalt]
         case .end: return [.central, .highlands, .midlands, .islands, .barrens, .city]
         case .sift: return [.terraces, .grove, .valley, .shards, .ruins, .sculk]

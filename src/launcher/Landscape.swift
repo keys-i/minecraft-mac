@@ -82,7 +82,7 @@ enum Landscape {
         Terrain(biome:biome).height(x-centre,z)
     }
 
-    static func scene(_ world: World, biome: Int = 0, assets: Assets) throws -> SCNScene {
+    static func scene(_ world: World, biome: Int = 0, region destination: Region? = nil, terrain buildTerrain: Bool = true, assets: Assets) throws -> SCNScene {
         let area = world.biomes[world.index(biome)], scene = SCNScene()
         if let passage = area.passage {
             let visit = try passage.scene(assets:assets)
@@ -104,10 +104,25 @@ enum Landscape {
         sun.light?.maximumShadowDistance = 55; scene.rootNode.addChildNode(sun)
         let fill = SCNNode(); fill.name = "skylight"; fill.light = SCNLight(); fill.light?.type = .ambient
         scene.rootNode.addChildNode(fill)
-        let terrain = Terrain(biome:area)
+        let region = destination ?? Region.from(world.index(biome),count:world.biomes.count), origin = region.origin
+        let terrain = Terrain(biome:area,authored:region.landmark(world),worldSeed:region.landmark(world) ? 0 : region.seed)
+        func sample(_ x: Double, _ z: Double, surface: Bool = false) -> Terrain.Sample {
+            Terrain.sample(world:world,at:.init(origin.x+x,surface ? 100 : area.level+8,origin.z+z),seed:region.seed)
+        }
+        func surface(_ x: Double, _ z: Double) -> Double { sample(x,z).height-area.level }
         var detail = Voxels()
         var crowns: [String:SCNGeometry] = [:]
-        scene.rootNode.addChildNode(try terrain.node(assets:assets))
+        if terrain.authored {
+            let landmark = try Structures.build(area,x:0,y:area == .coast ? 0 : area == .reef ? -7 : area == .monument ? -22 : area == .ice ? 2 : area == .swamp ? 0 : 4,assets:assets)
+            scene.rootNode.addChildNode(landmark)
+        }
+        let foundations = Structures.foundations(scene.rootNode)
+        if buildTerrain { scene.rootNode.addChildNode(try terrain.node(assets:assets,region:region,covered:foundations)) }
+        else {
+            let ground = Surface(); ground.name = "terrain"
+            ground.profile = .init(terrain:terrain,sample:nil,covered:foundations); ground.registered = true
+            scene.rootNode.addChildNode(ground)
+        }
         func block(_ size: SCNVector3, _ at: SCNVector3, _ name: String) throws {
             let tiles = try assets.tiles(name)
             detail.cube(size,at:at,material:tiles[0],faceMaterials:tiles)
@@ -124,16 +139,19 @@ enum Landscape {
                 detail.normals[index] = .init(n.x*c-n.z*c,n.y,n.x*c+n.z*c)
             }
         }
-        let trees = [.jungle,.forest,.mansion,.pale,.mangrove].contains(area) ? 320 : area.tree == nil ? 0 : 170
+        let treeBiome = area.cover ?? area
+        let trees = area.cover != nil ? 64 : [.jungle,.forest,.mansion,.pale,.mangrove].contains(treeBiome) ? 320 : treeBiome.tree == nil ? 0 : 170
         for index in 0..<max(180,trees) {
-            let nearby = index < max(180,trees)*3/4
-            let x = (Terrain.random(index,3,seed:terrain.seed)*(nearby ? 96 : 176)-(nearby ? 48 : 88)).rounded()
-            let z = (Terrain.random(index,19,seed:terrain.seed)*(nearby ? 104 : 176)-(nearby ? 66 : 120)).rounded()
-            let ground = height(area,x:x,z:z)
+            let nearby = index < max(180,trees)/2
+            let width = nearby ? 96.0 : Double(Region.span)*0.9
+            let depth = nearby ? 104.0 : Double(Region.span)*0.9
+            let x = (Terrain.random(index,3,seed:terrain.seed &+ region.seed)*width-width/2).rounded()
+            let z = (Terrain.random(index,19,seed:terrain.seed &+ region.seed)*depth-depth/2-14).rounded()
+            let ground = area.cover == nil ? surface(x,z) : sample(x,z,surface:true).height-area.level
             let y = area == .mangrove || area == .swamp ? max(0.35,ground) : ground
-            let clearing = terrain.reserved(x,z)
-            if y <= 0 || y < -90 { continue }
-            if index<trees, let selected = area.tree, !clearing {
+            let clearing = Terrain(biome:treeBiome,authored:terrain.authored && area.cover == nil).reserved(x,z) || area.level<0 && Terrain.entrance(x,z)
+            if y <= 0 || y < -90 || area.cover != nil && sample(x,z,surface:true).fluid { continue }
+            if index<trees, let selected = sample(x,z,surface:area.cover != nil).biome.tree, !clearing {
                 let tree = area == .forest && index%4 == 0 ? "birch" : selected
                 let bark = try assets.tiles(tree+"_log"), leaves = try assets.tiles(tree+"_leaves")
                 let tall = tree == "jungle" ? 11+index%9 : tree == "spruce" ? 7+index%4 : tree == "dark_oak" ? 7 : 4+index%3
@@ -179,6 +197,7 @@ enum Landscape {
                     for level in 0..<3 { try sprite(area == .pale ? "pale_hanging_moss_middle" : "vine",x:x+thick/2+0.05,y:y+Double(tall-level)-1,z:z,size:2) }
                 }
             }
+            if area.cover != nil { continue }
             if !clearing {
                 switch area {
                 case .wastes, .crimson, .warped:
@@ -231,7 +250,7 @@ enum Landscape {
                 let nearby = index < 1800
                 let x = (Terrain.random(index,27,seed:5)*(nearby ? 72 : 104)-(nearby ? 36 : 52)).rounded()
                 let z = (Terrain.random(index,37,seed:9)*(nearby ? 80 : 104)-(nearby ? 45 : 55)).rounded()
-                let y = height(area,x:x,z:z)
+                let y = surface(x,z)
                 guard plants.insert((Int(x)+100)*256+Int(z)+132).inserted else { continue }
                 if y < -1, [.coast,.reef,.mangrove,.swamp,.lush].contains(area) {
                     try sprite(area == .mangrove || area == .swamp ? "reeds" : "seagrass",x:x,y:y,z:z,size:1.3,tint:0x78A73F)
@@ -249,20 +268,27 @@ enum Landscape {
                 }
             }
         }
-        if area == .jungle {
-            for index in 0..<90 {
-                let x = (Terrain.random(index,24)*48-24).rounded(), z = (Terrain.random(index,29)*60-38).rounded()
-                let y = height(area,x:x,z:z)
-                guard !terrain.reserved(x,z) else { continue }
-                let tall = Double(5+index%7)
-                try sprite("bamboo_stem",x:x,y:y,z:z,size:1)
-                for level in 1..<Int(tall) { try sprite(level>Int(tall)-4 ? "bamboo_leaf" : "bamboo_stem",x:x,y:y+Double(level),z:z) }
+        if treeBiome == .jungle {
+            let stalk = try assets.texture("textures/blocks/bamboo_stem")
+            let uv = Array(repeating:CGRect(x:0,y:1,width:3.0/16,height:-1),count:6)
+            for index in 0..<144 {
+                let x = (Terrain.random(index,24)*144-72).rounded(), z = (Terrain.random(index,29)*144-104).rounded()
+                let y = area.cover == nil ? surface(x,z) : sample(x,z,surface:true).height-area.level
+                guard y>0, !Terrain(biome:treeBiome,authored:terrain.authored && area.cover == nil).reserved(x,z), !Terrain.entrance(x,z),
+                      !sample(x,z,surface:area.cover != nil).fluid,
+                      sample(x,z,surface:area.cover != nil).biome == .jungle,
+                      Terrain.noise(origin.x+x,origin.z+z,scale:18,seed:995)>0 else { continue }
+                let tall = 5+index%8
+                for level in 0..<tall {
+                    detail.cube(.init(0.1875,1,0.1875),at:.init(x,y+Double(level)+0.5,z),material:stalk,textureUV:uv)
+                    if level>=tall-3 { try sprite("bamboo_leaf",x:x,y:y+Double(level),z:z) }
+                }
             }
         }
         if [.forest,.jungle,.mansion,.pale,.snow,.cherry,.river,.mangrove,.swamp,.grove].contains(area) {
             for index in 0..<100 {
                 let x = (Terrain.random(index,41)*76-38).rounded(), z = (Terrain.random(index,43)*86-48).rounded()
-                let y = height(area,x:x,z:z)
+                let y = surface(x,z)
                 guard y>0, !terrain.reserved(x,z) else { continue }
                 if index%7 == 0 {
                     let bark = area == .snow ? "spruce" : area == .river ? "birch" : "oak"
@@ -281,14 +307,14 @@ enum Landscape {
             let lily = try assets.texture("textures/blocks/waterlily")
             for index in 0..<150 {
                 let x = (Terrain.random(index,53)*78-39).rounded(), z = (Terrain.random(index,59)*82-43).rounded()
-                if height(area,x:x,z:z) < 0 { detail.cube(.init(1,0,1),at:.init(x,0.93,z),material:lily,faces:16) }
+                if surface(x,z) < 0 { detail.cube(.init(1,0,1),at:.init(x,0.93,z),material:lily,faces:16) }
             }
         }
         if area == .lush || area == .dripstone {
             for index in 0..<110 {
                 let x = (Terrain.random(index,61)*76-38).rounded(), z = (Terrain.random(index,67)*90-50).rounded()
                 guard abs(x-3)>4 else { continue }
-                let y = height(area,x:x,z:z), ceiling = max(y+9,terrain.ceiling(x,z))
+                let y = surface(x,z), ceiling = max(y+9,terrain.ceiling(x,z))
                 for level in 0..<(3+index%6) {
                     try sprite(area == .lush ? "cave_vines_body_berries" : "pointed_dripstone_down_middle",x:x,y:ceiling-1-Double(level),z:z)
                 }
@@ -303,7 +329,7 @@ enum Landscape {
         }
         if area == .reef {
             for index in 0..<90 {
-                let x = Double((index*17)%87-43), z = Double((index*31)%87-63), y = height(area,x:x,z:z)
+                let x = Double((index*17)%87-43), z = Double((index*31)%87-63), y = surface(x,z)
                 let coral = try assets.texture("textures/blocks/coral_"+["blue","pink","purple","red","yellow"][index%5])
                 let tall = Double(1+index%4)
                 detail.cube(.init(2,tall,2),at:.init(x,y+tall/2,z),material:coral)
@@ -315,7 +341,7 @@ enum Landscape {
         if world == .nether {
             for index in 0..<130 {
                 let x = (Terrain.random(index,71)*90-45).rounded(), z = (Terrain.random(index,73)*110-60).rounded()
-                let y = height(area,x:x,z:z), ceiling = max(y+9,terrain.ceiling(x,z))
+                let y = surface(x,z), ceiling = max(y+9,terrain.ceiling(x,z))
                 if abs(x)>8 {
                     let tall = Double(4+index%9)
                     for level in 0..<Int(tall) {
@@ -337,7 +363,7 @@ enum Landscape {
         if world == .sift {
             for index in 0..<360 {
                 let x = (Terrain.random(index,79)*78-39).rounded(), z = (Terrain.random(index,83)*90-50).rounded()
-                let y = height(area,x:x,z:z)
+                let y = surface(x,z)
                 guard y > -90, !terrain.occupied(x,z) else { continue }
                 try sprite(index%7 == 0 ? "coral_fan_"+["pink","purple","blue"][index%3] : "tallgrass",x:x,y:y,z:z,tint:index%7 == 0 ? nil : 0x71C9C1)
                 if index%17 == 0 && !terrain.reserved(x,z) {
@@ -346,25 +372,24 @@ enum Landscape {
                 }
             }
         }
-        if area == .meadow {
+        if area == .meadow && terrain.authored {
             for (x,z) in [(-18.0,-7.0),(20,-15),(9,-40)] {
-                let y = height(area,x:x,z:z)
+                let y = surface(x,z)
                 for (dx,dz,dy) in [(0.0,0.0,0.5),(1,0,0.5),(0,1,0.5),(0,0,1.5)] {
                     try block(.init(1,1,1),.init(x+dx,y+dy,z+dz),"hay_block")
                 }
             }
         }
         scene.rootNode.addChildNode(detail.node("habitat-detail"))
-        let landmark = try Structures.build(area,x:0,y:area == .coast ? 0 : area == .reef ? -7 : area == .monument ? -22 : area == .ice ? 2 : area == .swamp ? 0 : 4,assets:assets)
-        scene.rootNode.addChildNode(landmark)
         if [.jungle,.lush,.terraces,.grove].contains(area) || world == .nether {
             for index in 0..<(world == .nether ? 3 : 2) {
                 let x = Double(index*27-26), z = -43.0-Double(index*9)
                 try liquid(scene,assets:assets,lava:world == .nether,at:.init(x,12,z),size:.init(width:2,height:24),vertical:true)
             }
         }
-        if world == .overworld && !area.underground || world == .sift {
-            try clouds(scene,assets:assets,origin:Atlas.offset(world.index(biome),count:world.biomes.count))
+        if world == .overworld && (!area.underground || area.cover != nil) || world == .sift {
+            try clouds(scene,assets:assets,origin:origin)
+            scene.rootNode.childNode(withName:"drifting-cloud",recursively:false)?.position.y -= area.level
         }
         if area.underground || world == .nether || world == .sift || area == .pale {
             let tint: UInt32 = area == .warped ? 0x36B8AD : area == .crimson ? 0xB83B46 : area == .soul || area == .basalt ? 0xB0AAA3 : world == .nether ? 0xF4BE8F : area == .lush ? 0xA6C75D : 0xBDDBDB
@@ -388,7 +413,7 @@ enum Landscape {
             for (index,tree) in scene.rootNode.childNodes.filter({ $0.name == "wind-canopy" }).prefix(64).enumerated() {
                 let petal = SCNNode(geometry:plane); petal.name = "falling-cherry-petal"
                 let start = SCNVector3(tree.position.x+Double(index%3)-1,tree.position.y,tree.position.z)
-                let ground = terrain.height(start.x,start.z)+0.05, duration = 5+Double(index%4)
+                let ground = surface(start.x,start.z)+0.05, duration = 5+Double(index%4)
                 petal.position = start
                 petal.runAction(.repeatForever(.customAction(duration:duration) { node,time in
                     let phase = (Double(time)/duration+Double(index%7)/7).truncatingRemainder(dividingBy:1)
@@ -409,10 +434,10 @@ enum Landscape {
         collision.scene = scene
         guard collision.prepare(scene,shouldAbortBlock:nil) else { throw AssetError.model }
         try withExtendedLifetime(collision) {
-            try populate(scene,world:world,area:area,factory:Mobs(assets:assets))
+            try populate(scene,world:world,area:area,terrain:terrain,height:surface,showcase:region.key(world.biomes.count)>=0,factory:Mobs(assets:assets))
             focus(scene,world:world,biome:biome,animated:false)
         }
-        if world == .overworld && !area.underground { try Daylight.install(scene,area:area,assets:assets) }
+        if world == .overworld && (!area.underground || area.cover != nil) { try Daylight.install(scene,area:area.cover ?? area,assets:assets) }
         if world == .end {
             // The original sky is greyscale and receives a dark purple tint in game
             let source = try assets.texture("textures/environment/end_sky").diffuse.contents as! CGImage
@@ -525,7 +550,7 @@ enum Landscape {
         if min(height(area,x:px,z:pz),height(area,x:px.rounded(),z:pz.rounded())) < -90 { px = x; pz = z }
         if min(height(area,x:px,z:pz),height(area,x:px.rounded(),z:pz.rounded())) < -90 { px = 0; pz = -17 }
         let surface = height(area,x:px.rounded(),z:pz.rounded())
-        let level = max(elevation ?? max(max(0.9,ground),surface)+2.8,surface+1.6)
+        let level = max(elevation ?? max(max(0.9,ground),surface)+1.62,surface+1.62)
         return (.init(px,level+sin(phase * .pi)*0.35,pz),target)
     }
 
@@ -566,8 +591,8 @@ enum Landscape {
         }
     }
 
-    static func medium(_ scene: SCNScene, area: Biome, eye: SCNVector3) {
-        let submerged = eye.y < 0.9 && Terrain(biome:area).height(eye.x.rounded(),eye.z.rounded()) < 0.9
+    static func medium(_ scene: SCNScene, area: Biome, eye: SCNVector3, submerged override: Bool? = nil) {
+        let submerged = override ?? (eye.y < 0.9 && Terrain(biome:area).height(eye.x.rounded(),eye.z.rounded()) < 0.9)
         let lava = submerged && World.nether.biomes.contains(area)
         if submerged {
             scene.fogColor = colour(lava ? 0xA73D08 : 0x125C9C)
@@ -605,32 +630,33 @@ enum Landscape {
         camera.runAction(.sequence([exit,idle]),forKey:"journey")
     }
 
-    private static func populate(_ scene: SCNScene, world: World, area: Biome, factory: Mobs) throws {
-        let terrain = Terrain(biome:area)
+    private static func populate(_ scene: SCNScene, world: World, area: Biome, terrain: Terrain, height: @escaping (Double,Double) -> Double, showcase: Bool, factory: Mobs) throws {
         let jobs = Structures.sites(in:scene.rootNode).filter { $0.kind == .work && !$0.standing.isEmpty }
         for (kind,species) in area.residents.enumerated() {
-            let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem].contains(species)
-            let fallback = solitary || species == .cat && area == .swamp ? 1 : species == .villager ? 5 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
-            let count = try factory.group(species,biome:area,seed:terrain.seed+kind) ?? fallback
+            if !showcase && [.wither,.zoglin].contains(species) { continue }
+            if !terrain.authored && [.villager,.golem,.cat,.ironGolem,.trader,.traderLlama,.mule,.shulker,.piglinBrute,.blaze,.witherSkeleton,.elderGuardian,.evoker,.vindicator,.warden,.breeze,.silverfish,.allay,.wither].contains(species) { continue }
+            let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem,.wither,.trader,.traderLlama,.mule,.zoglin,.zombieHorse].contains(species)
+            let fallback = solitary || species == .cat && area == .swamp ? 1 : species == .villager ? (area == .meadow ? 8 : 5) : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
+            let count = try factory.group(species,biome:area,seed:(terrain.seed &+ kind) & Int.max) ?? fallback
             let coat = min(6,Int(Terrain.random(kind,0,seed:terrain.seed)*7))
             for index in 0..<count {
                 let baby = count>2 && index>=max(2,count-1) && [.cow,.pig,.sheep,.chicken,.wolf,.horse,.cat,.axolotl,.villager].contains(species)
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"+(baby ? "-baby" : "")
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)
-                let classic = Terrain.random(kind,index,seed:terrain.seed+227) < Mobs.classicChance(daylight:daylight)
+                let classic = Terrain.random(kind,index,seed:terrain.seed &+ 227) < Mobs.classicChance(daylight:daylight)
                 let profession = area == .meadow && species == .villager && jobs.indices.contains(index)
                     ? ["farmer":0,"librarian":1,"cleric":2,"weaponsmith":3,"butcher":4][jobs[index].profession ?? ""] ?? index : index
-                let named = area == .cherry && species == .rabbit && index == 0 ? "Toast"
+                let named: String? = !showcase ? nil : area == .cherry && species == .rabbit && index == 0 ? "Toast"
                     : area == .cherry && species == .sheep && index == 1 ? "jeb_"
                     : area == .meadow && species == .chicken && index == 1 ? "Dinnerbone" : nil
                 let model: SCNNode
                 do {
-                    model = area == .forest && species == .creeper && index == 0 ? try factory.charged()
+                    model = showcase && area == .forest && species == .creeper && index == 0 ? try factory.charged()
                         : try factory.make(species,biome:area,variant:species == .horse ? coat+7*index : profession,classic:classic,baby:baby,named:named)
                 }
-                catch AssetError.missing where [.camelHusk,.parched,.nautilus,.zombieNautilus,.happyGhast].contains(species) { continue }
-                if area == .meadow && species == .pig && index == 0 { try factory.crown(model) }
-                if area == .cherry && species == .sheep && index == 0 { try factory.pink(model,baby:baby) }
+                catch AssetError.missing where [.camelHusk,.parched,.nautilus,.zombieNautilus,.happyGhast,.donkey,.mule,.phantom,.tadpole,.traderLlama,.trader,.wither,.zoglin,.zombieHorse,.zombieVillager,.sulfurCube].contains(species) { continue }
+                if showcase && area == .meadow && species == .pig && index == 0 { try factory.crown(model) }
+                if showcase && area == .cherry && species == .sheep && index == 0 { try factory.pink(model,baby:baby) }
                 if let aura = model.childNode(withName:"charged-aura",recursively:false) {
                     aura.isHidden = true
                     let epoch = factory.assets.started
@@ -639,7 +665,13 @@ enum Landscape {
                     },.wait(duration:1)])))
                 }
                 actor.addChildNode(model)
-                if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y) }
+                if [.phantom,.zombieHorse].contains(species) {
+                    let epoch = factory.assets.started
+                    actor.runAction(.repeatForever(.sequence([.run { node in
+                        node.isHidden = Daylight.light(at:ProcessInfo.processInfo.systemUptime-epoch)>0.15
+                    },.wait(duration:1)])),forKey:"night-spawn")
+                }
+                if !species.flying && !species.swimming { model.position.y = max(0,-model.boundingBox.min.y*model.scale.y) }
                 let a = Terrain.random(kind,index,seed:3)*Double.pi*2
                 let radius = sqrt(Terrain.random(index,kind,seed:2))*3
                 var x = Double(kind%3-1)*11+cos(a)*radius, z = Double(kind/3)*9-5+sin(a)*radius
@@ -664,32 +696,41 @@ enum Landscape {
                 if species == .shulker { x = 5+Double(index)*3; z = -13 }
                 if species == .endermite { x = -10; z = 10 }
                 if species == .turtle { x = 3+Double(index)*4; z = 11+sin(a)*2 }
-                if terrain.height(x,z) < -90 { x *= 0.3; z = -7+Double(index) }
+                if height(x,z) < -90 { x *= 0.3; z = -7+Double(index) }
+                if species.swimming {
+                    let centre = (x,z)
+                    for step in 0..<96 where height(x.rounded(),z.rounded()) >= -1.2 {
+                        let radius = sqrt(Double(step+1))*3
+                        x = centre.0+cos(Double(step)*2.4)*radius
+                        z = centre.1+sin(Double(step)*2.4)*radius
+                    }
+                    guard height(x.rounded(),z.rounded()) < -1.2 else { continue }
+                }
                 if !species.flying && !species.swimming && species != .strider {
-                    for step in 0..<24 where terrain.height(x.rounded(),z.rounded()) < 1 {
+                    for step in 0..<24 where height(x.rounded(),z.rounded()) < 1 {
                         x += cos(Double(step)*2.4)*3
                         z += sin(Double(step)*2.4)*3+2
                     }
                 }
                 func point(_ x: Double, _ z: Double) -> SCNVector3 {
-                    let h = terrain.height(x.rounded(),z.rounded())
-                    let y = species.swimming ? (species == .axolotl ? 0.15 : area == .monument ? -5 : -1.8) : species == .strider ? 0.9 : [.blaze,.witherSkeleton].contains(species) ? 12 : species == .shulker ? 8+Double(index)*3 : max(0.9,h)
+                    let h = height(x.rounded(),z.rounded())
+                    let y = species.swimming ? min(0.3,max(h+0.6,species == .axolotl ? 0.15 : area == .monument ? -5 : -1.8)) : species == .strider ? 0.9 : [.blaze,.witherSkeleton].contains(species) ? 12 : species == .shulker ? 8+Double(index)*3 : max(0.9,h)
                     return .init(x,y+(species.flying ? (species == .breeze ? 1.2 : 3) : 0),z)
                 }
                 let start = point(x,z)
                 actor.position = start; actor.eulerAngles.y = a
                 if species != .shulker && species != .warden && species != .snowGolem {
-                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,root:scene.rootNode,point:point)
+                    try factory.wander(actor,model:model,species:species,area:area,seed:kind*17+index,root:scene.rootNode,ground:height,point:point)
                 }
                 if species == .golem { try factory.oxidation(actor,model:model,stage:index%3,seed:kind*17+index) }
                 scene.rootNode.addChildNode(actor)
             }
         }
-        if area == .meadow { try village(scene,factory:factory) }
-        if area == .pale || area == .ice {
+        if area == .meadow && terrain.authored { try village(scene,factory:factory) }
+        if showcase && (area == .pale || area == .ice) {
             let actor = SCNNode(), model = area == .pale ? try factory.herobrine() : try factory.skeletonHorse()
             actor.name = area == .pale ? "cameo-herobrine" : "cameo-skeleton-horse"
-            actor.position = .init(8,terrain.height(8,10),10); actor.addChildNode(model); scene.rootNode.addChildNode(actor)
+            actor.position = .init(8,height(8,10),10); actor.addChildNode(model); scene.rootNode.addChildNode(actor)
             if area == .pale {
                 actor.isHidden = true
                 let epoch = factory.assets.started
@@ -699,11 +740,11 @@ enum Landscape {
                 },.wait(duration:1)])))
             } else {
                 try factory.wander(actor,model:model,species:.horse,area:area,seed:512,root:scene.rootNode) { x,z in
-                    .init(x,terrain.height(x.rounded(),z.rounded()),z)
+                    .init(x,height(x.rounded(),z.rounded()),z)
                 }
             }
         }
-        if area == .mansion {
+        if showcase && area == .mansion && terrain.authored {
             let actor = SCNNode(), model = try factory.jockey()
             actor.name = "resident-chicken-jockey"; actor.addChildNode(model)
             actor.position = .init(1,5,-17)
@@ -785,6 +826,18 @@ enum Landscape {
                 }
             }
             if !installed { actor.position = original }
+        }
+        let residents = root.childNodes.filter { $0.name?.hasPrefix("resident-villager-") == true }
+            .sorted { ($0.name ?? "") < ($1.name ?? "") }
+        for (index,actor) in residents.enumerated() where actor.action(forKey:"routine") == nil {
+            guard let model = actor.childNodes.first else { continue }
+            let start = streets.indices.lazy.map { streets[($0+index*7)%streets.count] }
+                .first { point in Collision.vacant(root,at:.init(point.x,point.y+1,point.z),radius:0.3) }
+            guard let start else { continue }
+            actor.position = start
+            try factory.wander(actor,model:model,species:.villager,area:.meadow,seed:index+317,root:root,
+                ground:{ terrain.height($0,$1) }) { x,z in .init(x,terrain.height(x.rounded(),z.rounded())+0.02,z) }
+            for door in doors { door.register(actor) }
         }
     }
 

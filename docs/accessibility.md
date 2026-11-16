@@ -1,7 +1,7 @@
 # Accessibility
 
-This guide covers the native Minecraft Launcher launcher and the repository's
-player documentation. Accessibility inside the Windows game and Microsoft
+This guide covers Minecraft Launcher and the repository's player documentation
+Accessibility inside the Windows game and Microsoft
 sign-in window also depends on those applications
 
 ## Controls implemented in the launcher
@@ -12,11 +12,11 @@ sign-in window also depends on those applications
 | Cancel setup | **Cancel Setup**, or <kbd>Escape</kbd> while setup can be cancelled |
 | Change accounts | **Minecraft Launcher → Sign Out of Microsoft…**, with the game closed |
 | Get help or open logs | The **?** button or **Help** menu opens the in-app guide, which includes setup logs |
-| Pause or resume background motion | **Settings → Background animation** or **View → Animate Scenery** |
-| Choose a scene | The four item slots in the bottom inventory bar, keys <kbd>1</kbd>–<kbd>4</kbd>, or **View**, with the selection exposed to assistive technology |
+| Pause or resume background motion | **Settings → Video → Background animation** or **View → Animate Scenery** |
+| Choose a scene | The four item slots in the bottom inventory bar, keys <kbd>1</kbd>–<kbd>4</kbd>, the scroll wheel, or **View**, with the selection exposed to assistive technology |
 | Choose an area | The biome name at the top left opens the searchable picker; **View → Choose Biome or Landmark** also works |
-| Look around | The spyglass button at the bottom right or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with mouse movement or arrows, and change areas with brackets; the same button, shortcut or <kbd>Escape</kbd> restores the route |
-| Mute or unmute launcher music | **Settings → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
+| Look around | The corner spyglass or <kbd>⌘</kbd> + <kbd>L</kbd>, then fly with WASD, Space/Shift, aim with the mouse or arrows, and change areas with brackets; <kbd>⌘</kbd> + <kbd>L</kbd> or <kbd>Escape</kbd> returns to the menu |
+| Mute or unmute launcher music | **Settings → Audio → Master volume**, with pointer dragging, arrow keys or accessibility increment/decrement; zero mutes it |
 | Skip a portal crossing | **Skip journey** or **View → Skip Portal Journey** |
 | Scenery preferences | The gear button, **Minecraft Launcher → Settings…**, or <kbd>⌘</kbd> + <kbd>,</kbd>; the top-right **×** or <kbd>Escape</kbd> closes the menu |
 | Change scenery from the menu | **View**, including **Next Scene** with <kbd>⌘</kbd> + <kbd>]</kbd> |
@@ -54,14 +54,17 @@ states use text rather than a spinner. Reduce Transparency gives the launch
 panel an opaque background. The window can be resized down to 760 × 620 points
 Long status details scroll inside the setup panel and remain selectable
 Settings uses the launcher window without a separate title bar. Its text and controls
-scale up with window size, with a 20-point action-label and 16-point body-copy floor
-The content scrolls independently of its persistent heading and 48-point close
+scale with window size, and long category content scrolls
+The category content scrolls independently of its persistent heading and 44-point close
 button. Background launcher controls and keyboard shortcuts are disabled while
-Settings is open; the volume control retains arrow and accessibility adjustments
+Settings is open; all sliders retain arrow and accessibility adjustments
 Original installed artwork supplies the main title and Minecraft Ten supplies
 the subtitle. Both scale with window width and height, including fullscreen
-Pixel typography identifies the fallback title and shortcut toast; pixel type identifies
-actions and section titles, while explanatory copy uses plain system type
+Pixel typography identifies the fallback title and shortcut toast
+Actions and regular menu text use installed Mojangles, while section headings use
+Minecraft Ten. Bundled Monocraft remains available before game art is installed
+Deliberate spectator input, terrain streaming and minimap updates remain available
+with ambient animation off; inactive windows stop their map-update timer
 Main controls and corner credits reach 5× their area in the tested fullscreen layout
 They shrink together in smaller windows to preserve distinct hit targets
 Hover adds a short enlargement and brightness change; Reduced Motion removes
@@ -86,6 +89,15 @@ The area and realm controls are unavailable until installed game art is ready
 An unsupported scenery format falls back to the approved poster without blocking
 the setup controls
 
+The minimap has a stepped circular edge, a north marker and text coordinates
+M toggles it while exploring; Settings → Key bindings can change that shortcut
+The input recorder cancels on Escape, focus loss and closing the settings
+It reserves Command-Q and names any swapped control after a conflict
+Help uses an in-window menu with the same pixel font, close button and Escape
+behaviour as Settings. Credits and version text have a 24-point minimum
+The optional character preview has a descriptive accessibility label and visible
+recovery for a missing image, and honours reduced motion and low power
+
 ## Known limits
 
 Large text, display zoom, increased contrast, keyboard focus and VoiceOver
@@ -95,7 +107,7 @@ VoiceOver or WCAG conformance
 Spectator flight supports keyboard movement and aiming; full-window event
 routing, focus restoration and VoiceOver operation still need manual checks
 Music uses the labelled master-volume control in Settings; no task depends on
-hearing it It pauses outside the focused launcher and while the game runs
+hearing it; it pauses outside the focused launcher and while the game runs
 The splash stays still with Reduced Motion, Low Power or paused scenery
 Mouse-look hides/releases the cursor with native APIs only while the launcher
 is key. Escape, responder/window focus loss and teardown release it and remove
@@ -114,7 +126,7 @@ yourself; automation does not dismiss or approve them
 - [ ] Read every button, status, error and progress change with VoiceOver
 - [ ] Check focus when setup starts, is cancelled, fails and finishes
 - [ ] Check long error messages with large text and display zoom
-- [ ] Check spectator WASD/Space/Shift/arrows, mouse capture/release, Control sprint, scroll speed, brackets and area crossings
+- [ ] Check spectator WASD/Space/Shift/arrows, mouse capture/release, Control sprint, wheel realm selection, Control-wheel speed, brackets and area crossings
 - [ ] Check spyglass button/⌘L/Escape, rapid realm changes and focus after the biome popover closes
 - [ ] Check music volume/mute, track completion, window switching, occlusion and gameplay handoff
 - [ ] Check the 60-second toast expiry and 70-second return, including Settings and app switching

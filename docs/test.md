@@ -5,6 +5,141 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Test counts below describe the October 20, 2026 source snapshot
 
+## Terrain and controls in 0.17
+
+The final build 30 source passes all 107 Python checks and both native suites
+The installed-art sweep covers 86 species, 43 areas and three passages in
+12,198 ms; that is sweep execution time, excluding its preceding input,
+geometry and guided-flight regressions, rather than app startup time
+
+Build 30 retains the four-boundary camera fixture before guided flight
+Its regression also starts beneath a streamed terrain surface with a low roof
+and with a wall containing the camera, requiring both structures to remain solid
+Private source-backed probes check 384-block spacing, signed seed extremes,
+repeatable terrain, eight village schedules and a completed village-to-forest route
+The normal route caps movement at 0.40002 blocks and turning at 1.502° per
+30 Hz update, with navigation activity ending exactly once on arrival
+
+Original-art checks cover shared model rotations, mirrored UV faces, equine ears,
+spider grounding, adult/baby villagers, dragon symmetry, attached torches, textured
+chest bounds, bed faces, brewing arms and connected iron bars
+The dragon's reflected branches share one local wing track; a source-backed
+17-phase corner probe reports zero mirrored-coordinate error throughout the flap
+Key-binding checks cover persisted-data validation, conflict swaps, reserved keys,
+modifier-only bindings, reversed chord order and remapped arrow movement
+Skin import checks reject invalid PNGs and unbounded file/pixel dimensions
+Legacy avatar checks distinguish opaque padding from a transparent hat layer
+Splash checks cover the original per-letter colour sequence, gold, reset and
+literal preservation of unknown or incomplete formatting codes
+Streamed water lighting is checked on both retained and newly attached chunks
+
+The final habitat-budget probe passes all 43 areas without changing the limits
+Badlands falls from 364,232 to 260,706 logical triangles with the same 380 nodes
+Its 214,591 material/unit-face patches are identical to the preceding builder,
+with matching tiled UV density and 22 collision-family checks
+Forest and Meadow keep identical coverage and triangle counts
+The largest final habitat is Mangrove at 321,110 triangles; Meadow has the most
+nodes at 1,107, below the respective 350,000 and 1,200 limits
+
+The final build 30 forest sample uses the same M3 Pro and macOS 27.0.1, with
+Chrome for Testing open and no game, launcher or compiler running
+Each fresh process records sixty frames after ten warm-ups and waits for GPU
+completion; streamed maps finish loading before the sample
+
+| Size and MSAA | Map | GPU median / p95 | Wall median / p95 |
+| --- | --- | --- | --- |
+| 1040 × 760, 4× | Default, 289 chunks | 4.04 / 4.46 ms | 7.86 / 8.50 ms |
+| 1040 × 760, 4× | Maximum, 1,089 chunks | 2.35 / 4.94 ms | 8.23 / 10.53 ms |
+| 2080 × 1520, 4× | Default, 289 chunks | 5.24 / 7.28 ms | 8.37 / 10.48 ms |
+| 2080 × 1520, 4× | Maximum, 1,089 chunks | 6.07 / 7.94 ms | 11.78 / 13.52 ms |
+| 2080 × 1520, 2× | Default, 289 chunks | 3.96 / 7.25 ms | 8.03 / 10.23 ms |
+| 2080 × 1520, 2× | Maximum, 1,089 chunks | 4.45 / 8.41 ms | 10.35 / 14.29 ms |
+
+All streamed samples retain five landmarks; default and maximum graphs have
+2,772 / 4,404 nodes and 576,832 / 1,372,972 logical triangles respectively
+The Retina 4× and 2× images were inspected; 4× remains the app default because
+the paired wall-time p95 does not show a clear benefit from reducing quality
+The Retina probe processes peak at 268,550,144 and 268,861,440 resident bytes
+These are short offscreen samples, not sustained app/game FPS, input latency,
+whole-app memory, battery or thermal measurements; file-cache state was uncontrolled
+
+Computer Use inspected the installed build 30 in normal and fullscreen layouts
+Settings and Help open inside the window with matching pixel type and working
+close/Escape controls; key recording changed W → Up → W and Escape cancelled
+recording without closing Settings
+M hid and restored the left minimap, captured exploration hid pointer controls,
+and Escape returned to the menu without starting the game
+The final player marker and Notch face were inspected after the legacy-hat fix
+Held movement did not produce reliable coordinate changes through computer-use
+automation, so no live WASD/Space movement pass is recorded
+Native movement/chord tests pass; game handoff, VoiceOver, sustained use and
+larger-fullscreen performance were not exercised in this pass
+
+The candidate, installed app and read-only DMG copy match the final packaged
+executable, all 1,054 resource hashes and 21 internal links
+The graphics bridge, authorised helper digest and strict deep signatures pass
+The local DMG is 127,564,044 bytes, SHA-256
+`ca7e2aa63aff71c6c41cda3dcfe9de493efe280ca77c0c558931740a607ad9eb`
+Its mount was detached after verification
+
+### Preceding build 29
+
+Build 29 corrects gravel placement and glass after the first local build
+The full [Gravel](https://minecraft.wiki/w/Gravel), [River](https://minecraft.wiki/w/River),
+[Glass](https://minecraft.wiki/w/Glass) and [Glass Pane](https://minecraft.wiki/w/Glass_Pane)
+Wiki articles were read through the public parse API, alongside
+[World generation](https://minecraft.wiki/w/World_generation)
+An installed-art probe checks 22,082 dry grassland samples without gravel
+Its waterbeds contain 625 gravel, 782 sand, 522 dirt and 292 clay columns
+The original mansion window and village house have 144 and 36 checked glass
+triangles respectively, with UV widths matching their actual block-space widths
+Clear, white and red panes load distinct original face/edge textures
+Their 960 × 700 offscreen renders were inspected
+
+The 0.17.0/build 29 source passes 107 Python tests and both native suites
+The installed-art sweep covers 86 species, 43 areas and three passages in
+16,194 ms, which is test execution time rather than app startup time
+The focused geography probe checks original/regenerated chunk equality, the
+first 25 destination coordinates, Sulfur Caves, five cave layers, open shafts and
+closed roofs, exact foundation masks, real guided descent, cache bounds and cancellation
+Across 1,066 sampled outskirts cells, 148 have landmarks, 544 neighbouring
+pairs repeat their biome and 19 surface climates appear. Missing landmarks leave
+no orphan plots, paths or village residents. A sampled boundary has seven heights
+and a maximum adjacent step of one block; 2,221 sampled columns contain water
+Sand/gravel banks are present. Ten 33 × 33 sampler grids took 6.79 ms total
+
+The original fountain has 77 foundation cells, including six restored path
+connectors. Hiding its fluid geometry changes 13,368 pixels in the same 960 × 700
+offscreen render. Imported fluids remain visible and outside collision category 2
+The native suite samples both guided portal routes every 50 ms, alongside
+traversable junctions, solid end walls and iron bars
+Both complete guided camera routes pass the collision sweep
+
+Native checks cover wheel accumulation/debounce, invalid map coordinates,
+spider eye emission and opaque skin, baby-villager arms, original bat flight,
+and spectator map reports while ambient actions are paused. Inactive spectator
+windows stop map reporting without enabling continuous rendering
+Merging same-height ceiling runs reduces Lush Caves from 374,340 to 321,120
+logical triangles, retaining the existing 350,000-per-habitat budget
+
+The preceding build 29 renderer was sampled on an M3 Pro, macOS 27.0.1, with no
+game or compiler running and Chrome for Testing left open. Each 1040 × 760,
+4× MSAA sample uses ten warm-up frames and sixty recorded frames, waiting for
+GPU completion. Both streamed samples finish loading before measurement
+
+| Forest view | Chunks / landmarks | GPU median / p95 | Wall median / p95 |
+| --- | --- | --- | --- |
+| Single habitat | Authored tile | 3.07 / 5.42 ms | 7.12 / 8.88 ms |
+| Default 8-chunk radius | 289 / 5 | 3.37 / 5.79 ms | 8.19 / 12.14 ms |
+| Maximum 16-chunk radius | 1,089 / 5 | 4.02 / 6.03 ms | 17.37 / 23.84 ms |
+
+The default graph has 2,669 nodes and 696,926 logical triangles; the maximum
+has 4,749 and 1,388,874. The maximum-distance wall p95 exceeds the 16.7 ms
+spectator target. The preceding build's smaller default graph measured 7.67 ms
+wall p95, so these samples do not establish an overall speedup
+They are short offscreen launcher measurements, not game FPS, startup time or
+sustained thermal, battery and memory-growth tests
+
 ## Map, resident and presentation checks in build 27
 
 The 0.16.0/build 27 source passes 107 Python tests and both native suites
@@ -500,8 +635,8 @@ Compile the interface on a Mac with Command Line Tools:
 
 ```sh
 python3 minecraft.py build launcher
-xcrun swiftc -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
-  src/launcher/BedrockLauncher.swift src/launcher/Music.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
+xcrun swiftc -O -assert-config Debug -parse-as-library -D LAUNCHER_TEST -module-cache-path build/swift-module-cache \
+  src/launcher/BedrockLauncher.swift src/launcher/Music.swift src/launcher/Input.swift src/launcher/Skin.swift src/launcher/Adventure.swift src/launcher/Terrain.swift src/launcher/Landscape.swift src/launcher/Biome.swift src/launcher/Mobs.swift src/launcher/Structures.swift src/launcher/Journey.swift src/launcher/Assets.swift src/launcher/NBT.swift tests/launcher.swift -o build/launcher-checks
 build/launcher-checks
 ```
 
@@ -520,7 +655,7 @@ To check the art from your own installation as well:
 BEDROCK_SCENERY_DATA="$HOME/Library/Application Support/Bedrock for Mac/game/data" build/launcher-checks
 ```
 
-This read-only integration constructs all 75 resident types, the dragon, 42
+This read-only integration constructs all 86 resident types, the dragon, 43
 independent habitats and three passages. It checks distinct Blaze rods, Breeze
 wind layers, mirrored dragon bounds, mob placement away from void, node/triangle
 budgets, sampled camera ground/headroom, swimming placement, original fluid atlas

@@ -49,29 +49,53 @@ not a resumable transfer. Avoid starting multiple copies of the app.
 
 ## Background scenery
 
+Look around keeps the pointer captured for camera movement and hides clickable
+menu controls. Press **Escape** to use the menus again
+The pixel minimap sits on the left; **M** shows or hides it
+Use **Settings → Key bindings** to change movement, map, realm and travel keys
+Conflicting assignments swap, and Escape cancels recording
+
+**Settings → Video → World seed** creates a repeatable launcher landscape after
+**Generate** or Return. It is separate from the seed of any saved Minecraft world
+**Settings → Character** accepts your exported skin and cape PNGs for the small
+paper doll. Choose slim arms only for a modern three-pixel arm skin
+These local files stay on your Mac; no default skin is shown as your character
+
 After Minecraft is installed, click the biome name at the top left to find an
-area. Choose realms with the four item slots in the inventory bar or keys **1–4**
+area. Choose realms with the four inventory slots, keys **1–4**, or the scroll wheel
 Normal realm changes pass through a mine’s Nether portal, a stronghold’s End
 portal or an artistic Sift rift. **Skip journey** goes straight there
-Change background motion or automatic touring in Settings
+The main menu groups Play and Settings in the centre, with one corner spyglass
+Settings has Video, Audio, Keyboard & Mouse, Key bindings, Character and Accessibility categories
+Video controls background animation, automatic touring and chunk distance
+Audio has master volume; Keyboard & Mouse has sensitivity and inverted Y
+Each category has its own Reset defaults button
 Choose **Abandoned mineshaft** or **Stronghold · Portal room** in the area picker
 to explore the tunnels, side shafts, libraries and portal room at your own pace
 
 The spyglass button at the bottom right or **⌘L** enters spectator view
 Fly with **WASD**, rise with **Space**, descend with **Shift**, and aim by moving
-the mouse. **Control** sprints; scroll changes flight speed. The arrow keys also
+the mouse. **Control** sprints; **Control + Scroll** changes flight speed. The arrow keys also
 turn the camera. Mouse-look captures the cursor; **Escape** releases it and
 returns to the menu. Switching windows releases it too; click the scene to recapture
 Fly north, south, east or west to enter a neighbouring biome without a scene swap
 The picker and **[ / ]** guide you towards another area; movement keys take control
-Wooden doors open as you approach. The biome name and hotbar remain available
-These are 42 authored areas with continuous procedural terrain beyond them
+Wooden doors open as you approach; Escape returns to the biome picker and hotbar
+These are 43 authored areas with continuous procedural terrain beyond them
+The outskirts can repeat biomes; lakes, winding channels and sand/gravel banks
+break up the terrain. Landmarks appear occasionally outside the showcase core
+Cave-only habitats lie beneath surface cover, with shafts
+used for guided travel. Sulfur Caves uses the installed game’s original assets
+The minimap appears while Look around is open and leaves with spectator mode
+It shows north, terrain and your coordinates. Its historical Far Lands view is
+marked map-unavailable because that 3D wall has no shared heightmap
+Turning off background animation keeps deliberate flight and its map available
 Settings controls **Render distance** in 16 × 16-block chunks, from 4 to 16
 Choose **Far Lands** in the Overworld picker to visit a historical recreation;
 choose another area to return. It is not a current Bedrock biome
 The Overworld village includes pigs, horses, baby animals and a crowned
 Technoblade tribute pig with a red cape. The woodland mansion contains a chicken jockey
-Use the same spyglass button, **⌘L** or **Escape** to return to a hover where you are
+Use **⌘L** or **Escape** to return to a hover where you are
 
 The achievement-style shortcut hint stays for one minute, then returns after
 70 uninterrupted seconds of launcher-window focus. Settings and other apps
@@ -80,6 +104,7 @@ Hints stay out of the way during setup, errors and portal journeys
 
 The title uses the installed game’s artwork and yellow splash list, with a
 Mac Edition subtitle. Splash text overlaps the title, as on the game’s menu
+The original splash list keeps its per-letter colours without showing formatting codes
 The lower left credits **@Keys-i**, linking to **keysi.dev**; the lower right shows
 the launcher version. The hotbar has no extra backing strip
 Splash motion follows your scenery and macOS motion settings

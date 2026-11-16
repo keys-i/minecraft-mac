@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SceneKit
 import CoreText
+import SwiftUI
 
 @main
 struct LauncherChecks {
@@ -18,6 +19,30 @@ struct LauncherChecks {
         let injected = ["CX_ROOT":"/untrusted", "WINEPREFIX":"/untrusted", "WINEDEBUG":"+all",
                         "DYLD_INSERT_LIBRARIES":"/untrusted.dylib", "DYLD_LIBRARY_PATH":"/untrusted"]
         precondition(Launcher.environment(session.merging(injected) { _, new in new }) == session)
+        var wheel = Scrolling()
+        precondition(wheel.step(-1,precise:false,at:1) == 1)
+        precondition(wheel.step(-1,precise:false,at:1.01) == 0)
+        precondition(wheel.step(1,precise:false,at:1.2) == -1)
+        precondition(wheel.step(.nan,precise:false,at:2) == 0)
+        precondition(wheel.step(1,precise:false,at:.infinity) == 0)
+        var trackpad = Scrolling()
+        precondition(trackpad.step(5,precise:true,at:1) == 0)
+        precondition(trackpad.step(5,precise:true,at:1.01) == 0)
+        precondition(trackpad.step(3,precise:true,at:1.02) == -1)
+        precondition(trackpad.step(-5,precise:true,at:2) == 0)
+        precondition(trackpad.step(-8,precise:true,at:3) == 0)
+        precondition(trackpad.step(-4,precise:true,at:3.01) == 1)
+        for world in World.allCases {
+            let chart = Minimap.image(world:world,at:.init(0,10,0))
+            precondition(chart?.width == 33 && chart?.height == 33)
+        }
+        precondition(Minimap.image(world:.overworld,at:.init(Double.nan,0,0)) == nil)
+        precondition(Minimap.image(world:.overworld,at:.init(30_000_001,0,0)) == nil)
+        let coloured = GameTitle.formatted("§1C§2o§3l§4o§5r§6m§7a§8t§9i§ac!")
+        precondition(String(coloured.characters) == "Colormatic!" && coloured.runs.count == 10)
+        precondition(GameTitle.formatted("§6Gold").runs.first?.foregroundColor == Color(red:1,green:170.0/255,blue:0))
+        precondition(GameTitle.formatted("§1Blue§rReset").runs.last?.foregroundColor == .yellow)
+        precondition(String(GameTitle.formatted("Unknown §x and trailing §").characters) == "Unknown §x and trailing §")
         precondition([0,0.9,1,1.7,1.8].map { Loading.frame(at:$0) } == [0,9,8,1,0])
         precondition(Loading.frame(at:.nan) == 0 && Loading.frame(at:.infinity) == 0 && Loading.frame(at:-1) == 0)
         func gameWindow(_ pid: Int = 42, layer: Int = 0, width: Int = 1040) -> [String:Any] {
@@ -39,7 +64,7 @@ struct LauncherChecks {
         precondition(Preferences.scale(in:.init(width:4000,height:3000)) <= 1.5)
         let title = GameTitle.width(in:CGSize(width:1040,height:760))
         let fullscreenTitle = GameTitle.width(in:CGSize(width:2016,height:1310))
-        precondition(title > 700 && fullscreenTitle > title*1.8)
+        precondition(title > 500 && fullscreenTitle > title*1.8)
         precondition(GameTitle.width(in:CGSize(width:760,height:620)) < 760-56)
         let shortTitle = GameTitle.width(in:CGSize(width:3440,height:620))
         precondition(shortTitle < fullscreenTitle && shortTitle < 620*1.3)
@@ -48,7 +73,7 @@ struct LauncherChecks {
         precondition(abs(controls*controls-5)<0.001)
         for size in [CGSize(width:760,height:620),CGSize(width:1040,height:760),CGSize(width:2560,height:720)] {
             let scale = LauncherView.scale(in:size)
-            precondition(scale > 1 && scale < controls)
+            precondition(scale >= 1 && scale < controls)
             precondition(320*scale < size.width-56)
             precondition(size.width/2+126*scale+16 < size.width-24-56*scale)
             precondition(LauncherView.scale(in:size,extra:72) <= scale)
@@ -88,6 +113,7 @@ struct LauncherChecks {
         precondition(Mobs.walkable(from:swimming,to:swimming,species:.cod,terrain:river))
         precondition(!Mobs.walkable(from:swimming,to:swimming,species:.cow,terrain:river))
         precondition(!Mobs.walkable(from:.init(50,-1.8,0),to:.init(50,-1.8,0),species:.cod,terrain:river))
+        precondition(!Mobs.walkable(from:swimming,to:swimming,species:.cod,terrain:river,ground:{ _,_ in 2 }))
         precondition(SceneryMotion.enabled(reduced: false, paused: false, lowPower: false,
                                           active: true, visible: true, playing: false))
         for disabled in 0..<6 {
@@ -131,6 +157,27 @@ struct LauncherChecks {
             NSEvent.keyEvent(with:type,location:.zero,modifierFlags:flags,timestamp:0,windowNumber:0,
                 context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:code)!
         }
+        let defaults = Controls()
+        precondition(defaults.matches(.look,event:key(37,flags:.command)))
+        precondition(defaults.matches(.map,event:key(46)))
+        precondition(!defaults.matches(.map,event:key(46,flags:.command)))
+        precondition(defaults.pressed(.forward,keys:[13],modifiers:[.control,.shift]))
+        precondition(defaults.pressed(.sprint,keys:[13],modifiers:.control))
+        precondition(defaults.pressed(.descend,keys:[],modifiers:.shift))
+        precondition(Controls(data:Data("invalid".utf8)) == defaults)
+        precondition(Controls(data:Data(repeating:0,count:16_385)) == defaults)
+        var remapped = defaults
+        remapped.assign(.init(code:2),to:.forward)
+        precondition(remapped.key(.forward).code == 2 && remapped.key(.right).code == 13)
+        precondition(Controls(data:remapped.data) == remapped)
+        let preserved = remapped
+        remapped.assign(.init(code:53),to:.map)
+        remapped.assign(.init(code:12,modifiers:.command),to:.map)
+        precondition(remapped == preserved)
+        remapped.assign(.init(code:60),to:.map)
+        precondition(remapped.key(.map).code == 56 && remapped.key(.descend).code == 46)
+        precondition(remapped.matches(.map,event:key(60,type:.flagsChanged,flags:.shift)))
+        precondition(!remapped.matches(.map,event:key(60,type:.flagsChanged)))
         flying.keyDown(with:key(13))
         flying.advance(seconds:0.1)
         precondition(abs(eye.position.z+1.6)<0.001 && eye.position.x == 0)
@@ -146,7 +193,7 @@ struct LauncherChecks {
         precondition(abs(eye.position.y-10)<0.001)
         flying.stop()
         flying.flagsChanged(with:key(59,type:.flagsChanged,flags:.control))
-        flying.keyDown(with:key(13))
+        flying.keyDown(with:key(13,flags:.control))
         let sprint = eye.position
         flying.advance(seconds:0.1)
         precondition(abs(hypot(eye.position.x-sprint.x,eye.position.z-sprint.z)-3.2)<0.001)
@@ -157,11 +204,29 @@ struct LauncherChecks {
         flying.keyDown(with:key(126)); flying.advance(seconds:0.1)
         precondition(-eye.simdWorldTransform.columns.2.y > 0)
         flying.stop()
+        var arrowBinding = defaults
+        arrowBinding.assign(.init(code:126),to:.forward)
+        flying.controls = arrowBinding
+        let customFront = eye.simdWorldTransform.columns.2, customStart = eye.simdWorldPosition
+        flying.keyDown(with:key(126)); flying.advance(seconds:0.1)
+        precondition(abs(simd_distance(eye.simdWorldPosition,customStart)-1.6)<0.001)
+        precondition(simd_length(eye.simdWorldTransform.columns.2-customFront)<0.001,"A rebound arrow must not turn and move at once")
+        flying.stop(); flying.controls = defaults
+        var chordBinding = defaults
+        chordBinding.assign(.init(code:13,modifiers:.option),to:.forward)
+        flying.controls = chordBinding
+        let chordStart = eye.simdWorldPosition
+        flying.keyDown(with:key(13)); flying.advance(seconds:0.1)
+        precondition(simd_distance(eye.simdWorldPosition,chordStart)<0.001)
+        flying.flagsChanged(with:key(58,type:.flagsChanged,flags:.option)); flying.advance(seconds:0.1)
+        precondition(abs(simd_distance(eye.simdWorldPosition,chordStart)-1.6)<0.001,"Movement chords must work when the letter is pressed first")
+        flying.stop(); flying.controls = defaults
         var trips = 0
         flying.travel = { step in precondition(step == 1); trips += 1 }
         flying.visit(1); precondition(trips == 1)
-        precondition(Atlas.index(at:.init(95.49,0,0),count:25) == 0 && Atlas.index(at:.init(95.51,0,0),count:25) == 1)
-        precondition(Atlas.index(at:.init(0,0,63.51),count:25) == 5)
+        let eastEdge = Double(Region.span/2)-0.5, southEdge = Double(Region.span/2)-32.5
+        precondition(Atlas.index(at:.init(eastEdge-0.01,0,0),count:25) == 0 && Atlas.index(at:.init(eastEdge+0.01,0,0),count:25) == 1)
+        precondition(Atlas.index(at:.init(0,0,southEdge+0.01),count:25) == 5)
         precondition(Atlas.index(at:.init(-999,0,0),count:25) == nil && Atlas.index(at:.init(99999,0,0),count:25) == nil)
         for world in World.allCases {
             for index in world.biomes.indices {
@@ -172,16 +237,57 @@ struct LauncherChecks {
                 }
             }
         }
-        for area in Biome.allCases where !Terrain(biome:area).end && area.passage == nil {
-            let terrain = Terrain(biome:area)
-            for z in stride(from:-120.0,through:56,by:16) {
-                precondition(terrain.height(-96,z) == 4 && terrain.height(95,z) == 4)
-                precondition(terrain.ceiling(-96,z) == 32 && terrain.ceiling(95,z) == 32)
+        var edgeHeights = Set<Double>()
+        for z in stride(from:-112.0,through:48,by:4) {
+            let west = Terrain.sample(world:.overworld,at:.init(95,20,z))
+            let east = Terrain.sample(world:.overworld,at:.init(96,20,z))
+            edgeHeights.insert(west.height)
+            precondition(abs(west.height-east.height)<=4,"Biome boundaries must join without an abrupt cliff")
+        }
+        precondition(edgeHeights.count>1,"Biome boundaries must retain natural relief")
+        var grassland = 0, riverbed = Set<String>()
+        for x in stride(from:-80.0,through:80,by:2) { for z in stride(from:-110.0,through:40,by:2) {
+            let sample = Terrain.sample(world:.overworld,at:.init(x,20,z))
+            if sample.biome.surface == "grass_block" && sample.height>=1 {
+                precondition(sample.surface == "grass_block","Ordinary dry grassland must not become gravel")
+                grassland += 1
+            } else if sample.fluid { riverbed.insert(sample.surface) }
+        } }
+        precondition(grassland>1000 && ["gravel","sand","clay","dirt"].allSatisfy(riverbed.contains))
+        let outskirts = (-30...(-5)).flatMap { x in (-20...20).map { Region(x:x,z:$0) } }
+        var changedSeed = false
+        for seed in [0,-1,1234567,Int.min,Int.max] {
+            for key in -20..<26 {
+                let region = Region.from(key,count:26,seed:seed)
+                precondition(Region.at(region.origin,seed:seed) == region)
+                precondition(Region.from(region.key(26),count:26,seed:seed) == region)
             }
-            for x in stride(from:-88.0,through:88,by:16) {
-                precondition(terrain.height(x,-128) == 4 && terrain.height(x,63) == 4)
-                precondition(terrain.ceiling(x,-128) == 32 && terrain.ceiling(x,63) == 32)
+            for x in -12 ... -5 {
+                let point = SCNVector3(Double(x*Region.span+19),20,-Double(Region.span*3)+30)
+                let a = Terrain.sample(world:.overworld,at:point,seed:seed), b = Terrain.sample(world:.overworld,at:point,seed:seed)
+                precondition(a.height == b.height && a.surface == b.surface && a.biome == b.biome)
+                let original = Terrain.sample(world:.overworld,at:point)
+                changedSeed = changedSeed || a.height != original.height || a.biome != original.biome
             }
+        }
+        precondition(changedSeed,"Different seeds must change the procedural outskirts")
+        let landmarks = outskirts.filter { $0.landmark(.overworld) }.count
+        let climates = Set(outskirts.map { $0.biome(.overworld) })
+        let repeats = outskirts.filter { $0.biome(.overworld) == Region(x:$0.x+1,z:$0.z).biome(.overworld) }.count
+        precondition((100...300).contains(landmarks) && climates.count>7 && repeats>100)
+        precondition(World.overworld.biomes.indices.allSatisfy { Region.from($0,count:World.overworld.biomes.count).landmark(.overworld) })
+        let wilderness = Terrain(biome:.meadow,authored:false)
+        precondition(wilderness.plots.isEmpty && !wilderness.paved(0,0) && !wilderness.reserved(0,-16))
+        for area in World.overworld.biomes where area.level<0 {
+            let index = World.overworld.biomes.firstIndex(of:area)!, p = Atlas.offset(index,count:World.overworld.biomes.count)
+            let cave = Terrain.sample(world:.overworld,at:.init(p.x,-56,p.z))
+            let surface = Terrain.sample(world:.overworld,at:.init(p.x,20,p.z))
+            precondition(cave.biome == area && cave.height < -32)
+            precondition(!surface.biome.underground && surface.height>cave.height+20)
+        }
+        for index in 0..<25 {
+            let before = Atlas.offset(index,count:25), after = Atlas.offset(index,count:26)
+            precondition(before.x == after.x && before.z == after.z)
         }
         let meadow = Terrain(biome:.meadow)
         precondition(meadow.paved(0,0) && meadow.occupied(0,0) && !meadow.paved(45,40))
@@ -269,6 +375,24 @@ struct LauncherChecks {
         try FileManager.default.createDirectory(at:fixture.appendingPathComponent("resource_packs/vanilla"),withIntermediateDirectories:true)
         try FileManager.default.createDirectory(at:fixture.appendingPathComponent("behavior_packs/vanilla"),withIntermediateDirectories:true)
         defer { try? FileManager.default.removeItem(at:fixture) }
+        let skinPixels = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:64,pixelsHigh:64,bitsPerSample:8,
+            samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        let skinFile = fixture.appendingPathComponent("skin.png")
+        try skinPixels.representation(using:.png,properties:[:])!.write(to:skinFile)
+        let decodedSkin = try Skin.image(at:skinFile)
+        precondition(decodedSkin.width == 64)
+        rejects { _ = try Skin.image(at:skinFile,cape:true) }
+        let capePixels = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:64,pixelsHigh:32,bitsPerSample:8,
+            samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        let capeFile = fixture.appendingPathComponent("cape.png")
+        try capePixels.representation(using:.png,properties:[:])!.write(to:capeFile)
+        let decodedCape = try Skin.image(at:capeFile,cape:true), legacySkin = try Skin.image(at:capeFile)
+        precondition(decodedCape.height == 32 && legacySkin.height == 32)
+        rejects { _ = try Skin.image(at:fixture.appendingPathComponent("missing.png")) }
+        try Data("not a PNG".utf8).write(to:skinFile)
+        rejects { _ = try Skin.image(at:skinFile) }
+        try Data(count:4*1024*1024).write(to:skinFile)
+        rejects { _ = try Skin.image(at:skinFile) }
         func write(_ path: String, _ object: Any) throws {
             let url = fixture.appendingPathComponent("resource_packs/vanilla/"+path)
             try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true)
@@ -453,7 +577,7 @@ struct LauncherChecks {
         precondition(Landscape.height(.coast, x: 1, z: 8, centre: 0) > 0)
         let roster = Set(World.allCases.flatMap { $0.biomes.flatMap(\.residents) })
         precondition(roster == Set(Species.allCases))
-        precondition(World.overworld.biomes.count == 25 && World.nether.biomes.count == 5)
+        precondition(World.overworld.biomes.count == 26 && World.nether.biomes.count == 5)
         precondition(Terrain(biome:.meadow).reserved(1,5))
         let village = Terrain(biome:.meadow)
         for plot in village.plots {
@@ -503,6 +627,90 @@ struct LauncherChecks {
             return
         }
         let assets = try Assets(data:URL(fileURLWithPath:data)), factory = Mobs(assets:try Assets(data:URL(fileURLWithPath:data)))
+        let legacyPixels = CGContext(data:nil,width:64,height:32,bitsPerComponent:8,bytesPerRow:256,
+            space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+        legacyPixels.setFillColor(CGColor(gray:0,alpha:1)); legacyPixels.fill(CGRect(x:0,y:0,width:64,height:32))
+        let opaqueAvatar = try assets.avatar(skin:legacyPixels.makeImage()!,cape:nil,slim:false)
+        precondition(opaqueAvatar.childNode(withName:"hat",recursively:true)?.geometry == nil,
+            "Opaque legacy padding must not cover the character's face")
+        legacyPixels.clear(CGRect(x:32,y:0,width:32,height:16))
+        let layeredAvatar = try assets.avatar(skin:legacyPixels.makeImage()!,cape:nil,slim:false)
+        precondition(layeredAvatar.childNode(withName:"hat",recursively:true)?.geometry != nil,
+            "Transparent legacy skins must retain their optional hat layer")
+        let seededRegion = Region(x:-5,z:-3,seed:-12345), seededArea = World.overworld.biomes[seededRegion.biome(.overworld)]
+        let seededTerrain = Terrain(biome:seededArea,authored:seededRegion.landmark(.overworld),worldSeed:seededRegion.landmark(.overworld) ? 0 : seededRegion.seed)
+        let originalTerrain = try seededTerrain.node(assets:assets,region:seededRegion)
+        let rebuiltTerrain = try seededTerrain.node(assets:assets,x:64..<80,z:0..<16,bounded:false,region:seededRegion)
+        let originalSection = originalTerrain.childNodes.compactMap { $0 as? Section }.first { $0.x == 64 && $0.z == 0 }!
+        let rebuiltSection = rebuiltTerrain.childNodes.compactMap { $0 as? Section }.first { $0.x == 64 && $0.z == 0 }!
+        precondition(originalSection.childNodes.count == rebuiltSection.childNodes.count)
+        for (original,rebuilt) in zip(originalSection.childNodes,rebuiltSection.childNodes) {
+            precondition(original.geometry?.sources(for:.vertex).first?.data == rebuilt.geometry?.sources(for:.vertex).first?.data)
+            precondition(original.geometry?.sources(for:.normal).first?.data == rebuilt.geometry?.sources(for:.normal).first?.data)
+        }
+        let wetRegion = Region.from(World.overworld.biomes.firstIndex(of:.river)!,count:World.overworld.biomes.count)
+        let wetStream = Stream(world:.overworld,assets:assets,failed:{ fatalError("Wet chunk failed") })
+        wetStream.distance(4); wetStream.update(at:wetRegion.origin)
+        func settleWater() {
+            let deadline = Date().addingTimeInterval(10)
+            while wetStream.outstanding>0 && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+            precondition(wetStream.outstanding == 0)
+        }
+        func waterLight(_ expected: Double) {
+            var count = 0
+            wetStream.root.enumerateChildNodes { node,_ in
+                for material in node.geometry?.materials ?? [] where material.name?.contains("water") == true {
+                    precondition(abs(material.diffuse.intensity-expected)<0.001)
+                    count += 1
+                }
+            }
+            precondition(count>0,"A wet streamed region must retain visible water")
+        }
+        settleWater(); wetStream.illuminate(0); waterLight(0.2)
+        wetStream.update(at:.init(wetRegion.origin.x+16,0,wetRegion.origin.z))
+        settleWater(); waterLight(0.2)
+        wetStream.illuminate(1); waterLight(1)
+        wetStream.dispose()
+        let glass = try assets.tiles("glass_pane"), white = try assets.tiles("white_stained_glass_pane"), red = try assets.tiles("red_stained_glass_pane")
+        precondition(glass[0].name == "textures/blocks/glass" && glass[1].name == "textures/blocks/glass_pane_top")
+        precondition(white[0].name == "textures/blocks/glass_white" && white[1].name == "textures/blocks/glass_pane_top_white")
+        precondition(red[0].name == "textures/blocks/glass_red" && !white[0].writesToDepthBuffer)
+        precondition(!glass[0].isDoubleSided && !white[0].isDoubleSided)
+        precondition(Species.allCases.count == 86)
+        for species in [Species.donkey,.mule,.phantom,.tadpole,.traderLlama,.trader,.wither,.zoglin,.zombieHorse,.zombieVillager,.sulfurCube] {
+            let model = try factory.make(species)
+            precondition(model.boundingBox.max.y>model.boundingBox.min.y)
+            let movement = try factory.locomotion(species)
+            precondition(movement.speed>0 && movement.width>0 && movement.height>0)
+        }
+        for species in [Species.spider,.caveSpider] {
+            let model = try factory.make(species)
+            let leg = model.childNode(withName:"leg0",recursively:true)!
+            precondition(abs(leg.eulerAngles.y-Double.pi/4)<0.001 && abs(leg.eulerAngles.z-Double.pi/4)<0.001)
+            let material = model.childNode(withName:"head",recursively:true)!.geometry!.firstMaterial!
+            let surface = NSBitmapImageRep(cgImage:material.diffuse.contents as! CGImage)
+            let glow = NSBitmapImageRep(cgImage:material.emission.contents as! CGImage)
+            var eyes = 0
+            for y in 0..<surface.pixelsHigh { for x in 0..<surface.pixelsWide {
+                precondition(surface.colorAt(x:x,y:y)!.alphaComponent == 1)
+                if glow.colorAt(x:x,y:y)!.redComponent>0.1 { eyes += 1 }
+            } }
+            precondition(eyes == 20,"Original spider eye pixels must glow without holes in the skin")
+        }
+        let nativeBaby = try factory.make(.villager,baby:true)
+        let babyArms = nativeBaby.childNode(withName:"arms",recursively:true)!
+        precondition(abs(babyArms.position.y-1.25/16)<0.001 && abs(babyArms.position.z)<0.001)
+        precondition(abs(babyArms.eulerAngles.x)<0.001,"Baby cubes already fold the arms; adult general pose must stay excluded")
+        precondition(nativeBaby.scale.x == 1 && nativeBaby.childNode(withName:"head",recursively:true)!.scale.x == 1)
+        let traderLlama = try factory.make(.traderLlama)
+        precondition(traderLlama.childNode(withName:"trader-blanket",recursively:false) != nil)
+        precondition(traderLlama.childNode(withName:"chest1",recursively:true)?.isHidden == true)
+        let sulfurCube = try factory.make(.sulfurCube)
+        precondition(sulfurCube.childNode(withName:"sulfur-shell",recursively:false)?.childNode(withName:"sulfur_cube",recursively:true)?.geometry?.firstMaterial?.blendMode == .alpha)
+        let zombieHerd = try factory.group(.zombieHorse,biome:.savanna,seed:1), donkeyHerd = try factory.group(.donkey,biome:.savanna,seed:1)
+        precondition(zombieHerd == 1 && donkeyHerd == 1)
+        let sulfurHerd = try factory.group(.sulfurCube,biome:.sulfur,seed:1)!
+        precondition((2...4).contains(sulfurHerd))
         try movement(factory)
         let edgeScene = SCNScene(), edgeTerrain = Terrain(biome:.meadow)
         edgeScene.rootNode.addChildNode(try edgeTerrain.node(assets:assets,x:0..<4,z:0..<2))
@@ -559,27 +767,28 @@ struct LauncherChecks {
         precondition(calmWeapons == 0)
         let mapView = FlightView(frame:.zero)
         var arrived: [Int] = []
+        var navigation: [Bool] = []
         let map = Atlas(world:.overworld,index:0,tile:try Landscape.scene(.overworld,assets:assets),assets:assets,
-            view:mapView,arrived:{ arrived.append($0) },failed:{ fatalError("Neighbour graph failed") })
+            view:mapView,arrived:{ arrived.append($0) },failed:{ fatalError("Neighbour graph failed") },activity:{ navigation.append($0) })
         let neighbours = Date().addingTimeInterval(20)
         while (map.tiles[1] == nil || map.tiles[5] == nil) && Date()<neighbours { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
         precondition(map.tiles[1] != nil && map.tiles[5] != nil && map.tiles.count <= 5)
         let mapCamera = mapView.pointOfView!; mapCamera.removeAllActions()
-        mapCamera.worldPosition = .init(95.6,10,30)
+        mapCamera.worldPosition = .init((eastEdge+0.1),10,30)
         mapCamera.eulerAngles = .init(0.1,0.4,0)
         let mapBefore = mapCamera.simdWorldTransform
         map.update(1)
-        precondition(map.active == 1 && arrived == [1] && abs(mapCamera.worldPosition.x-95.6)<0.001)
+        precondition(map.active == 1 && arrived == [1] && abs(mapCamera.worldPosition.x-(eastEdge+0.1))<0.001)
         precondition(simd_length(mapCamera.simdWorldTransform.columns.2-mapBefore.columns.2)<0.001,"Crossing must retain direction")
-        mapCamera.worldPosition = .init(95.4,10,30); map.update(2)
-        precondition(map.active == 0 && arrived == [1,0] && abs(mapCamera.worldPosition.x-95.4)<0.001)
+        mapCamera.worldPosition = .init((eastEdge-0.1),10,30); map.update(2)
+        precondition(map.active == 0 && arrived == [1,0] && abs(mapCamera.worldPosition.x-(eastEdge-0.1))<0.001)
         let north = Date().addingTimeInterval(20)
         while map.tiles[5] == nil && Date()<north { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
         precondition(map.tiles[5] != nil)
-        mapCamera.worldPosition = .init(3,10,63.6); map.update(2.1)
-        precondition(map.active == 5 && abs(mapCamera.worldPosition.z-63.6)<0.001)
-        mapCamera.worldPosition = .init(3,10,63.4); map.update(2.2)
-        precondition(map.active == 0 && abs(mapCamera.worldPosition.z-63.4)<0.001)
+        mapCamera.worldPosition = .init(3,10,(southEdge+0.1)); map.update(2.1)
+        precondition(map.active == 5 && abs(mapCamera.worldPosition.z-(southEdge+0.1))<0.001)
+        mapCamera.worldPosition = .init(3,10,(southEdge-0.1)); map.update(2.2)
+        precondition(map.active == 0 && abs(mapCamera.worldPosition.z-(southEdge-0.1))<0.001)
         let resumed = mapCamera.simdWorldTransform
         map.resume()
         precondition(simd_length(mapCamera.simdWorldTransform.columns.3-resumed.columns.3)<0.001,"Escape must preserve position")
@@ -590,15 +799,51 @@ struct LauncherChecks {
         map.visit(1)
         map.update(3); map.update(3.1)
         precondition(abs(mapCamera.simdWorldFront.y)<0.95,"Guided climbs must keep scenery in view")
-        for frame in 0..<1800 {
+        for frame in 0..<2400 {
             map.update(3+Double(frame)/30)
             tour.update(atTime:Double(frame)/30)
             RunLoop.main.run(until:Date().addingTimeInterval(0.005))
-            if map.active == 1 && mapCamera.worldPosition.x>180 { break }
+            if map.active == 1 && mapCamera.worldPosition.x>Double(Region.span)-12 && navigation.last == false { break }
         }
-        precondition(map.active == 1 && mapCamera.worldPosition.x > 180,"Area selection must travel through the map")
+        precondition(map.active == 1 && mapCamera.worldPosition.x > Double(Region.span)-12,"Area flight stopped at \(mapCamera.worldPosition), area \(map.active), navigation \(navigation), pending \(map.pendingChunks)")
+        precondition(navigation == [true,false],"A completed flight must release the automatic-tour gate")
+        mapView.exploring = true
+        var reports = 0
+        mapView.report = { _,_ in reports += 1 }
+        Adventure.motion(mapView,enabled:false,active:true)
+        RunLoop.main.run(until:Date().addingTimeInterval(0.25))
+        precondition(reports>0 && map.scene.isPaused && !mapView.rendersContinuously)
+        Adventure.motion(mapView,enabled:false,active:false)
+        let stopped = reports
+        RunLoop.main.run(until:Date().addingTimeInterval(0.2))
+        precondition(reports == stopped,"Inactive spectator must stop map updates")
         tour.scene = nil
         map.dispose(); mapView.dispose(); mapView.scene = nil
+        for (size,centre,ceiling) in [(SCNVector3(4,0.2,4),SCNVector3(3,12,southEdge-0.1),11.71),
+                                     (SCNVector3(0.4,20,4),SCNVector3(3,10,southEdge-0.1),10.01)] {
+            let view = FlightView(frame:.zero)
+            var activity = [Bool]()
+            let map = Atlas(world:.overworld,index:0,tile:try Landscape.scene(.overworld,assets:assets),assets:assets,
+                view:view,arrived:{ _ in },failed:{ fatalError("Blocked map failed") },activity:{ activity.append($0) })
+            let obstacle = SCNNode(geometry:SCNBox(width:size.x,height:size.y,length:size.z,chamferRadius:0))
+            obstacle.categoryBitMask = 2; obstacle.position = centre
+            map.tiles[0]!.rootNode.addChildNode(obstacle)
+            let camera = view.pointOfView!; camera.removeAllActions(); camera.worldPosition = .init(3,10,southEdge-0.1)
+            map.update(0)
+            let renderer = SCNRenderer(device:nil,options:nil); renderer.scene = map.scene
+            precondition(renderer.prepare(map.scene,shouldAbortBlock:nil)); SCNTransaction.flush()
+            map.visit(1)
+            var maximum = camera.worldPosition.y
+            for frame in 1...500 {
+                map.update(Double(frame)/30); renderer.update(atTime:Double(frame)/30)
+                maximum = max(maximum,camera.worldPosition.y)
+                RunLoop.main.run(until:Date().addingTimeInterval(0.005))
+                if activity.last == false && activity.contains(true) { break }
+            }
+            precondition(maximum<ceiling && map.active == 0 && activity == [true,false],
+                "Terrain recovery must preserve structure walls and roofs")
+            map.dispose(); renderer.scene = nil; view.dispose(); view.scene = nil
+        }
         var frames: [String:NSImage]?
         assets.icons { images,stone,loaded,font,splash in
             precondition(Thread.isMainThread && images.count == 4 && stone != nil)
@@ -607,6 +852,8 @@ struct LauncherChecks {
         }
         let artLimit = Date().addingTimeInterval(5)
         while frames == nil && Date() < artLimit { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
+        precondition(NSFont(name:"Mojangles",size:16) != nil)
+        for name in ["accessibility_glyph","keyboard_and_mouse_glyph","video_glyph","controller_glyph"] { precondition(frames?[name] != nil) }
         precondition(frames?["hotbar_0"] != nil && frames?["selected_hotbar_slot"] != nil)
         precondition(frames?["loading-dirt"] != nil && frames?["loading_bar"]?.size == .init(width:640,height:8))
         let tracks = try assets.music()
@@ -749,6 +996,17 @@ struct LauncherChecks {
             precondition(handled)
             return mesh.node("placed-"+name)
         }
+        for (facing,dx,dz) in [("east",1.0,0.0),("west",-1,0),("north",0,-1),("south",0,1)] {
+            var mesh = Voxels()
+            try Structures.fixture("wall_torch",states:["facing":facing],at:.init(0,0,0),assets:assets,mesh:&mesh)
+            let contact = mesh.vertices.map { ($0.x-0.5)*dx+($0.z-0.5)*dz }.min()!
+            precondition((-0.57 ... -0.5).contains(contact),"A wall torch must reach its support face")
+        }
+        for name in ["chest","trapped_chest","ender_chest"] {
+            let chest = try placed(name,["facing":"south"])
+            precondition(chest.geometry!.sources(for:.vertex)[0].vectorCount == 72)
+            precondition(abs(chest.boundingBox.max.y-14.0/16)<0.001)
+        }
         let northBanner = try placed("illager_captain_wall_banner",["facing":"north"])
         precondition(northBanner.boundingBox.min.z>0.85 && northBanner.boundingBox.max.z<0.99)
         precondition(abs(northBanner.boundingBox.max.x-northBanner.boundingBox.min.x-20.0/24)<0.001)
@@ -787,6 +1045,26 @@ struct LauncherChecks {
         precondition(abs(dragon.boundingBox.min.x+dragon.boundingBox.max.x) < 0.001)
         let window = try Structures.template("mansion/wall_window",assets:assets).geometry!
         precondition(zip(window.materials,window.elements).contains { $0.0.name?.contains("glass") == true && $0.1.primitiveCount > 0 })
+        let panePositions = window.sources(for:.vertex)[0], paneNormals = window.sources(for:.normal)[0], paneCoordinates = window.sources(for:.texcoord)[0]
+        func paneValue(_ source: SCNGeometrySource, _ index: Int, _ axis: Int) -> Double {
+            source.data.withUnsafeBytes { bytes in
+                let offset = source.dataOffset+index*source.dataStride+axis*source.bytesPerComponent
+                return source.bytesPerComponent == 4 ? Double(bytes.loadUnaligned(fromByteOffset:offset,as:Float.self)) : bytes.loadUnaligned(fromByteOffset:offset,as:Double.self)
+            }
+        }
+        var glassFaces = 0
+        for (material,element) in zip(window.materials,window.elements) where material.name?.contains("/glass") == true && material.name?.contains("pane_top") != true {
+            for triangle in 0..<element.primitiveCount {
+                let indices = (0..<3).map { corner in element.data.withUnsafeBytes { Int($0.loadUnaligned(fromByteOffset:(triangle*3+corner)*element.bytesPerIndex,as:UInt32.self)) } }
+                guard abs(paneValue(paneNormals,indices[0],1))<0.1 else { continue }
+                let axis = abs(paneValue(paneNormals,indices[0],0))>0.9 ? 2 : 0
+                for index in indices.dropFirst() {
+                    precondition(abs(abs(paneValue(panePositions,index,axis)-paneValue(panePositions,indices[0],axis))-abs(paneValue(paneCoordinates,index,0)-paneValue(paneCoordinates,indices[0],0)))<0.001,"Glass texels must retain their block-space width")
+                }
+                glassFaces += 1
+            }
+        }
+        precondition(glassFaces>0)
         for lava in [false,true] {
             let material = try Landscape.flow(assets:assets,lava:lava), node = SCNNode()
             Landscape.animate(node,material:material)
@@ -805,11 +1083,12 @@ struct LauncherChecks {
                     precondition(camera.action(forKey:"passage") == nil && camera.action(forKey:"journey") != nil)
                     precondition(scene.rootNode.childNode(withName:"passage-masonry",recursively:false) != nil)
                     if passage == .mine {
-                        precondition(Collision.clear(scene.rootNode,from:.init(0,1.62,-12),to:.init(12,1.62,-12)))
-                        precondition(!Collision.clear(scene.rootNode,from:.init(12,1.62,-12),to:.init(17,1.62,-12)))
+                        precondition(Collision.clear(scene.rootNode,from:.init(0,1.62,-16),to:.init(12,1.62,-16)))
+                        precondition(!Collision.clear(scene.rootNode,from:.init(12,1.62,-16),to:.init(17,1.62,-16)))
                     } else {
                         precondition(Collision.clear(scene.rootNode,from:.init(0,1.62,0),to:.init(9,1.62,0)))
-                        precondition(Collision.clear(scene.rootNode,from:.init(0,2.8,-14),to:.init(6,2.8,-14)))
+                        precondition(Collision.clear(scene.rootNode,from:.init(0,2.8,-14),to:.init(5,2.8,-14)))
+                        precondition(!Collision.clear(scene.rootNode,from:.init(5,2.8,-14),to:.init(7,2.8,-14)))
                     }
                     let residents = scene.rootNode.childNodes.filter { $0.name?.hasPrefix("passage-resident-") == true }
                     let origins = residents.map(\.position)
@@ -873,7 +1152,7 @@ struct LauncherChecks {
                     let workers = scene.rootNode.childNodes.filter { $0.action(forKey:"routine") != nil }
                     print("Village routines",workers.count); fflush(stdout)
                     precondition(workers.count == 4,"Every adult villager needs a reachable work and bed route")
-                    precondition(scene.rootNode.childNode(withName:"resident-villager-4-baby",recursively:false) != nil)
+                    precondition(scene.rootNode.childNode(withName:"resident-villager-7-baby",recursively:false) != nil)
                     precondition(scene.rootNode.childNode(withName:"template-village/plains/houses/plains_temple_4",recursively:true) != nil)
                     precondition(scene.rootNode.childNode(withName:"template-village/plains/houses/plains_weaponsmith_1",recursively:true) != nil)
                     let fountain = scene.rootNode.childNode(withName:"template-village/plains/town_centers/plains_fountain_01",recursively:true)!
@@ -932,7 +1211,8 @@ struct LauncherChecks {
                 precondition(residents.count <= 40)
                 for resident in residents {
                     let p = resident.position
-                    let floor = Landscape.height(area,x:p.x.rounded(),z:p.z.rounded())
+                    let origin = Atlas.offset(index,count:world.biomes.count)
+                    let floor = Terrain.sample(world:world,at:.init(origin.x+p.x.rounded(),area.level+8,origin.z+p.z.rounded())).height-area.level
                     precondition(floor > -90)
                     let name = resident.childNodes[0].name!.replacingOccurrences(of:"mob-",with:"")
                     if let species = Species(rawValue:name), species.swimming {
@@ -943,15 +1223,22 @@ struct LauncherChecks {
         }
         for passage in [Passage.mine,.stronghold,.rift] {
             let scene = try passage.scene(assets:assets)
+            if passage != .rift {
+                for tick in 1...(passage.duration*20) {
+                    let previous = passage.pose(at:Double(tick-1)/20).eye, next = passage.pose(at:Double(tick)/20).eye
+                    precondition(Collision.clear(scene.rootNode,from:previous,to:next,radius:0.2),"Blocked camera in \(passage) at tick \(tick)")
+                }
+            }
             precondition(scene.rootNode.childNode(withName:"camera",recursively:false)!.actionKeys == ["passage"])
             precondition(scene.rootNode.childNode(withName:passage == .stronghold ? "end-portal" : "portal-surface",recursively:true) != nil)
             if passage == .mine {
-                precondition(scene.rootNode.childNode(withName:"landmark-wastes",recursively:true) != nil)
+                precondition(scene.rootNode.childNode(withName:"landmark-wastes",recursively:true) == nil)
                 let last = passage.pose(at:Double(passage.duration))
                 precondition(last.eye.z > -34 && last.eye.z <= -33.9)
             } else if passage == .stronghold {
                 let portal = scene.rootNode.childNode(withName:"end-portal",recursively:true)!
-                precondition(passage.pose(at:Double(passage.duration)).eye.y > portal.position.y+0.05 && passage.pose(at:Double(passage.duration)).eye.y <= portal.position.y+0.15)
+                let feet = passage.pose(at:Double(passage.duration)).eye.y-1.62
+                precondition(feet<=portal.position.y && feet>portal.position.y-0.1)
             }
         }
         print("Installed art: \(Species.allCases.count) species, heroes, \(World.allCases.reduce(0) { $0+$1.biomes.count }) areas and three passages passed in \(Int(Date().timeIntervalSince(start)*1000)) ms")

@@ -44,16 +44,18 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 | Packaging | Swift bundle, frozen Python worker, runtime inventory, local DMG | `tools/build.py` |
 | Source distribution | Explicit reviewed file allowlist and checksum inventory | `tools/source.py`, `tools/SOURCE-SHA256.txt` |
 
-The native title screen places a central Play button and compact four-slot realm
-hotbar over one live SceneKit world. Busy/error states use a separate status panel
+The native title screen places Play and Settings above a four-slot realm hotbar
+over one live SceneKit world, with one corner spyglass for Look around
+Busy/error states use a separate status panel
 The installed game supplies the original title artwork, Minecraft Ten subtitle
 font and splash pool. The Mac Edition subtitle uses an extruded face and sloped stone backing
 The title, subtitle and splash scale together with both window dimensions,
 without a fixed fullscreen size cap. The shortcut toast sits below the header
 The yellow splash uses a native repeating scale animation, removed when motion
 is disabled, the launcher loses focus or a game/error/biome picker takes priority
-Monocraft supplies fallback display text, actions and the shortcut toast
-Plain system type supplies supporting copy
+The installed Mojangles font supplies regular interface text and Minecraft Ten
+supplies section headings; bundled Monocraft remains the pre-install fallback
+Help, settings and supporting copy use the same pixel type as the controls
 Original installed item icons and hotbar/selection textures supply the connected
 inventory bar. Play, inventory slots, Look around and corner credits share a
 window-aware scale, reaching 5× their original area at 2016 × 1310 points
@@ -69,21 +71,40 @@ and the actual launcher bundle version. Scenery motion controls remain in Settin
 The top-left biome name opens an in-window destination list with original block
 textures, search, selected states and arrow-key navigation. Automatic biome travel
 waits while the picker is open; native menus also give direct access
-The corner spyglass control or ⌘L enters spectator flight in `FlightView`
+The single corner spyglass control or ⌘L enters exploration in `FlightView`
+Help, Settings, biome selection and the spyglass are hidden while relative mouse
+capture owns the pointer; Escape returns to the menu
 Native `SCNCameraController` owns aiming; WASD moves, Space/Shift changes height,
-arrows turn, captured relative mouse movement aims, and scrolling changes speed
+arrows turn, captured relative mouse movement aims, and Control-wheel changes speed
 between 4 and 64 blocks/s, starting at 16. Control doubles travel speed while held
+Unmodified wheel input selects the next/previous realm; trackpad input accumulates
+small deltas and ignores momentum so one gesture does not spin through every realm
+One window-scoped local monitor owns this routing and leaves with its view
+Settings → Key bindings stores a bounded, versioned physical-key map in local
+preferences. Conflicting keys swap, modifier chords work in either press order,
+and Escape/Command-Q stay reserved. Key recording owns its active window only
+and releases its monitor and focus observers on cancellation or teardown
+The left-side, pixel-edged circular minimap appears only in Look around; M toggles it
+It samples the same seeded terrain as the renderer
+A 33 × 33 raster refreshes after eight blocks of travel, with pose updates capped
+at ten per second. Only the minimap observes pose changes, keeping those updates
+out of the launcher scene/control tree. Historical Far Lands has no equivalent heightmap and is marked
+map-unavailable while retaining coordinates and compass
 Capture owns one local event monitor and restores cursor association/visibility
 and the window’s previous mouse-event preference on release. It never installs
 a global monitor, event tap or Input Monitoring service
 A 60 Hz timer exists only while movement/turning keys are held; focus loss,
 responder loss, hiding and teardown clear input. Delta time is capped at 0.1 s
-`Atlas` keeps at most five landmark graphs in one SceneKit scene, on a 192-block
+`Atlas` keeps at most five landmark graphs in one SceneKit scene, on a 384-block
 grid, while `Stream` owns the visible 16 × 16-block terrain chunks
 Settings selects a 4–16 chunk radius, default 8, with at most 1,089 chunks and
 four outstanding build operations. Nearest chunks build first on the existing
 serial asset queue; obsolete requests cancel and distant chunks leave immediately
 Flight crosses both axes without replacing the renderer or resetting direction
+Settings → Video commits a signed integer seed only after Generate or Return
+The seed drives repeatable terrain, climate and landmarks; it does not reproduce
+a Bedrock world with the same seed. Distant landmark prefetch retains terrain
+profiles/foundations while Stream builds only the requested visible chunks
 Procedural outskirts continue beyond the authored core, with logical coordinates
 bounded at ±30 million blocks and a floating origin to retain local precision
 Unloaded terrain constrains movement until its chunk is ready
@@ -92,7 +113,9 @@ that route. These are authored habitats and local terrain, not Minecraft world g
 Far Lands visits a historical wall-and-tunnel recreation near 12,550,824 blocks
 It is labelled as a recreation rather than a current Bedrock biome
 A gated main-run-loop timer owns map movement, boundary notifications and environment
-selection; it stops with scenery motion and is invalidated on teardown
+selection; it runs for ambient motion or active spectator input and is invalidated
+on teardown. Turning off ambient animation preserves deliberate flight, streaming
+and minimap reports without continuous rendering; losing window activity stops them
 Leaving flight starts a collision-checked hover at the current position and
 direction; teardown removes the recogniser
 `ShortcutHint` owns the 60-second toast and subsequent 70-second focused wait
@@ -109,10 +132,16 @@ on demand, avoids an immediate repeat and limits each source to 32 MiB/20 minute
 Settings opens inside the launcher from the gear button or the app menu's ⌘, action
 It has a persistent top-right close button and Escape dismissal, without a separate
 preferences window or title bar. Text, spacing and hit targets scale with its bounds
-from 20-point action labels / 16-point body copy to a maximum 1.5× scale
+with distinct heading, action and body sizes up to a maximum 1.5× scale
 Content scrolls at compact sizes while the heading and close button stay visible
 Settings owns the launcher’s master-volume control (default 18%); zero mutes it
-The header has no separate sound control Losing launcher focus, occlusion or game launch pauses playback
+Category navigation groups Video, Audio, Keyboard & Mouse, Key bindings,
+Character and Accessibility,
+with square switches, green-filled sliders and the original installed glyphs
+Sensitivity and inverted Y apply to captured and drag-based looking
+Reset defaults affects only the selected launcher category
+The header has no separate sound control
+Losing launcher focus, occlusion or game launch pauses playback
 Closing the view cancels the pending load and releases the player. Artwork,
 fonts and audio remain in the owner’s installation and are never redistributed
 `Assets.swift` reads original models, textures and structure templates from the
@@ -121,10 +150,22 @@ structures; the archive reader supports the game's versioned `.brarchive` packs
 Newer packs override older packs in numeric version order, and empty archive
 stubs fall back to ordinary files. Nothing is extracted or copied from the game
 
-`Biome.swift` defines 42 selectable habitats and landmark visits across four realms
+`Biome.swift` defines 43 selectable habitats and landmark visits across four realms
 `Landscape.swift` builds each habitat; `Atlas` places the neighbouring graphs in
 one coordinate space with matching terrain heights and Nether ceilings at the seams. `Terrain.swift` owns deterministic interpolated noise, ground
 height, cave ceilings, clearings and 16 × 16 visible chunks. Buried faces are omitted
+The shared sampler blends neighbouring heights and coherent surface patches across
+boundaries, retaining lakes, river channels and sand/gravel banks
+Ordinary dry grassland keeps its grass surface. Submerged grassland beds mix dirt,
+clay, sand and gravel; generic gravel disks are excluded from swamp surfaces
+These placement rules follow the Wiki's [Gravel](https://minecraft.wiki/w/Gravel)
+and [River](https://minecraft.wiki/w/River) generation descriptions
+Repeated outskirts use temperature, humidity, continentalness and erosion fields
+These borrow Minecraft world-generation concepts rather than reproduce the
+closed-source Bedrock generator or its complete feature/decorator pipeline
+Lush, dripstone, Trial, Deep Dark and Sulfur Caves sit near Y−64 below surface
+cover, with open shafts for entry/exit. Sulfur Caves adds a sixth Overworld row
+while preserving the first 25 destination positions in the existing five columns
 Domain edges and flat undersides close the terrain shell; Nether ceilings are capped
 The same mesh builder supplies the forest above the mine and stronghold approaches
 Static voxel meshes use SceneKit collision category 2. Clear camera sweeps return
@@ -164,7 +205,7 @@ Original cloud art moves above the Overworld; the original greyscale End sky is
 darkened in a small native bitmap before it becomes the background cubemap
 Clouds use translucent, non-colliding repeating patches drifting west
 
-`Mobs.swift` shares original geometry/skins within each scene and places 75 types
+`Mobs.swift` shares original geometry/skins within each scene and places 86 types
 in habitat-specific groups. Five newer types are skipped on older installations
 when their original art is absent; malformed assets still fail clearly
 Aquatic residents use water pockets, Striders use lava,
@@ -185,6 +226,11 @@ Flying residents turn while travelling instead of inheriting walking waits
 One native transform constraint per moving actor faces its final local displacement
 after animation, avoiding backwards travel at route boundaries or after sharp turns
 Floating-origin parent movement does not change that heading
+Spider alpha is split into opaque skin and original eye emission, retaining its
+splayed legs and source-backed gait. Native baby villagers keep their authored
+arm rotations without additional adult folding
+Bat flight retargets during travel using original float-wander intervals/ranges
+and its original wing loop; speed conversion and steering remain approximations
 End crystal shells follow the original installed bob/rotation formulas; bases stay still
 Four eligible classic species use base-pack models at a daylight-dependent
 10–15% launcher-only chance, selected once during scene construction
@@ -208,7 +254,13 @@ The complete chamber surrounds an interior camera. Mansion panels
 and End City towers/bridges are composed locally from original templates
 Repeated pieces clone one decoded geometry per scene rather than reparsing NBT
 Pane connections are rebuilt from saved neighbours, including templates that
-defer their connection states until placement. Face culling classifies each palette
+defer their connection states until placement. The two-pixel post and connecting
+arms share block-space UVs without overlapping volumes; clear/stained panes use
+their original face and edge textures. Glass faces are one-sided, and identical
+full glass neighbours omit their shared faces. See the Wiki's
+[Glass](https://minecraft.wiki/w/Glass) and [Glass Pane](https://minecraft.wiki/w/Glass_Pane)
+descriptions for the reference shape and rendering behaviour
+Face culling classifies each palette
 entry once, avoiding repeated string matching
 for every block and its neighbours
 Code-generated temples, huts, fortresses and passages use installed block textures
@@ -216,6 +268,9 @@ Some partial blocks and structure entities remain simplified; the launcher does
 not reproduce world generation, the game renderer or its Molang interpreter
 The importer reads banner mounting, facing, base dye and up to six saved pattern
 layers, with the original captain-banner skin reserved for captain banners
+Imported fluids use visible non-colliding category 1, including the village well
+Exact jigsaw grass-path connectors are restored, and clone-safe foundation metadata
+removes coplanar terrain caps without regenerating the whole surface
 Brewing stands render the saved bottle slots; doors, trapdoors and ladders use
 their saved orientation and open state. These are rendered states, not brewing
 or block-interaction simulations. Authored jungle/desert temples and the ocean
@@ -223,17 +278,20 @@ monument use wall/roof shells with reachable interiors
 
 | Realm | Areas | Residents and landmarks |
 | --- | --- | --- |
-| Overworld | 25 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, caves, Trial Chamber, Ancient City, mineshaft and stronghold |
+| Overworld | 26 | Villages, outpost, mansion, temples, witch hut, shipwreck, reef, river, ice spikes, monument, caves, Trial Chamber, Ancient City, Sulfur Caves, mineshaft and stronghold |
 | Nether | All five biomes | Piglins, brutes, Hoglins, Striders, Ghasts, Blazes, Wither Skeletons and magma cubes; fortress, bastion and fossils |
 | End | Five biome areas and an End City visit | Dragon, Endermen, Endermites and Shulkers; caged crystals, chorus branches, gateway, city towers, bridges and ship |
 | Sift | Six artistic areas | Existing illagers, Allays and Vex among coral, cherry trees, amethyst and rifts |
 
 `Journey.swift` owns bounded selection and the 18-second area clock
-The 22-second Nether entry descends a supported, ore-lined mine past side shafts,
-cobwebs, a minecart and bats, then crosses a 4 × 5 obsidian portal into a lava/
-fortress vista. The 28-second End entry descends over forty blocks into an Overworld stronghold, passes
+The 26-second Nether entry descends a supported, ore-lined mine past side shafts,
+cobwebs, a minecart and bats, then waits four seconds in a 4 × 5 obsidian portal
+The Overworld approach contains no pre-portal Nether vista
+The 28-second End entry descends over forty blocks into an Overworld stronghold, passes
 side libraries and a Silverfish spawner, then approaches a raised 12-frame portal
 Sift has a 16-second explicitly artistic rift approach
+Distance-weighted camera travel removes repeated keyframe stops; connected
+stronghold floors lead into the portal at walking eye height
 The mineshaft and stronghold are also persistent picker destinations sharing
 their passage geometry. Terrain is carved around the mine branch and library
 rooms; rock above their ceilings closes the surrounding surface. Mine branches
@@ -867,3 +925,16 @@ The MSI path above is for this Mac's existing Wine drive mapping. For another ch
 Apply the reference patches in `vendor/patches/` to their pinned source trees, then `minecraft-store-callback.patch` to WineGDK and `keychain-cache.patch` and `unified-helper.patch` to Xodus; use `vendor/patches/Cargo.lock`. The source clones, game, binaries, bottle, and private logs are ignored. `runtime/staged-hashes.json` records staged runtime hashes.
 
 The credential-cache tests cover concurrent reads, persistent updates, failed writes, and deletion. Logs in `logs/` record the actual runtime and graphics checks. Store/account success alone does not establish multiplayer support.
+
+## Imported character artwork
+
+Settings → Character accepts the player’s skin and cape PNGs as local file references
+It validates file size, type and pixel dimensions before decoding, then reuses the
+original wide/slim/legacy humanoid rigs and cape geometry for the paper doll
+Opaque legacy padding hides the hat shell; transparent legacy images retain
+their optional hat layer without rewriting the supplied PNG
+No default identity is substituted, no account cache is decrypted, and no image
+is uploaded or included in source exports or app bundles
+The small renderer stops outside Look around and caps animation at 15 fps, with
+visibility, Reduced Motion and Low Power Mode gates and cancellable loading
+Missing files show a recovery message; clearing a preference never deletes a file
