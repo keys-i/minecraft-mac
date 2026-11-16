@@ -259,12 +259,13 @@ fn server(root: &Path) -> Result<PathBuf> {
     let mut total = 0_u64;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
+        let name = entry.name()?.into_owned();
         total = total
             .checked_add(entry.size())
             .context("Invalid archive size")?;
         ensure!(
             total <= 600 * 1024 * 1024
-                && !entry.name().contains('\\')
+                && !name.contains('\\')
                 && entry
                     .unix_mode()
                     .is_none_or(|mode| mode & 0o170000 != 0o120000),

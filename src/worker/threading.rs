@@ -74,8 +74,10 @@ fn extract<R: Read + Seek>(bundle: R, temporary: &Path, cancelled: &AtomicBool) 
     let mut appx = zip::ZipArchive::new(appx.as_file_mut())?;
     let names: Vec<_> = appx
         .file_names()
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
         .filter(|name| name.eq_ignore_ascii_case("xgameruntime.dll"))
-        .map(str::to_owned)
+        .map(|name| name.into_owned())
         .collect();
     ensure!(
         names.len() == 1,
