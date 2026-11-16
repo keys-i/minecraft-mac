@@ -159,11 +159,11 @@ struct Expedition: NSViewRepresentable {
         var near: Int { min(16,radius) }
         var entry: Set<Chunk> {
             guard let region else {return []}
-            return Set((-2...2).flatMap {dx in (-2...2).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+            return Set((-1...1).flatMap {dx in (-1...1).map {Chunk(x:region.x+dx,z:region.z+$0)}})
         }
         var entryHalo: Set<Chunk> {
             guard let region else {return []}
-            return Set((-3...3).flatMap {dx in (-3...3).map {Chunk(x:region.x+dx,z:region.z+$0)}})
+            return Set((-2...2).flatMap {dx in (-2...2).map {Chunk(x:region.x+dx,z:region.z+$0)}})
         }
         var entryReady: Bool {
             !entry.isEmpty && entry.allSatisfy {nodes[$0] != nil} && entryHalo.allSatisfy {data.chunks[$0] != nil}

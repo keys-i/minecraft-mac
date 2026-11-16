@@ -851,7 +851,7 @@ struct LauncherChecks {
         field.horizonMap.operation = boundaryPage; field.horizonMap.pending = .init(x:1,z:0)
         field.updateRegion(at:.init(32.5,100,0.5))
         precondition(boundaryPage.isCancelled,"A changed near boundary must cancel its stale distant page")
-        precondition(field.entry.count == 25 && field.entryHalo.count == 49,"Look around readiness keeps a bounded rendered core and data halo")
+        precondition(field.entry.count == 9 && field.entryHalo.count == 25,"Look around readiness keeps a bounded rendered core and data halo")
         precondition(!field.entryReady,"Look around must wait for its playable core")
         for key in field.entryHalo {field.data.chunks[key] = try VoxelChunk(key:key,dimension:0,sections:[:],biomeData:nil)}
         precondition(!field.entryReady,"Raw collision data alone must not enable Look around")
@@ -874,7 +874,7 @@ struct LauncherChecks {
             let deadline = Date().addingTimeInterval(600)
             while coordinator.initial && chart.error == nil && Date()<deadline { RunLoop.main.run(until:Date().addingTimeInterval(0.01)) }
             precondition(!coordinator.initial && chart.visible && view.scene != nil && view.pointOfView!.position.y>50,"A prepared sixteen-chunk scene must install a visible world")
-            precondition(coordinator.entry.allSatisfy {coordinator.nodes[$0] != nil},"The nearest 25 meshes must be ready before Look around is enabled")
+            precondition(coordinator.entry.allSatisfy {coordinator.nodes[$0] != nil},"The nearest 9 meshes must be ready before Look around is enabled")
             precondition(coordinator.entryHalo.allSatisfy {coordinator.data.chunks[$0] != nil},"The entry lighting and collision halo must be loaded before Look around is enabled")
             precondition(view.scene!.fogStartDistance>=256 && view.scene!.fogEndDistance>view.scene!.fogStartDistance,"The first frame must retain the sixteen-chunk horizon")
             if let output = ProcessInfo.processInfo.environment["BEDROCK_SCENERY_CAPTURE"] {

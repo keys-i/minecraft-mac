@@ -5,6 +5,19 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 39 Look around initial readiness
+
+October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
+The focused readiness harness first fails against build 38 and then passes with a 3 × 3 rendered core and complete 5 × 5 lighting and collision halo
+This changes the mandatory entry boundary from 25 meshes and 49 chunks to 9 meshes and 25 chunks while the selected horizon continues streaming in the background
+Whole-module optimised launcher compilation, rustfmt and Clippy with warnings denied pass
+Twenty-four of 25 Rust tests pass, while the unchanged socket-recovery test is denied at `UnixListener::bind` by the managed filesystem sandbox
+The full native suite still reaches the existing headless SceneKit stop at `tests/launcher.swift:512`, where `SCNRenderer.prepare` returns false
+
+The package contains 1,583 verified resources and targets a minimum macOS version of 27.0
+Its authorised helper is byte-identical to the build 38 helper
+Live first-load wall time, keyboard and mouse input, minimap behaviour and continued outer-ring streaming remain to be checked after the active build 38 launcher and generator have been quit normally
+
 ## Build 38 Look around diagnostics and scenery corrections
 
 October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1

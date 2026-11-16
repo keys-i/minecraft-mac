@@ -253,6 +253,7 @@ pub fn native(root: &Path, tests: bool, output: &Path) -> Result<()> {
             "-parse-as-library",
             "-whole-module-optimization",
             "-O",
+            "-disable-sandbox",
             "-target",
             "arm64-apple-macos15.0",
             "-module-cache-path",
@@ -288,7 +289,7 @@ pub fn native(root: &Path, tests: bool, output: &Path) -> Result<()> {
     )
 }
 
-pub fn launcher(root: &Path) -> Result<PathBuf> {
+pub fn launcher(root: &Path, icon: Option<&Path>) -> Result<PathBuf> {
     let app = root.join(format!("build/{NAME}.app"));
     let resources = app.join("Contents/Resources");
     fs::create_dir_all(&resources)?;
@@ -331,24 +332,28 @@ pub fn launcher(root: &Path) -> Result<PathBuf> {
             .arg(resources.join("Network.dylib")),
     )?;
     sign(&resources.join("Network.dylib"), false)?;
-    let icon = root.join("build/make-icon");
-    let iconset = root.join("build/AppIcon.iconset");
-    execute(
-        Command::new("xcrun")
-            .args(["swiftc", "-O", "-module-cache-path"])
-            .arg(root.join("build/swift-module-cache"))
-            .arg(root.join("src/launcher/Icon.swift"))
-            .arg("-o")
-            .arg(&icon),
-    )?;
-    execute(Command::new(icon).arg(&iconset))?;
-    execute(
-        Command::new("iconutil")
-            .args(["-c", "icns"])
-            .arg(iconset)
-            .arg("-o")
-            .arg(resources.join("AppIcon.icns")),
-    )?;
+    if let Some(icon) = icon {
+        copy(icon, &resources.join("AppIcon.icns"))?;
+    } else {
+        let icon = root.join("build/make-icon");
+        let iconset = root.join("build/AppIcon.iconset");
+        execute(
+            Command::new("xcrun")
+                .args(["swiftc", "-O", "-module-cache-path"])
+                .arg(root.join("build/swift-module-cache"))
+                .arg(root.join("src/launcher/Icon.swift"))
+                .arg("-o")
+                .arg(&icon),
+        )?;
+        execute(Command::new(icon).arg(&iconset))?;
+        execute(
+            Command::new("iconutil")
+                .args(["-c", "icns"])
+                .arg(iconset)
+                .arg("-o")
+                .arg(resources.join("AppIcon.icns")),
+        )?;
+    }
     let mut info = plist::Dictionary::new();
     for (key, value) in [
         ("CFBundleExecutable", "BedrockLauncher"),
@@ -357,7 +362,7 @@ pub fn launcher(root: &Path) -> Result<PathBuf> {
         ("CFBundleDisplayName", NAME),
         ("CFBundlePackageType", "APPL"),
         ("CFBundleIconFile", "AppIcon"),
-        ("CFBundleVersion", "38"),
+        ("CFBundleVersion", "39"),
         ("CFBundleShortVersionString", "0.17.0"),
         ("LSMinimumSystemVersion", "15.0"),
         (
@@ -497,7 +502,8 @@ pub fn assemble(root: &Path, app: &Path, preview: bool, bundle: Option<&Path>) -
             );
         }
     }
-    let launcher = launcher(root)?;
+    let icon = bundle.map(|resources| resources.join("AppIcon.icns"));
+    let launcher = launcher(root, icon.as_deref())?;
     execute(Command::new("cargo").current_dir(root).args([
         "build",
         "--locked",
@@ -656,7 +662,7 @@ pub fn run(root: &Path, mut args: Vec<String>) -> Result<()> {
             payload(&input.unwrap_or(root.join(format!("build/packaged/{NAME}.app"))))?;
         }
         "launcher" => {
-            launcher(root)?;
+            launcher(root, None)?;
         }
         "app" | "preview" => assemble(
             root,

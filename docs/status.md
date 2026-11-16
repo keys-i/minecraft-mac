@@ -4,13 +4,25 @@ This is a source preview with an ad-hoc signed local DMG. Developer ID signing,
 notarization and clean-Mac installation have not been verified. Apple Developer
 membership is not required to publish source or build a local preview
 
-Status snapshot: October 23, 2026. The earlier native launcher source was merged in
+Status snapshot: October 31, 2026. The earlier native launcher source was merged in
 [PR #1](https://github.com/1JRobertson/bedrock-mac/pull/1), merge commit `0205d2a`.
 That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
 ## Minecraft Launcher 0.17.0
+
+### Build 39 candidate
+
+The 0.17.0/build 39 candidate is prepared in `outputs/0.17.0-build39` from the build 38 source baseline
+Look around now becomes available after a 3 × 3 rendered core and its complete 5 × 5 lighting and collision halo are ready
+The selected horizon continues streaming after entry, reducing the initial mandatory boundary from 25 meshes and 49 chunks to 9 meshes and 25 chunks
+
+Whole-module optimised launcher compilation, rustfmt and Clippy with warnings denied pass
+Twenty-four of 25 Rust tests pass; the unchanged socket-recovery test is denied by the managed filesystem sandbox
+The package verifies 1,583 resources and retains the authorised build 38 helper byte-for-byte
+Live first-load timing remains unchecked because build 38 is still the only running launcher and was not interrupted
+See the [build 39 evidence](test.md#build-39-look-around-initial-readiness) for methods and remaining limits
 
 ### Build 36 candidate
 
