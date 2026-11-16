@@ -1,4 +1,4 @@
-name: Source checks
+name: Checks
 on:
   push:
     branches: [main]

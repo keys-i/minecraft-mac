@@ -1,4 +1,4 @@
-name: Release checks
+name: Release
 on:
   push:
     tags: ['v*']
