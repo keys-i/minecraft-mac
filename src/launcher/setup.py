@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -60,8 +61,11 @@ ACCOUNT_ERRORS = {
 }
 
 
-def event(state, title, detail='', progress=None):
-    print(json.dumps(dict(state=state, title=title, detail=detail, progress=progress)), flush=True)
+def event(state, title, detail='', progress=None, game_pid=None):
+    status = dict(state=state, title=title, detail=detail, progress=progress)
+    if game_pid is not None:
+        status['game_pid'] = game_pid
+    print(json.dumps(status), flush=True)
 
 
 def load(name, filename):
@@ -127,7 +131,6 @@ def account_update(line):
     elif line.startswith(b'Downloading Minecraft '):
         event('busy', 'Downloading Minecraft', 'Keep this app open. Minecraft will start when it’s ready.', 0.35)
     elif line.startswith(b'Downloaded ') and b' files.' in line:
-        import re
         match = re.fullmatch(rb'Downloaded (\d+)/(\d+) files\.\s*', line)
         if match:
             done, total = map(int, match.groups())
@@ -152,26 +155,32 @@ def stop_command(process):
             process.wait()
 
 
-def run(command, log, failure, account_progress=False):
+def run(command, log, failure, account_progress=False, game_progress=False):
     log.write(('\n$ ' + ' '.join(map(str, command)) + '\n').encode())
     log.flush()
     helper_error = None
     process = subprocess.Popen(list(map(str, command)), cwd=ROOT,
-                               stdout=subprocess.PIPE if account_progress else log,
+                               stdout=subprocess.PIPE if account_progress or game_progress else log,
                                stderr=subprocess.STDOUT, start_new_session=True)
     try:
-        if account_progress:
+        if account_progress or game_progress:
             # Never forward arbitrary helper output to the UI.
             for line in process.stdout:
                 log.write(line)
                 log.flush()
-                if line.startswith(b'BEDROCK_ERROR:'):
+                if account_progress and line.startswith(b'BEDROCK_ERROR:'):
                     helper_error = ACCOUNT_ERRORS.get(line.strip().split(b':', 1)[1].decode('ascii', errors='replace'))
-                account_update(line)
+                if account_progress:
+                    account_update(line)
+                elif (match := re.fullmatch(rb'BEDROCK_GAME_PID:([1-9][0-9]{0,9})\n', line)):
+                    pid = int(match[1])
+                    if 1 < pid <= 2**31 - 1:
+                        event('playing', 'Minecraft is running',
+                              'Quit Minecraft to return to the launcher.', game_pid=pid)
         code = process.wait()
     finally:
         stop_command(process)
-        if account_progress and process.stdout:
+        if (account_progress or game_progress) and process.stdout:
             process.stdout.close()
     if code:
         raise RuntimeError(helper_error or failure)
@@ -186,12 +195,12 @@ def validate_install():
     if platform.machine() != 'arm64' or version(platform.mac_ver()[0] or '0') < version(minimum):
         raise RuntimeError(f'This build requires an Apple Silicon Mac with macOS {minimum} or later.')
     if subprocess.run(['/usr/bin/arch', '-x86_64', '/usr/bin/true'], capture_output=True).returncode:
-        raise RuntimeError('Rosetta is required to run Minecraft. See Minecraft for MacOS Help in the Help menu for Apple’s setup instructions.')
+        raise RuntimeError('Rosetta is required to run Minecraft. See Minecraft Launcher Help in the Help menu for Apple’s setup instructions.')
     required = (ROOT / 'runtime/standalone/wine/build-manifest.json',
                 ROOT / 'runtime/standalone/dxmt/manifest.json',
                 ROOT / 'sources/xodus/target/release/examples/standalone_helper')
     if not all(path.is_file() for path in required):
-        raise RuntimeError('This app is missing its bundled runtime. Use a complete build of Minecraft for MacOS.')
+        raise RuntimeError('This app is missing its bundled runtime. Use a complete build of Minecraft Launcher.')
     if not (ROOT / 'game/Minecraft.Windows.exe').is_file() and shutil.disk_usage(ROOT).free < 8 * 1024**3:
         raise RuntimeError('Free up at least 8 GB for Minecraft, then try again.')
 
@@ -218,9 +227,21 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError('Setup or Minecraft is already running. Return to the other launcher window.')
+        runtime = load('standalone_session', 'standalone.py')
+        if runtime.game_running():
+            raise RuntimeError('Minecraft is already running. Return to Minecraft, then quit it before starting another session.')
         initialize_bundle()
         with (folder / 'onboarding.log').open('ab') as log:
             ready = installed()
+            if '--warmup' in sys.argv:
+                if (ROOT / 'game/Minecraft.Windows.exe').is_file():
+                    validate_install()
+                    event('busy', 'Getting Minecraft ready', 'Preparing your installed game…', 0.95)
+                    run([sys.executable, installed_script('standalone.py'), 'prepare'], log,
+                        'Could not prepare Minecraft. Open the setup log for details, then try Play again.')
+                    ready = True
+                event('ready' if ready else 'new', 'Ready to play' if ready else 'Minecraft on your Mac')
+                return
             if '--sign-out' in sys.argv:
                 helper = ROOT / 'sources/xodus/target/release/examples/standalone_helper'
                 event('busy', 'Signing out')
@@ -230,8 +251,7 @@ def main():
                 return
             validate_install()
             if (ROOT / 'game').exists() and not (ROOT / 'game/Minecraft.Windows.exe').is_file():
-                raise RuntimeError('The existing game installation is incomplete. Your files were kept. See Minecraft for MacOS Help for recovery steps.')
-            runtime = load('standalone_session', 'standalone.py')
+                raise RuntimeError('The existing game installation is incomplete. Your files were kept. See Minecraft Launcher Help for recovery steps.')
             event('busy', 'Signing you in' if ready else 'Sign in to Microsoft',
                   '' if ready else 'Use the account that owns Minecraft for Windows.', 0.2)
             try:
@@ -240,9 +260,9 @@ def main():
                 with runtime.account(ROOT / 'game', download=not (ROOT / 'game').exists(), progress=account_update):
                     if not ready:
                         install(log)
-                    event('playing', 'Minecraft is running', 'You can close this window. Quit Minecraft to end your session.')
-                    run([sys.executable, installed_script('standalone.py'), 'launch'], log,
-                        'Minecraft stopped unexpectedly. Open the setup log for details, then try again.')
+                    event('busy', 'Opening Minecraft', 'Starting your game…', 0.99)
+                    run([sys.executable, installed_script('standalone.py'), '--report-game-pid', 'launch'], log,
+                        'Minecraft stopped unexpectedly. Open the setup log for details, then try again.', game_progress=True)
             except runtime.AccountError as error:
                 raise RuntimeError(ACCOUNT_ERRORS.get(error.code, str(error))) from error
             event('ready', 'Ready to play')

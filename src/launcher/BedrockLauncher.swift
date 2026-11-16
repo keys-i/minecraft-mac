@@ -2,11 +2,19 @@ import AppKit
 import SwiftUI
 import CoreText
 
+private let launcherName = "Minecraft Launcher"
+
 struct Status: Decodable {
     let state: String
     let title: String
     let detail: String
     let progress: Double?
+    var gamePID: Int? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case state, title, detail, progress
+        case gamePID = "game_pid"
+    }
 
     var fraction: Double? {
         guard let progress, progress.isFinite else { return nil }
@@ -35,7 +43,9 @@ struct AppRelease: Decodable {
 
 @MainActor
 final class Launcher: ObservableObject {
-    @Published var status = Status(state: "checking", title: "Minecraft on your Mac", detail: "Checking installation…", progress: nil)
+    @Published var status = Status(state: "checking", title: "Getting Minecraft ready", detail: "Checking installation…", progress: nil) {
+        didSet { if status.gamePID != oldValue.gamePID { handoff(status.gamePID) } }
+    }
     @Published var running = false
     @Published var checkingUpdates = false
     @Published var journey = Journey()
@@ -59,6 +69,8 @@ final class Launcher: ObservableObject {
     var selection: Int { worlds.firstIndex(of: journey.world)! }
     private var process: Process?
     private var buffer = Data()
+    private var windowTask: Task<Void,Never>?
+    private weak var hiddenWindow: NSWindow?
     let root: URL
     let worlds = World.allCases
 
@@ -95,7 +107,7 @@ final class Launcher: ObservableObject {
         let worker = resources.appendingPathComponent("worker/BedrockWorker")
         let packaged = FileManager.default.isExecutableFile(atPath: worker.path)
         task.executableURL = packaged ? worker : URL(fileURLWithPath: "/usr/bin/python3")
-        task.arguments = (packaged ? [] : [root.appendingPathComponent("src/launcher/setup.py").path]) + (check ? ["--status"] : signOut ? ["--sign-out"] : [])
+        task.arguments = (packaged ? [] : [root.appendingPathComponent("src/launcher/setup.py").path]) + (check ? ["--warmup"] : signOut ? ["--sign-out"] : [])
         task.currentDirectoryURL = packaged ? resources : root
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
@@ -158,6 +170,34 @@ final class Launcher: ObservableObject {
                 }
             }
             buffer.removeSubrange(...end)
+        }
+    }
+
+    static func gameVisible(_ pid: Int, windows: [[String:Any]]) -> Bool {
+        guard pid > 1 && pid <= Int(Int32.max) else { return false }
+        return windows.contains { window in
+            guard (window[kCGWindowOwnerPID as String] as? NSNumber)?.intValue == pid,
+                  (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let bounds = window[kCGWindowBounds as String] as? [String:Any],
+                  let width = bounds["Width"] as? NSNumber, let height = bounds["Height"] as? NSNumber else { return false }
+            return width.doubleValue >= 320 && height.doubleValue >= 200
+        }
+    }
+
+    private func handoff(_ pid: Int?) {
+        windowTask?.cancel(); windowTask = nil
+        if let window = hiddenWindow { window.makeKeyAndOrderFront(nil); hiddenWindow = nil }
+        guard let pid, pid > 1 && pid <= Int(Int32.max) else { return }
+        windowTask = Task { [weak self] in
+            while let self, !Task.isCancelled, self.status.gamePID == pid {
+                let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
+                if Self.gameVisible(pid,windows:windows) {
+                    let window = NSApp.windows.first { $0.title == launcherName }
+                    self.hiddenWindow = window; window?.orderOut(nil)
+                    return
+                }
+                do { try await Task.sleep(for:.milliseconds(150)) } catch { return }
+            }
         }
     }
 
@@ -297,34 +337,55 @@ private enum Blocks {
     static func action(_ size: CGFloat) -> Font { type(size) }
 }
 
-private struct BlockButton: ButtonStyle {
-    var colour: Color = Blocks.stone
-    var selected = false
-    var texture: NSImage?
+private struct Hover<Content:View>: View {
+    let anchor: UnitPoint
+    let content: (Bool) -> Content
     @Environment(\.accessibilityReduceMotion) private var reduced
-    @Environment(\.isFocused) private var focused
     @Environment(\.isEnabled) private var enabled
     @State private var hovered = false
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white)
-            .background {
-                colour.brightness(hovered ? 0.08 : 0)
-                    .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3)
-                if let texture, colour != Blocks.grass {
-                    Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.28)
-                }
-            }
-            .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2) }
-            .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.45)).frame(height:4) }
-            .overlay { Rectangle().strokeBorder(selected ? Blocks.gold : .black.opacity(0.7),lineWidth:2) }
-            .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(focused ? 1 : 0) }
-            .offset(y:configuration.isPressed && !reduced ? 2 : 0)
-            .opacity(enabled ? 1 : 0.45)
+    init(anchor: UnitPoint = .center, @ViewBuilder content: @escaping (Bool) -> Content) {
+        self.anchor = anchor; self.content = content
+    }
+
+    var body: some View {
+        content(hovered && enabled)
+            .scaleEffect(hovered && enabled && !reduced ? 1.035 : 1,anchor:anchor)
+            .brightness(hovered && enabled ? 0.08 : 0)
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
-            .animation(reduced ? nil : .easeOut(duration:0.08),value:configuration.isPressed)
+            .animation(reduced ? nil : .easeOut(duration:0.12),value:hovered)
+    }
+}
+
+private struct BlockButton: ButtonStyle {
+    var selected = false
+    var texture: NSImage?
+    var scale: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @Environment(\.isFocused) private var focused
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Hover { hovered in
+            configuration.label
+                .foregroundStyle(.white)
+                .background {
+                    (hovered ? Blocks.play : Blocks.stone)
+                        .shadow(color:.black.opacity(0.4),radius:0,x:0,y:configuration.isPressed ? 0 : 3*scale)
+                    if let texture {
+                        Image(nsImage:texture).resizable(resizingMode:.tile).interpolation(.none).opacity(0.28)
+                    }
+                }
+                .overlay(alignment:.top) { Rectangle().fill(.white.opacity(0.25)).frame(height:2*scale) }
+                .overlay(alignment:.bottom) { Rectangle().fill(.black.opacity(0.45)).frame(height:4*scale) }
+                .overlay { Rectangle().strokeBorder(selected ? Blocks.gold : .black.opacity(0.7),lineWidth:2*scale) }
+                .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-4).opacity(focused ? 1 : 0) }
+                .offset(y:configuration.isPressed && !reduced ? 2*scale : 0)
+                .opacity(enabled ? 1 : 0.45)
+                .contentShape(Rectangle())
+                .animation(reduced ? nil : .easeOut(duration:0.08),value:configuration.isPressed)
+        }
     }
 }
 
@@ -332,32 +393,35 @@ private struct InventoryButton: ButtonStyle {
     let selected: Bool
     let slot: NSImage?
     let selection: NSImage?
+    let scale: CGFloat
     @Environment(\.isFocused) private var focused
     @Environment(\.isEnabled) private var enabled
-    @State private var hovered = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.frame(width:60,height:60)
-            .background {
-                if let slot { Image(nsImage:slot).resizable().interpolation(.none) }
-                else { Rectangle().fill(.black.opacity(0.65)).overlay { Rectangle().strokeBorder(.gray,lineWidth:3) } }
-            }
-            .overlay {
-                if selected {
-                    if let selection { Image(nsImage:selection).resizable().interpolation(.none).frame(width:72,height:72) }
-                    else { Rectangle().strokeBorder(.white,lineWidth:3).padding(-4) }
+        Hover { hovered in
+            configuration.label.frame(width:60*scale,height:60*scale)
+                .background {
+                    if let slot { Image(nsImage:slot).resizable().interpolation(.none) }
+                    else { Rectangle().fill(.black.opacity(0.65)).overlay { Rectangle().strokeBorder(.gray,lineWidth:3) } }
+                    if hovered { Rectangle().fill(Blocks.play.opacity(0.7)) }
                 }
-            }
-            .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-6).opacity(focused ? 1 : 0) }
-            .brightness(configuration.isPressed ? -0.15 : hovered ? 0.12 : 0)
-            .opacity(enabled ? 1 : 0.45).contentShape(Rectangle())
-            .onHover { hovered = $0 }
+                .overlay {
+                    if selected {
+                        if let selection { Image(nsImage:selection).resizable().interpolation(.none).frame(width:72*scale,height:72*scale) }
+                        else { Rectangle().strokeBorder(.white,lineWidth:3*scale).padding(-4*scale) }
+                    }
+                }
+                .overlay { Rectangle().strokeBorder(Blocks.gold,lineWidth:2).padding(-6*scale).opacity(focused ? 1 : 0) }
+                .brightness(configuration.isPressed ? -0.15 : 0)
+                .opacity(enabled ? 1 : 0.45).contentShape(Rectangle())
+        }
     }
 }
 
 private struct Slot: View {
     let world: World
     let image: NSImage?
+    let scale: CGFloat
     var body: some View {
         Group {
             if let image { Image(nsImage:image).resizable().interpolation(.none).scaledToFit() }
@@ -376,7 +440,7 @@ private struct Slot: View {
                     context.fill(top,with:.color(colour));context.fill(left,with:.color(colour.opacity(0.65)));context.fill(right,with:.color(colour.opacity(0.85)))
                 }
             }
-        }.frame(width:48,height:48).accessibilityHidden(true)
+        }.frame(width:48*scale,height:48*scale).accessibilityHidden(true)
     }
 }
 
@@ -429,12 +493,16 @@ private struct Experience: ProgressViewStyle {
     }
 }
 
-private struct GameTitle: View {
+struct GameTitle: View {
     let image: NSImage?
     let font: CTFont?
     let splash: String
     let width: CGFloat
     let moving: Bool
+
+    static func width(in size: CGSize) -> CGFloat {
+        min(size.width*0.7,size.height*1.25)
+    }
 
     private var splashText: some View {
         Text(splash).font(Blocks.type(width*0.033)).foregroundStyle(.yellow)
@@ -453,10 +521,10 @@ private struct GameTitle: View {
             }.frame(width:width,height:width/5.52)
             ZStack {
                 ForEach((1...6).reversed(),id:\.self) { depth in
-                    Text("MAC EDITION").foregroundStyle(Color(white:0.08))
+                    Text("LAUNCHER").foregroundStyle(Color(white:0.08))
                         .offset(x:CGFloat(depth)*0.3,y:CGFloat(depth)*0.65)
                 }
-                Text("MAC EDITION").foregroundStyle(LinearGradient(colors:[.white,Color(white:0.8)],startPoint:.top,endPoint:.bottom))
+                Text("LAUNCHER").foregroundStyle(LinearGradient(colors:[.white,Color(white:0.8)],startPoint:.top,endPoint:.bottom))
             }.font(font.map { Font(CTFontCreateCopyWithAttributes($0,width*0.042,nil,nil)) } ?? Blocks.type(width*0.042))
                 .padding(.horizontal,22).padding(.top,3).padding(.bottom,8)
                 .background {
@@ -482,7 +550,7 @@ private struct GameTitle: View {
                         .accessibilityHidden(true).allowsHitTesting(false)
                 }
             }
-            .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft, Mac Edition")
+            .accessibilityElement(children:.ignore).accessibilityLabel("Minecraft Launcher")
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -567,8 +635,17 @@ struct LauncherView: View {
         return launcher.status.detail
     }
 
+    static func scale(in size: CGSize, extra: CGFloat = 0) -> CGFloat {
+        let title = GameTitle.width(in:size)
+        let reserved: CGFloat = size.width-title >= 560 ? 168 : 248
+        return max(1,min(CGFloat(5).squareRoot(),(size.width-80)/364,(size.height-title*0.25-reserved-extra)/154))
+    }
+
     var body: some View {
         GeometryReader { geometry in
+            let scale = Self.scale(in:geometry.size,extra:(detail.isEmpty ? 0 : 48)+(fresh ? 24 : 0))
+            let footer = 24+20*scale
+            let sideHint = geometry.size.width-GameTitle.width(in:geometry.size) >= 560
             ZStack {
                 Scenery(journey:launcher.journey,moving:moving,exploring:exploring,
                     travel:{ launcher.journey.travel($0) },finish:{ explore(false) },launcher:launcher)
@@ -581,37 +658,42 @@ struct LauncherView: View {
                         .allowsHitTesting(false).accessibilityHidden(true)
                 }
                 VStack(spacing:0) {
-                    header(width:geometry.size.width).padding(.horizontal,28).padding(.top,28)
-                    Spacer(minLength:40)
+                    header(in:geometry.size).padding(.horizontal,28).padding(.top,28)
+                    if hintAvailable && hint.showing && !map && !sideHint {
+                        HStack { Spacer(); achievement }.padding(.trailing,28).padding(.top,16)
+                            .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
+                    }
+                    Spacer(minLength:16)
                     VStack(spacing:22) {
-                        if !exploring { installation }
-                        hotbar
-                    }.frame(maxWidth:640).padding(.horizontal,28).padding(.bottom,56)
+                        if !exploring { installation(scale:scale) }
+                        hotbar(scale:scale)
+                    }.frame(maxWidth:640*scale).padding(.horizontal,28).padding(.bottom,footer)
                 }
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        look.padding(.trailing,24).padding(.bottom,56)
+                        look(scale:scale).padding(.trailing,24).padding(.bottom,footer)
                     }
                 }
                 VStack {
                     Spacer()
                     HStack {
-                        Link("@Keys-i",destination:URL(string:"https://keysi.dev")!)
+                        Hover(anchor:.leading) { _ in Link("@Keys-i",destination:URL(string:"https://keysi.dev")!)
                             .buttonStyle(.plain).tint(.white)
                             .accessibilityLabel("Developer Keys-i, open keysi.dev")
+                        }
                         Spacer()
-                        Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.14.0"))
-                    }.font(Blocks.type(13)).foregroundStyle(.white)
+                        Hover(anchor:.trailing) { _ in Text("v" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.15.0")) }
+                    }.font(Blocks.type(13*scale)).foregroundStyle(.white)
                         .shadow(color:.black.opacity(0.6),radius:0,x:1,y:1)
                         .padding(.horizontal,24).padding(.bottom,16)
                 }
-                if hintAvailable && hint.showing && !map {
+                if hintAvailable && hint.showing && !map && sideHint {
                     VStack {
                         HStack { Spacer(); achievement }
                         Spacer()
-                    }.padding(.trailing,28).padding(.top,exploring ? 96 : min(322,geometry.size.width*0.22+94))
+                    }.padding(.trailing,28).padding(.top,104)
                         .transition(reduceMotion ? .identity : .move(edge:.trailing).combined(with:.opacity))
                 }
             }
@@ -639,17 +721,17 @@ struct LauncherView: View {
         .foregroundStyle(.white).environment(\.colorScheme,.dark)
         .frame(minWidth:760,minHeight:620)
         .onAppear {
-            if let window = NSApp?.keyWindow { focused = window.title == "Minecraft for MacOS" }
+            if let window = NSApp?.keyWindow { focused = window.title == launcherName }
         }
         .task(id:musicActive) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onChange(of:musicVolume) { music.update(assets:launcher.assets,active:musicActive,volume:musicVolume) }
         .onDisappear { music.stop() }
         .sheet(isPresented:$launcher.help) { Help(launcher:launcher) }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didBecomeKeyNotification)) { notification in
-            focused = (notification.object as? NSWindow)?.title == "Minecraft for MacOS"
+            focused = (notification.object as? NSWindow)?.title == launcherName
         }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didResignKeyNotification)) { notification in
-            if (notification.object as? NSWindow)?.title == "Minecraft for MacOS" { focused = false }
+            if (notification.object as? NSWindow)?.title == launcherName { focused = false }
         }
         .task(id:[hintActive,exploring]) {
             guard hintActive else { return }
@@ -664,7 +746,7 @@ struct LauncherView: View {
         .onExitCommand { if launcher.settings { launcher.settings = false } else if map { map = false } else if exploring { explore(false) } else if launcher.canCancel { launcher.cancel() } }
         .onReceive(NotificationCenter.default.publisher(for:.NSProcessInfoPowerStateDidChange)) { _ in lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
         .onReceive(NotificationCenter.default.publisher(for:NSWindow.didChangeOcclusionStateNotification)) { _ in
-            visible = NSApp.windows.contains { $0.title == "Minecraft for MacOS" && $0.occlusionState.contains(.visible) }
+            visible = NSApp.windows.contains { $0.title == launcherName && $0.occlusionState.contains(.visible) }
         }
         .onChange(of:launcher.settings) {
             if launcher.settings { map = false; explore(false) }
@@ -684,7 +766,7 @@ struct LauncherView: View {
         }
     }
 
-    private func header(width: CGFloat) -> some View {
+    private func header(in size: CGSize) -> some View {
         VStack(spacing:18) {
             HStack(alignment:.top,spacing:8) {
                 location.frame(width:190,alignment:.leading).opacity(available ? 1 : 0).accessibilityHidden(!available)
@@ -696,14 +778,14 @@ struct LauncherView: View {
             }.buttonStyle(BlockButton(texture:launcher.stone))
             if !exploring {
                 GameTitle(image:launcher.frames["title"],font:launcher.gameFont,splash:launcher.splash,
-                          width:min(700,width*0.67),moving:moving && focused && !map && launcher.status.state != "error")
+                          width:GameTitle.width(in:size),moving:moving && focused && !map && launcher.status.state != "error")
             }
         }
     }
 
-    @ViewBuilder private func glyph(_ name: String, fallback: String) -> some View {
-        if let image = launcher.frames[name] { Image(nsImage:image).resizable().interpolation(.none).scaledToFit().frame(width:24,height:24) }
-        else { Image(systemName:fallback).font(.system(size:22,weight:.medium)) }
+    @ViewBuilder private func glyph(_ name: String, fallback: String, size: CGFloat = 24) -> some View {
+        if let image = launcher.frames[name] { Image(nsImage:image).resizable().interpolation(.none).scaledToFit().frame(width:size,height:size) }
+        else { Image(systemName:fallback).font(.system(size:size*22/24,weight:.medium)) }
     }
 
     private var location: some View {
@@ -730,29 +812,29 @@ struct LauncherView: View {
         }
     }
 
-    private var hotbar: some View {
+    private func hotbar(scale: CGFloat) -> some View {
         HStack(spacing:0) {
             ForEach(launcher.worlds.indices,id:\.self) { index in
                 let world = launcher.worlds[index]
                 Button { launcher.journey.select(world,animated:moving && !exploring) } label: {
-                    Slot(world:world,image:launcher.items[world])
+                    Slot(world:world,image:launcher.items[world],scale:scale)
                 }
                 .buttonStyle(InventoryButton(selected:launcher.selection == index,
-                    slot:launcher.frames["hotbar_0"],selection:launcher.frames["selected_hotbar_slot"]))
+                    slot:launcher.frames["hotbar_0"],selection:launcher.frames["selected_hotbar_slot"],scale:scale))
                 .keyboardShortcut(KeyEquivalent(Character(String(index+1))),modifiers:[])
                 .disabled(!available)
                 .accessibilityLabel("\(world.title) scenery")
                 .accessibilityAddTraits(launcher.selection == index ? .isSelected : [])
                 .help(world == .sift ? "Sift interpretation · 4" : "\(world.title) · \(index+1)")
             }
-        }.padding(6)
+        }.padding(6*scale)
             .accessibilityElement(children:.contain).accessibilityLabel("Realm hotbar")
     }
 
-    private var look: some View {
+    private func look(scale: CGFloat) -> some View {
         Button { explore(!exploring) } label: {
-            glyph("spyglass",fallback:exploring ? "eye.fill" : "eye").scaleEffect(1.35).frame(width:56,height:56)
-        }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone))
+            glyph("spyglass",fallback:exploring ? "eye.fill" : "eye",size:32.4*scale).frame(width:56*scale,height:56*scale)
+        }.buttonStyle(BlockButton(selected:exploring,texture:launcher.stone,scale:scale))
             .disabled(!available || launcher.journey.passage != nil || launcher.status.state == "playing")
             .keyboardShortcut("l",modifiers:.command)
             .accessibilityLabel(exploring ? "Leave spectator view" : "Look around")
@@ -794,10 +876,10 @@ struct LauncherView: View {
             .allowsHitTesting(false)
     }
 
-    @ViewBuilder private var installation: some View {
+    @ViewBuilder private func installation(scale: CGFloat) -> some View {
         if !launcher.running && ["ready","new","cancelled"].contains(launcher.status.state) {
             VStack(spacing:12) {
-                playButton(width:320)
+                playButton(width:320,scale:scale)
                 if !detail.isEmpty {
                     Text(detail).font(.system(size:13,weight:.medium)).multilineTextAlignment(.center)
                         .frame(maxWidth:500).shadow(color:.black.opacity(0.25),radius:2,y:1).textSelection(.enabled)
@@ -807,11 +889,11 @@ struct LauncherView: View {
         } else { panel }
     }
 
-    private func playButton(width: CGFloat) -> some View {
+    private func playButton(width: CGFloat, scale: CGFloat = 1) -> some View {
         Button { launcher.start() } label: {
-            Text(primaryTitle).font(Blocks.type(width>200 ? 24 : 18))
-                .frame(width:width,height:62)
-        }.buttonStyle(BlockButton(colour:Blocks.play)).keyboardShortcut(.defaultAction)
+            Text(primaryTitle).font(Blocks.type((width>200 ? 24 : 18)*scale))
+                .frame(width:width*scale,height:62*scale)
+        }.buttonStyle(BlockButton(scale:scale)).keyboardShortcut(.defaultAction)
     }
 
     private var setupSteps: some View {
@@ -1137,7 +1219,7 @@ private struct LauncherMenus: Commands {
                 .keyboardShortcut("0", modifiers: .command)
         }
         CommandGroup(replacing: .help) {
-            Button("Minecraft for MacOS Help") {
+            Button("Minecraft Launcher Help") {
                 openWindow(id:"launcher")
                 launcher.showHelp()
             }
@@ -1155,7 +1237,7 @@ struct BedrockLauncherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var launcher = Launcher()
     var body: some Scene {
-        Window("Minecraft for MacOS", id: "launcher") {
+        Window(launcherName, id: "launcher") {
             LauncherView(launcher: launcher)
                 .onAppear { delegate.launcher = launcher; NSApp.activate(ignoringOtherApps: true) }
                 .containerBackground(.black,for:.window)

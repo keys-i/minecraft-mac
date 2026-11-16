@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = 'Minecraft for MacOS'
+NAME = 'Minecraft Launcher'
 APP = ROOT / 'build/packaged' / f'{NAME}.app'
 
 
@@ -184,7 +184,7 @@ def build_launcher():
     with (app / 'Contents/Info.plist').open('wb') as output:
         plistlib.dump(dict(CFBundleExecutable='BedrockLauncher', CFBundleIdentifier='local.bedrock.mac.launcher',
             CFBundleName=NAME, CFBundleDisplayName=NAME,
-            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='19', CFBundleShortVersionString='0.14.0',
+            CFBundlePackageType='APPL', CFBundleIconFile='AppIcon', CFBundleVersion='23', CFBundleShortVersionString='0.15.0',
             LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, BedrockProjectPath=str(ROOT)), output)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     print('Built', app)
@@ -250,7 +250,7 @@ def main(argv=None):
     app.add_argument('--output', type=Path, default=APP)
     dmg = commands.add_parser('dmg', help='Create a verified drag-to-Applications DMG')
     dmg.add_argument('--app', type=Path, default=APP)
-    dmg.add_argument('--output', type=Path, default=ROOT / 'build/Minecraft-for-MacOS-preview.dmg')
+    dmg.add_argument('--output', type=Path, default=ROOT / 'build/Minecraft-Launcher-preview.dmg')
     args = parser.parse_args(argv)
     if args.command == 'launcher':
         build_launcher()

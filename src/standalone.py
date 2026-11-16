@@ -212,11 +212,22 @@ def require(path):
         raise RuntimeError('Missing required file: ' + str(path))
 
 
-def wine_run(args, game, *, log=None, timeout=None, network_diagnostics=False):
+def wine_run(args, game, *, log=None, timeout=None, network_diagnostics=False, started=None):
     require(WINE / 'bin/wine')
-    return subprocess.run([str(WINE / 'bin/wine'), *map(str, args)],
-        cwd=game, env=environment(network_diagnostics=network_diagnostics), stdout=log, stderr=subprocess.STDOUT,
-        timeout=timeout, check=True)
+    command = [str(WINE / 'bin/wine'), *map(str, args)]
+    with subprocess.Popen(command, cwd=game, env=environment(network_diagnostics=network_diagnostics),
+                          stdout=log, stderr=subprocess.STDOUT) as process:
+        try:
+            if started:
+                started(process.pid)
+            code = process.wait(timeout=timeout)
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        if code:
+            raise subprocess.CalledProcessError(code, command)
+        return subprocess.CompletedProcess(command, code)
 
 
 def map_drive(letter, directory):
@@ -388,6 +399,8 @@ def main():
     parser.add_argument('--market', default='CA', help='Two-letter Store country code (default CA)')
     parser.add_argument('--network-diagnostics', action='store_true',
                         help='Log authentication results and HTTP host/status without credentials')
+    parser.add_argument('--report-game-pid', action='store_true',
+                        help='Report the spawned game process to the native launcher')
     args = parser.parse_args()
     if len(args.market) != 2 or not args.market.isascii() or not args.market.isalpha() or not args.market.isupper():
         parser.error('--market must be a two-letter uppercase country code')
@@ -427,7 +440,9 @@ def main():
         log_path = ROOT / 'logs/standalone' / ('minecraft-' + stamp + '.log')
         print('Starting standalone Minecraft. Log: ' + str(log_path), flush=True)
         with account(game, args.market), log_path.open('wb') as log:
-            wine_run(['G:\\Minecraft.Windows.exe'], game, log=log, network_diagnostics=args.network_diagnostics)
+            report = (lambda pid: print('BEDROCK_GAME_PID:' + str(pid), flush=True)) if args.report_game_pid else None
+            wine_run(['G:\\Minecraft.Windows.exe'], game, log=log,
+                     network_diagnostics=args.network_diagnostics, started=report)
     return 0
 
 

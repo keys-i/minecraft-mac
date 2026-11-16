@@ -260,6 +260,27 @@ final class Assets {
         }
         if name == "tropicalfish" { material.multiply.contents = Landscape.colour(key == "typeA" ? 0xF4C052 : 0x56B4CE) }
         let model = try node(definition,material:material)
+        if name == "stray" {
+            guard let overlay = geometries["overlay"], let path = textures["overlay"] else { throw AssetError.model }
+            let layer = try node(geometry(overlay,entity:name),material:texture(path))
+            layer.name = "stray-clothes"; model.addChildNode(layer)
+        }
+        if name == "horse_v3" {
+            let key = ["markings_none","markings_white","markings_whitefield","markings_whitedots","markings_blackdots"][variant%5]
+            if variant%5 != 0 {
+                guard let path = textures[key] else { throw AssetError.model }
+                let layer = try node(definition,material:texture(path))
+                layer.name = "horse-markings"; model.addChildNode(layer)
+            }
+            model.enumerateChildNodes { part,_ in
+                if let name = part.name, ["Saddle","Bit","Bridle","Rein","Bag","MuleEar"].contains(where:{ name.hasPrefix($0) }) { part.isHidden = true }
+            }
+        }
+        if name == "evocation_illager" {
+            model.enumerateChildNodes { part,_ in
+                if part.name == "leftarm" || part.name == "rightarm" { part.geometry = nil }
+            }
+        }
         if name == "copper_golem", let eyes = textures["eyes_"+key] {
             let glow = try texture(eyes).copy() as! SCNMaterial
             glow.lightingModel = .constant
@@ -533,7 +554,27 @@ extension Assets {
     func tiles(_ name: String, states: [String: String] = [:]) throws -> [SCNMaterial] {
         let key = name+states.keys.sorted().map { "|"+$0+"="+states[$0]! }.joined()
         if let tiles = tilesets[key] { return tiles }
-        let tiles = try resolve(name,states:states)
+        var tiles = try resolve(name,states:states)
+        if states["axis"] == "x" || states["axis"] == "z" {
+            let order = states["axis"] == "x" ? [0,4,2,5,3,1] : [4,1,5,3,2,0]
+            tiles = order.map { tiles[$0] }
+            let side = states["axis"] == "x" ? [0,2,4,5] : [1,3]
+            for index in side {
+                let material = tiles[index].copy() as! SCNMaterial
+                material.diffuse.contentsTransform = SCNMatrix4MakeRotation(.pi/2,0,0,1)
+                tiles[index] = material
+            }
+        } else if let facing = states["facing"], ["north","east","west","up","down"].contains(facing) {
+            let order: [Int]
+            switch facing {
+            case "north": order = [2,3,0,1,4,5]
+            case "east": order = [3,0,1,2,4,5]
+            case "west": order = [1,2,3,0,4,5]
+            case "up": order = [5,1,4,3,0,2]
+            default: order = [4,1,5,3,2,0]
+            }
+            tiles = order.map { tiles[$0] }
+        }
         tilesets[key] = tiles
         return tiles
     }
@@ -601,10 +642,7 @@ extension Assets {
                 let prefix = name.hasPrefix("stripped_") ? "stripped_"+wood+"_log" : "log_"+stem
                 let side = try texture("textures/blocks/"+prefix)
                 let cap = try texture("textures/blocks/"+prefix+"_top")
-                var result = Array(repeating:side,count:6)
-                let indices = states["axis"] == "x" ? [1,3] : states["axis"] == "z" ? [0,2] : [4,5]
-                for index in indices { result[index] = cap }
-                return result
+                return [side,side,side,side,cap,cap]
             }
             if name == wood+"_leaves" {
                 let stem = wood == "dark_oak" ? "big_oak" : wood
@@ -639,7 +677,7 @@ extension Assets {
             else { key = mapped }
             let entry = catalog[key] as? [String: Any]
             let value = entry?["textures"]
-            let path = value as? String ?? (value as? [String])?.first ?? "textures/blocks/"+key
+            let path = value as? String ?? (value as? [String])?.first ?? (value as? [String:Any])?["path"] as? String ?? "textures/blocks/"+key
             return try texture(path,tint:name == "mangrove_leaves" ? 0x78A73F : nil)
         }
     }

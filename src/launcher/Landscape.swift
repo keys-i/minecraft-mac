@@ -574,7 +574,7 @@ enum Landscape {
         let terrain = Terrain(biome:area)
         for (kind,species) in area.residents.enumerated() {
             let solitary = [.warden,.creaking,.ironGolem,.ravager,.witch,.sniffer,.endermite,.snowGolem].contains(species)
-            let count = solitary ? 1 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
+            let count = solitary || species == .cat && area == .swamp ? 1 : species == .tropical || species == .salmon ? 7 : [.cow,.pig,.sheep,.chicken,.strider,.enderman].contains(species) ? 4 : 3
             for index in 0..<count {
                 let actor = SCNNode(); actor.name = "resident-\(species.rawValue)-\(index)"
                 let daylight = Daylight.light(at:ProcessInfo.processInfo.systemUptime-factory.assets.started)

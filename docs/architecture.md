@@ -1,6 +1,6 @@
 # Architecture
 
-Minecraft for MacOS runs the owner's Windows Minecraft Bedrock installation on an
+Minecraft Launcher runs the owner's Windows Minecraft Bedrock installation on an
 Apple Silicon Mac through WineGDK and DXMT. The intended user flow is **open the
 app → Install & Play → Microsoft sign-in → Minecraft**, then **Play** on later
 launches. A separate Minecraft welcome confirmation can still ask the user to
@@ -47,13 +47,22 @@ Use `COMMAND --help` for arguments. On a Mac without Command Line Tools,
 The native title screen places a central Play button and compact four-slot realm
 hotbar over one live SceneKit world. Busy/error states use a separate status panel
 The installed game supplies the original title artwork, Minecraft Ten subtitle
-font and splash pool. The Mac Edition subtitle uses an extruded face and sloped stone backing
+font and splash pool. The Launcher subtitle uses an extruded face and sloped stone backing
+The title, subtitle and splash scale together with both window dimensions,
+without a fixed fullscreen size cap. The shortcut toast sits below the header
 The yellow splash uses a native repeating scale animation, removed when motion
 is disabled, the launcher loses focus or a game/error/biome picker takes priority
 Monocraft supplies the fallback title and shortcut toast; rounded system type
 identifies actions, and plain system type supplies supporting copy
 Original installed item icons and hotbar/selection textures supply the connected
-inventory bar. Realm names and number shortcuts remain in help/accessibility labels
+inventory bar. Play, inventory slots, Look around and corner credits share a
+window-aware scale, reaching 5× their original area at 2016 × 1310 points
+Smaller windows reduce that scale to retain the title and separate hit targets
+The shortcut toast moves beside the title when the side margin can contain it
+Stone buttons start grey and turn green on hover; inventory slots use the same
+green feedback. Buttons and corner credits share a 120 ms hover enlargement and brightening
+Reduced Motion keeps immediate colour feedback without enlargement or animation
+Realm names and number shortcuts remain in help/accessibility labels
 Stone controls and installed utility glyphs share hover, press and focus states
 Action headings/buttons now use pixel type. The hotbar has no extra backing
 The splash overlaps the title; the bottom corners hold a native developer Link
@@ -140,13 +149,16 @@ fallen logs, roots, fungi, coral fans and ceiling-attached cave growth into view
 Original cloud art moves above the Overworld; the original greyscale End sky is
 darkened in a small native bitmap before it becomes the background cubemap
 
-`Mobs.swift` shares original geometry/skins within each scene and places 70 types
+`Mobs.swift` shares original geometry/skins within each scene and places 75 types
 in habitat-specific groups. Five newer types are skipped on older installations
 when their original art is absent; malformed assets still fail clearly
 Aquatic residents use water pockets, Striders use lava,
 and fortress residents use bridge height. River residents follow the actual
 channel, and land residents avoid water. Horses, cats, wolves, parrots and axolotls
-use original skin variants. Tropical fish add the original pattern layer and colour
+use original skin variants. Horses combine seven coats with five original marking
+states, hiding unsaddled equipment; Strays retain their original clothing layer
+Cave Spiders, Evokers, Elder Guardians, Pufferfish and Strays live in their
+matching authored habitats. Tropical fish add the original pattern layer and colour
 variants. Variant-specific geometry now takes precedence over default geometry
 Residents use unsynchronised bounded strolls, original movement/stroll attributes
 where available, sampled terrain/water bounds, diagonal gait timing, sheep
@@ -297,11 +309,30 @@ The app consumes newline-delimited JSON on worker stdout: `state`, `title`,
 `detail`, and nullable `progress`. States include `new`, `ready`, `busy`,
 `playing`, `cancelled`, and `error`; `checking` and `cancelling` are also used by
 the front end. Only known progress lines and safe `BEDROCK_ERROR` codes are
-translated into UI text. Arbitrary account output must not become UI text.
+translated into UI text. Arbitrary account output must not become UI text
+
+At startup, `--warmup` takes the existing onboarding lock, rejects an active game
+before rewiring bundle links, and prepares only an already installed game
+It never downloads the game or starts the account helper. The standalone prefix
+lock also guards preparation; `--status` remains a read-only installation check
+An unchanged prefix uses its existing fast path rather than launching wineboot
+
+After Play, the runtime emits `BEDROCK_GAME_PID:<decimal>` only after spawning Wine
+The worker accepts only exact PID lines in the range 2…2,147,483,647 and sends
+`game_pid` in the playing status. The launcher checks onscreen window metadata
+for that PID, a normal window layer and at least 320 × 200 points before hiding
+its own window. One cancellable task polls at 150 ms until a game window appears
+or the session ends
+A final ready/error state cancels the wait and restores the hidden launcher
+This hands off between two processes; it does not embed Wine inside SwiftUI
+
+macOS permission prompts identify their requesting signed executable. The app's
+Minecraft Launcher branding does not rename Wine/helper identities or suppress
+security prompts. The authorised helper and runtime stay unchanged
 
 ## Data and process ownership
 
-The app is now named **Minecraft for MacOS**. Its earlier data-folder name,
+The app is now named **Minecraft Launcher**. Its earlier data-folder name,
 Keychain service and bundle identifier are retained so existing installations
 keep their saved worlds and sign-in without a data migration
 

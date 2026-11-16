@@ -1,4 +1,4 @@
-<h1 align="center">Minecraft for MacOS</h1>
+<h1 align="center">Minecraft Launcher</h1>
 
 <p align="center">
   <a href="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml"><img src="https://github.com/keys-i/minecraft-mac/actions/workflows/checks.yml/badge.svg?branch=main" alt="Build and test checks" /></a>
@@ -34,7 +34,7 @@
 
 Once you've [built the app](docs/build.md#build-a-complete-local-app):
 
-1. Drag **Minecraft for MacOS** into **Applications** and open it
+1. Drag **Minecraft Launcher** into **Applications** and open it
 2. Choose **Install & Play** and sign in with your Microsoft account
 3. Let the game download, then choose **Sign in now** if Minecraft asks
 

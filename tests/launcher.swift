@@ -9,11 +9,40 @@ struct LauncherChecks {
         func status(_ progress: Double?, state: String = "busy") -> Status {
             Status(state: state, title: "Fixture", detail: "", progress: progress)
         }
+        let pending = try JSONDecoder().decode(Status.self,from:Data(#"{"state":"busy","title":"Opening","detail":""}"#.utf8))
+        let playing = try JSONDecoder().decode(Status.self,from:Data(#"{"state":"playing","title":"Minecraft","detail":"","game_pid":42}"#.utf8))
+        precondition(pending.gamePID == nil && playing.gamePID == 42)
+        func gameWindow(_ pid: Int = 42, layer: Int = 0, width: Int = 1040) -> [String:Any] {
+            [kCGWindowOwnerPID as String:pid,kCGWindowLayer as String:layer,
+             kCGWindowBounds as String:["Width":width,"Height":760]]
+        }
+        precondition(Launcher.gameVisible(42,windows:[gameWindow()]))
+        for windows in [[],[gameWindow(43)],[gameWindow(layer:1)],[gameWindow(width:100)],[[:]]] as [[[String:Any]]] {
+            precondition(!Launcher.gameVisible(42,windows:windows))
+        }
+        precondition(!Launcher.gameVisible(1,windows:[gameWindow(1)]))
+        precondition(!Launcher.gameVisible(Int(Int32.max)+1,windows:[]))
         let compactSettings = Preferences.scale(in:.init(width:700,height:560))
         let largeSettings = Preferences.scale(in:.init(width:1040,height:800))
         precondition(compactSettings >= 1 && largeSettings > compactSettings)
         precondition(Preferences.scale(in:.zero) == compactSettings)
         precondition(Preferences.scale(in:.init(width:4000,height:3000)) <= 1.5)
+        let title = GameTitle.width(in:CGSize(width:1040,height:760))
+        let fullscreenTitle = GameTitle.width(in:CGSize(width:2016,height:1310))
+        precondition(title > 700 && fullscreenTitle > title*1.8)
+        precondition(GameTitle.width(in:CGSize(width:760,height:620)) < 760-56)
+        let shortTitle = GameTitle.width(in:CGSize(width:3440,height:620))
+        precondition(shortTitle < fullscreenTitle && shortTitle < 620*1.3)
+        precondition(GameTitle.width(in:CGSize(width:4032,height:2620)) == fullscreenTitle*2)
+        let controls = LauncherView.scale(in:CGSize(width:2016,height:1310))
+        precondition(abs(controls*controls-5)<0.001)
+        for size in [CGSize(width:760,height:620),CGSize(width:1040,height:760),CGSize(width:2560,height:720)] {
+            let scale = LauncherView.scale(in:size)
+            precondition(scale > 1 && scale < controls)
+            precondition(320*scale < size.width-56)
+            precondition(size.width/2+126*scale+16 < size.width-24-56*scale)
+            precondition(LauncherView.scale(in:size,extra:72) <= scale)
+        }
         precondition(status(nil).stage == nil)
         precondition(status(-0.1).fraction == 0)
         precondition(status(1.5).fraction == 1)
@@ -232,6 +261,14 @@ struct LauncherChecks {
                 precondition(abs(varied.speed-0.8)<0.001)
             } else { rejects { _ = try Mobs(assets:Assets(data:fixture)).locomotion(.pig) } }
         }
+        for groups in [NSNull(),42] as [Any] {
+            let entity: [String:Any] = ["minecraft:entity":["components":["minecraft:movement":["value":0]],"component_groups":groups]]
+            try JSONSerialization.data(withJSONObject:entity).write(to:behaviours.appendingPathComponent("pig.json"))
+            if groups is NSNull {
+                let valid = try Mobs(assets:Assets(data:fixture)).locomotion(.pig)
+                precondition(valid.speed == 0)
+            } else { rejects { _ = try Mobs(assets:Assets(data:fixture)).locomotion(.pig) } }
+        }
         let tinted = try art.texture("textures/entity/fixture",tint:0x2080E0)
         let bitmap = tinted.diffuse.contents as! CGImage
         let rgba = Array(bitmap.dataProvider!.data! as Data)
@@ -405,6 +442,33 @@ struct LauncherChecks {
         print("Asset queue returned in \(String(format:"%.2f",enqueue)) ms and delivered an original-art graph on the main thread")
         loaded = nil
         for species in Species.allCases { _ = try factory.make(species); _ = try factory.locomotion(species) }
+        precondition(Set(World.allCases.flatMap { $0.biomes.flatMap(\.residents) }) == Set(Species.allCases))
+        let stray = try factory.make(.stray), evoker = try factory.make(.evoker)
+        precondition(stray.childNode(withName:"stray-clothes",recursively:true) != nil)
+        precondition(evoker.childNode(withName:"arms",recursively:true)?.geometry != nil)
+        precondition(evoker.childNode(withName:"leftarm",recursively:true)?.geometry == nil)
+        precondition(evoker.childNode(withName:"rightarm",recursively:true)?.geometry == nil)
+        for variant in 0..<35 {
+            let horse = try factory.make(.horse,variant:variant)
+            precondition((horse.childNode(withName:"horse-markings",recursively:true) != nil) == (variant%5 != 0))
+            horse.enumerateChildNodes { part,_ in
+                if let name = part.name, ["Saddle","Bit","Bridle","Rein","Bag","MuleEar"].contains(where:{ name.hasPrefix($0) }) {
+                    precondition(part.isHidden)
+                }
+            }
+        }
+        for block in ["oak_log","cherry_log","mangrove_log","pale_oak_log","basalt","bone_block","hay_block"] {
+            let upright = try assets.tiles(block)
+            for (axis,ends) in [("x",[1,3]),("z",[0,2])] {
+                let horizontal = try assets.tiles(block,states:["axis":axis])
+                for index in ends { precondition(horizontal[index].name == upright[4].name) }
+                precondition(upright.allSatisfy { SCNMatrix4EqualToMatrix4($0.diffuse.contentsTransform,SCNMatrix4Identity) })
+            }
+        }
+        for (direction,front) in [("south",0),("east",1),("north",2),("west",3),("up",4),("down",5)] {
+            let furnace = try assets.tiles("furnace",states:["facing":direction])
+            precondition(furnace[front].name?.contains("furnace_front") == true)
+        }
         for species in [Species.pig,.cow,.chicken,.wolf] { _ = try factory.make(species,classic:true) }
         _ = try factory.make(.cow,biome:.desert)
         _ = try factory.make(.chicken,biome:.snow)

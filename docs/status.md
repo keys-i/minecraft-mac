@@ -10,6 +10,35 @@ That merge did not publish a binary. Use [Testing](test.md) for the manual
 test matrix and artifact checks; use [Source releases](build.md#preparing-a-source-release) for source
 inventories and exports
 
+## Launcher handoff and original asset layers in 0.15
+
+The current local candidate is **Minecraft Launcher 0.15.0/build 23**
+It adds original horse markings, Stray clothing, five additional species and
+block-axis/facing corrections. Grey buttons use green hover feedback
+Existing-game preparation starts before Play, without account access or downloads
+The two-process handoff hides the launcher after detecting the real game window
+and restores it on exit/error; it does not embed the Windows game in SwiftUI
+macOS permission dialogs can still identify Wine or the existing signed helper
+
+All 100 Python checks and native synthetic/installed-art checks pass for
+75 species, 42 areas and three passages. Five sampled render p95 values fit the
+33.3 ms idle budget. No overall Minecraft launch speedup has been measured
+The user confirmed the game appeared in a separate window; final live
+hide/restore and pointer-hover verification remain incomplete
+See [the detailed test record](test.md#original-assets-and-launcher-handoff-in-015)
+
+The app preserves 981 runtime/helper payload files byte-for-byte, including the
+authorised helper. The frozen Python worker and native launcher were rebuilt
+All 1,053 packaged resource hashes, strict deep signature verification and DMG
+verification pass. This local DMG is 127,089,166 bytes with SHA-256
+
+```text
+4c72bbe2ab84a85b90ea1ce5c30d368384bcd98ed49a41e658e1d450f20a822f
+```
+
+It remains an ad-hoc signed local preview requiring macOS 27, with no notarised
+binary release or clean-Mac installation claim
+
 ## Settings menu and crystal connection in 0.14
 
 Settings now opens inside the launcher with a top-right × and Escape dismissal,
@@ -27,14 +56,28 @@ All 93 Python tests, native synthetic and installed-art 70-species/42-area check
 were inspected, and live Computer Use verified gear/⌘, entry and ×/Escape closing
 See [the test record](test.md#responsive-settings-and-dragon-healing-beams-in-014)
 
-The final local candidate is 0.14.0/build 19, requires macOS 27 and preserves all
-1,053 resource hashes and 21 symlinks. The DMG has 128,195,260 bytes and SHA-256
+Build 20 removes the main title's 700-point cap and scales it with both window
+dimensions. Its subtitle and splash scale together; the shortcut hint sits below
+the title. Four native render sizes and live fullscreen inspection cover the change
+Native synthetic checks and all 93 Python tests pass for this refinement
+
+Build 22 gives Play, inventory, Look around and corner credits five times their
+original area in fullscreen, with a smaller scale where needed to fit the window
+Shared hover feedback enlarges and brightens controls over 120 ms; Reduced Motion
+keeps immediate brightness feedback without movement. Four native render sizes,
+synthetic layout checks and live fullscreen inspection cover the change
+Live pointer-hover verification was blocked by Computer Use `noWindowsAvailable` errors
+
+The preceding local candidate was 0.14.0/build 22, requires macOS 27 and preserves all
+1,053 resource hashes and 21 symlinks. The DMG has 128,141,319 bytes and SHA-256
 
 ```text
-d424a83eaf335b6c20c1dc4343d05db43b29ae61e42c5e8309a2d0795e5d8ac9
+623445d042ac54a4060cdda05d68730ec0502048b1bd7927d301a2792d61d96d
 ```
 
-The final candidate’s Settings menu was opened locally. VoiceOver and display zoom remain
+The Settings menu was opened locally in build 19, the title in build 20 and the
+enlarged controls in build 22
+VoiceOver and display zoom remain
 unverified; no helper/runtime rebuild, binary release, merge or notarisation was performed
 
 ## Flight and destination corrections in 0.13
@@ -544,7 +587,7 @@ Local mobs-preview DMG SHA-256:
 
 ## Earlier October 19 interface update
 
-Current source uses **Minecraft for MacOS** branding and a poster-led native
+Current source uses **Minecraft Launcher** branding and a poster-led native
 installer with block-style controls, visible progress and a resizable window
 The earlier data directory, bundle identifier and account helper are retained
 

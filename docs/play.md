@@ -1,4 +1,4 @@
-# Using Minecraft for MacOS
+# Using Minecraft Launcher
 
 This is an open-source preview. There is no public notarized installer yet.
 The steps below describe a complete local app built from this repository;
@@ -24,9 +24,9 @@ developers can select a different two-letter market through the CLI.
 
 ## Install, sign in, and play
 
-1. Open your locally built `.dmg` and drag **Minecraft for MacOS** onto its
+1. Open your locally built `.dmg` and drag **Minecraft Launcher** onto its
    **Applications** shortcut. Eject the disk image after copying finishes.
-2. Open **Minecraft for MacOS** from Applications and click **Install & Play**.
+2. Open **Minecraft Launcher** from Applications and click **Install & Play**.
 3. Complete Microsoft sign-in with the account that owns the Windows game.
 4. Let setup download Minecraft and the required Microsoft component. There
    are no separate Homebrew, Python, compiler, Wine, or DXMT installs for players
@@ -125,7 +125,7 @@ promise of zero prompts after every update would be inaccurate.
 
 ## Accounts and game features
 
-Use **Minecraft for MacOS → Sign Out of Microsoft…** while the game is closed to
+Use **Minecraft Launcher → Sign Out of Microsoft…** while the game is closed to
 change accounts. Sign-out keeps the game and worlds. The next Play action asks
 for Microsoft sign-in and checks the new account's ownership.
 
@@ -177,7 +177,7 @@ Moving a prefix to a different Mac/user can leave absolute Wine drive mappings
 pointing at the old location; cross-Mac migration is not a supported automatic
 workflow.
 
-**Minecraft for MacOS → Check for Updates…** checks the project's published
+**Minecraft Launcher → Check for Updates…** checks the project's published
 releases and offers the Releases page for manual review. It distinguishes app
 DMGs from source archives and does not replace your installation. Use **Settings…**
 for scenery preferences; game graphics and controls stay in Minecraft's settings

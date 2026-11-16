@@ -86,7 +86,7 @@ existing venv.
 | Package | Builds Swift/icon and frozen Python worker; copies runtime/helper, signs locally, records resource hashes and actual OS requirement |
 | DMG | Creates `build/Minecraft-for-MacOS-preview.dmg` containing the app and an Applications shortcut; verifies the image |
 
-The complete app is `build/packaged/Minecraft for MacOS.app`. It includes build
+The complete app is `build/packaged/Minecraft Launcher.app`. It includes build
 outputs for the open-source runtime but no game, Microsoft DLLs, Keychain data,
 worlds, or development checkout. First Play obtains the required Microsoft
 component and owned game. Build scripts never imply that a binary is cleared for
@@ -103,7 +103,7 @@ retains and verifies its provenance; see [stability notes](status.md#stability-f
 
 ## Iterate without losing a working build
 
-`python3 minecraft.py build launcher` creates `build/Minecraft for MacOS.app`, a development front end
+`python3 minecraft.py build launcher` creates `build/Minecraft Launcher.app`, a development front end
 that points at this checkout and uses `/usr/bin/python3`. It is useful for Swift
 and worker changes after preparing the local runtime, but is not a portable app.
 `python3 src/launcher/setup.py --status` inspects its installation without sign-in.
@@ -113,7 +113,7 @@ preview:
 
 ```sh
 python3 minecraft.py build preview
-open 'build/preview/Minecraft for MacOS Preview.app'
+open 'build/preview/Minecraft Launcher Preview.app'
 ```
 
 Install & Play runs a simulated sign-in, download, preparation and game session
@@ -125,9 +125,9 @@ cannot launch the game or access the player's account or worlds. Choose a fresh
 The packager refuses to overwrite an existing output. Use a new output name:
 
 ```sh
-python3 minecraft.py build app --output 'build/iteration-2/Minecraft for MacOS.app'
-python3 minecraft.py build dmg --app 'build/iteration-2/Minecraft for MacOS.app' \
-  --output 'build/Minecraft for MacOS-iteration-2.dmg'
+python3 minecraft.py build app --output 'build/iteration-2/Minecraft Launcher.app'
+python3 minecraft.py build dmg --app 'build/iteration-2/Minecraft Launcher.app' \
+  --output 'build/Minecraft Launcher-iteration-2.dmg'
 ```
 
 Choose a fresh suffix for each retained build. The packager rebuilds its

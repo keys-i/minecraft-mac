@@ -10,9 +10,10 @@ enum Species: String, CaseIterable {
     case horse, polarBear, witch, guardian, drowned, breeze, bogged, witherSkeleton, piglinBrute, zombifiedPiglin
     case cod, salmon, sniffer, husk, ravager, silverfish, tropical, snowGolem, cat
     case camelHusk, parched, nautilus, zombieNautilus, happyGhast
+    case caveSpider, evoker, elderGuardian, pufferfish, stray
 
     var flying: Bool { [.bee, .parrot, .bat, .blaze, .ghast, .allay, .vex, .breeze, .happyGhast].contains(self) }
-    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .drowned, .cod, .salmon, .tropical, .nautilus, .zombieNautilus].contains(self) }
+    var swimming: Bool { [.dolphin, .squid, .glowsquid, .axolotl, .guardian, .elderGuardian, .drowned, .cod, .salmon, .tropical, .pufferfish, .nautilus, .zombieNautilus].contains(self) }
 }
 
 // Prototypes share the installed game's geometry and textures within one scene
@@ -39,6 +40,9 @@ final class Mobs {
         case .camelHusk: name = "camel_husk"
         case .zombieNautilus: name = "zombie_nautilus"
         case .happyGhast: name = "happy_ghast"
+        case .caveSpider: name = "cave_spider"
+        case .evoker: name = "evocation_illager"
+        case .elderGuardian: name = "elder_guardian"
         case .snowGolem: name = "snow_golem"
         case .tropical: name = "tropicalfish"
         case .horse: name = "horse_v3"
@@ -56,27 +60,44 @@ final class Mobs {
         let texture: String
         switch species {
         case .happyGhast: texture = "happy_ghast"
-        case .horse: texture = ["base_brown","base_chestnut","base_white","base_black"][variant%4]
-        case .cat: texture = ["tabby","calico","jellie"][variant%3]
+        case .horse: texture = ["base_white","base_creamy","base_chestnut","base_brown","base_black","base_gray","base_darkbrown"][variant%7]
+        case .cat: texture = biome == .swamp ? "all_black" : ["white","black","red","siamese","british","calico","persian","ragdoll","tabby","all_black","jellie"][variant%11]
         case .tropical: texture = variant%2 == 0 ? "typeA" : "typeB"
-        case .wolf: texture = biome == .snow ? "snowy_default" : ["woods_default","pale_default","ashen_default"][variant%3]
-        case .fox: texture = biome == .snow ? "arctic" : "red"
-        case .rabbit: texture = biome == .snow ? "white" : "brown"
-        case .llama: texture = "creamy"
+        case .wolf:
+            switch biome {
+            case .forest: texture = "woods_default"
+            case .snow: texture = "ashen_default"
+            case .jungle: texture = "rusty_default"
+            case .savanna: texture = "spotted_default"
+            case .badlands: texture = "striped_default"
+            default: texture = ["pale_default","ashen_default","black_default","chestnut_default","rusty_default","snowy_default","spotted_default","striped_default","woods_default"][variant%9]
+            }
+        case .fox: texture = [.snow,.ice,.peaks].contains(biome) ? "arctic" : "red"
+        case .rabbit:
+            if biome == .desert { texture = "gold" }
+            else if [.snow,.ice,.peaks].contains(biome) { texture = ["white","white_splotched"][variant%2] }
+            else { texture = ["brown","black","salt"][variant%3] }
+        case .llama: texture = ["creamy","white","brown","gray"][variant%4]
         case .frog: texture = biome == .mangrove ? "warm" : "temperate"
         case .parrot: texture = ["red_blue","green","blue","yellow_blue","grey"][variant%5]
         case .ocelot: texture = "wild"
         case .axolotl: texture = ["lucy","wild","gold","cyan"][variant%4]
         case .pig,.cow,.chicken: texture = [.desert,.savanna,.jungle,.badlands].contains(biome) ? "warm" : [.snow,.peaks,.ice].contains(biome) ? "cold" : "default"
         case .villager: texture = "farmer"
+        case .golem: texture = ["default","exposed","weathered"][variant%3]
+        case .elderGuardian: texture = "elder"
         case .shulker: texture = "undyed"
         default: texture = "default"
         }
-        return try actor(name, texture: texture, label: species.rawValue,variant:variant)
+        let model = try actor(name, texture: texture, label: species.rawValue,variant:variant)
+        // Normal puff uses the behaviour's scale rather than a client-entity script
+        if species == .pufferfish { model.scale = .init(1.2,1.2,1.2) }
+        return model
     }
 
     func actor(_ name: String, texture: String = "default", label: String? = nil, variant: Int = 0) throws -> SCNNode {
-        let key = name+"-"+texture+(name == "tropicalfish" ? "-\(variant)" : "")
+        let variantKey = name == "horse_v3" ? "-\(variant%5)" : name == "tropicalfish" ? "-\(variant%6)" : ""
+        let key = name+"-"+texture+variantKey
         if let model = models[key] { return model.clone() }
         let model = try assets.actor(name,texture:texture,variant:variant)
         model.name = "mob-"+(label ?? name)
@@ -101,7 +122,8 @@ final class Mobs {
         let aliases: [Species:String] = [.ironGolem:"iron_golem",.glowsquid:"glow_squid",.magma:"magma_cube",
             .illager:"pillager",.polarBear:"polar_bear",.witherSkeleton:"wither_skeleton",.piglinBrute:"piglin_brute",
             .zombifiedPiglin:"zombie_pigman",.golem:"copper_golem",.tropical:"tropicalfish",.villager:"villager_v2",
-            .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast"]
+            .snowGolem:"snow_golem",.camelHusk:"camel_husk",.zombieNautilus:"zombie_nautilus",.happyGhast:"happy_ghast",
+            .caveSpider:"cave_spider",.evoker:"evocation_illager",.elderGuardian:"elder_guardian"]
         let path = "entities/"+(aliases[species] ?? species.rawValue)+".json"
         let data: Data
         do { data = try assets.file(path,behaviour:true) }
@@ -114,7 +136,7 @@ final class Mobs {
               let object = try JSONSerialization.jsonObject(with:data,options:.json5Allowed) as? [String:Any],
               let entity = object["minecraft:entity"] as? [String:Any],
               var components = entity["components"] as? [String:Any] else { throw AssetError.model }
-        if let raw = entity["component_groups"] {
+        if let raw = entity["component_groups"], !(raw is NSNull) {
             guard let groups = raw as? [String:Any] else { throw AssetError.model }
             let active: [Species:String] = [.enderman:"minecraft:enderman_calm",.armadillo:"minecraft:unrolled",.happyGhast:"minecraft:adult_mobile"]
             for name in ["adult","minecraft:adult",active[species]].compactMap({ $0 }) {
