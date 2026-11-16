@@ -1174,7 +1174,7 @@ struct LauncherView: View {
         return max(1,min(CGFloat(5).squareRoot(),(size.width-80)/364,(size.height-title*0.25-reserved-extra)/270))
     }
 
-    var body: some View {
+    private var scene: some View {
         GeometryReader { geometry in
             let extra: CGFloat = (detail.isEmpty ? 0 : 48)+(fresh ? 24 : 0)
             let scale: CGFloat = Self.scale(in:geometry.size,extra:extra)
@@ -1264,6 +1264,10 @@ struct LauncherView: View {
                 }
             }.animation(reduceMotion ? nil : .easeOut(duration:0.18),value:launcher.loading)
         }
+    }
+
+    private var canvas: some View {
+        scene
         .disabled(map || launcher.settings || launcher.help).accessibilityHidden(map || launcher.settings || launcher.help)
         .background(Input(enabled:available && !map && !launcher.settings && !launcher.help && !launcher.loading && launcher.status.state != "playing",controls:controls,changed:{ step in
             let index = (launcher.selection+step+launcher.worlds.count)%launcher.worlds.count
@@ -1305,6 +1309,10 @@ struct LauncherView: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        canvas
         .ignoresSafeArea(.container).background(.black)
         .foregroundStyle(.white).environment(\.colorScheme,.dark)
         .frame(minWidth:760,minHeight:620)

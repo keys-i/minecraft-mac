@@ -491,9 +491,12 @@ final class Mobs {
                 } else {VoxelAdventure.sway(node,y:0.13,period:2.8)}
             } else if part == "body" && key.hasPrefix("parrot-") {
                 let base = node.position
-                node.runAction(.repeatForever(.customAction(duration:1.0/3) { node,time in
-                    node.position.y = base.y+(sin(Double(time)*6*Double.pi)+1)*0.5*0.3/16
-                }))
+                let bounce = SCNAction.customAction(duration:1.0/3) { child,time in
+                    let phase = sin(Double(time)*6*Double.pi)
+                    let offset = (phase+1)*0.15/16
+                    child.position.y = base.y+offset
+                }
+                node.runAction(.repeatForever(bounce))
             }
         }
         model.enumerateChildNodes { node,_ in animate(node) }
