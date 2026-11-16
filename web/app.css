@@ -1,0 +1,126 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  background: #0b0d0c;
+  color: #f3f5f2;
+}
+
+* { box-sizing: border-box; }
+
+html, body, main {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+main {
+  position: relative;
+  background: #0b0d0c;
+}
+
+video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #050605;
+}
+
+#start {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+  gap: 18px;
+  padding: clamp(28px, 7vw, 96px);
+  background: #101411;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #8fa294;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(54px, 10vw, 132px);
+  line-height: 0.9;
+  letter-spacing: -0.08em;
+}
+
+#message {
+  max-width: 34rem;
+  margin: 0;
+  color: #b9c3bb;
+  font-family: system-ui, sans-serif;
+  font-size: 18px;
+}
+
+button {
+  min-height: 48px;
+  border: 2px solid #dce7dd;
+  border-radius: 0;
+  padding: 0 22px;
+  background: #dce7dd;
+  color: #111512;
+  font: 700 15px/1 ui-monospace, monospace;
+  cursor: pointer;
+}
+
+button:hover { background: #ffffff; }
+button:focus-visible { outline: 3px solid #8ddf91; outline-offset: 4px; }
+
+#bar {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px 8px 16px;
+  border: 1px solid #59635b;
+  background: rgba(10, 13, 11, 0.92);
+}
+
+#stats {
+  flex: 1;
+  color: #aab5ac;
+  text-align: right;
+  font-size: 12px;
+}
+
+#bar button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-width: 1px;
+  font-size: 12px;
+}
+
+#capture {
+  position: absolute;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  translate: -50% 0;
+  padding: 10px 14px;
+  background: #101411;
+  border: 1px solid #59635b;
+  color: #dce7dd;
+  font-size: 12px;
+}
+
+[hidden] { display: none !important; }
+
+@media (max-width: 700px) {
+  #bar { align-items: flex-start; flex-wrap: wrap; }
+  #stats { order: 3; flex-basis: 100%; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}

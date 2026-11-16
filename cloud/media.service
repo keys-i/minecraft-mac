@@ -1,0 +1,38 @@
+[Unit]
+Description=Minecraft direct-map WebRTC publisher
+After=network-online.target mediamtx.service minecraft-stream-game.service
+Requires=mediamtx.service
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+SupplementaryGroups=audio video render
+EnvironmentFile=/etc/minecraft-stream/environment
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+ExecStart=/usr/local/bin/MinecraftStream publish --encoder ${STREAM_ENCODER}
+Restart=on-failure
+RestartSec=1
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_SYS_ADMIN
+AmbientCapabilities=CAP_SYS_ADMIN
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+DevicePolicy=closed
+DeviceAllow=/dev/dri/card0 r
+DeviceAllow=/dev/dri/renderD128 rw
+DeviceAllow=/dev/nvidia0 rw
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=/dev/nvidia-modeset rw
+DeviceAllow=/dev/nvidia-uvm rw
+DeviceAllow=/dev/nvidia-caps/nvidia-cap1 rw
+DeviceAllow=/dev/nvidia-caps/nvidia-cap2 rw
+
+[Install]
+WantedBy=multi-user.target

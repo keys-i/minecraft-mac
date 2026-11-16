@@ -4,6 +4,7 @@ Minecraft Launcher is an ARM64 macOS interface for the owner's Windows Minecraft
 SwiftUI and SceneKit own the launcher; one Rust worker owns setup, the account-service lifetime and the Wine/DXMT game session
 The launcher and game still have distinct native windows, with a rendered-frame handoff between them
 Rosetta remains necessary for the installed x64 game and compatibility stack
+Build 41 adds an optional Linux GPU host and browser client without changing that native Mac path
 
 ## Components
 
@@ -20,6 +21,9 @@ Rosetta remains necessary for the installed x64 game and compatibility stack
 | Journeys | Persistent scenery-only cave/stronghold edits and physical routes | `src/launcher/Trail.swift` |
 | Residents | Original models and bounded local movement/attention | `src/launcher/Crowd.swift`, `src/launcher/Mobs.swift` |
 | Developer tools | Build, source, graphics, monitoring, setup and legacy commands | Rust modules in `src/worker/` |
+| Stream control | Authenticated browser input, fixed SPSC queue and hardware publisher command | `stream/` |
+| Browser client | WHEP playback, pointer capture, input and live stream statistics | `web/` |
+| Cloud host | OCI network policy, TLS proxy, MediaMTX and systemd ownership | `cloud/` |
 
 The public entry point is `./minecraft COMMAND`; use `COMMAND --help` for options
 All project-owned Python files and embedded Python scripts have been replaced
@@ -51,6 +55,33 @@ Only structured, bounded events reach the interface; arbitrary helper output rem
 The worker inherits the launcher handoff nonce and frame while discarding inherited Wine, CrossOver and dynamic-loader overrides
 Microsoft ownership checks, pinned Cargo dependencies and exact payload digests remain mandatory
 Bundle assembly preserves the authorised account-helper bytes, signs nested executables, records final signed payload digests and verifies the complete candidate
+
+## Cloud stream boundary
+
+Build 41 keeps the build 40 SwiftUI, SceneKit and Metal application as the native Mac mode
+The optional cloud mode runs the x64 Windows Bedrock game on an x86-64 Linux GPU host through WineGDK, DXVK and Gamescope's Vulkan DRM backend
+The Rust control binary is source-portable across x86-64, ARM64 and RISC-V Linux, but that does not make the x64 game native on ARM64 or RISC-V
+
+The host capture path is `Vulkan scanout → KMS/DRM PRIME → direct DMA-BUF hardware map → NVENC or VAAPI → WHIP/WebRTC`
+`hwmap=mode=read+direct` is mandatory and there is no CPU encoder fallback
+Zero-copy describes the fixed input ring and direct GPU mapping boundary; packetisation, encryption, browser decode and network transport still copy data where their APIs require it
+The target is 1920 × 1080 at 60 FPS and at most 80 ms regional input-to-photon latency, which remains a deployment target rather than a measured guarantee
+
+Browser input uses one authenticated WebSocket controller, a strict 24-byte binary protocol, a preallocated 1,024-event SPSC ring and Linux uinput
+The ring stores events in place, performs no hot-path allocation and releases held keys and buttons when a controller disconnects
+The browser receives media through WHEP, removes its bearer ticket from history, keeps session deletion same-origin and reports decoded FPS, drops, decode time and input RTT
+TCP input can head-of-line block under packet loss, so the regional latency target requires live network measurement
+
+Caddy is the only public HTTP service and terminates TLS on TCP 443
+MediaMTX v1.15.4 and the Rust host remain on loopback, while WebRTC media uses UDP 8189
+Terraform exposes only HTTPS, WebRTC UDP and SSH restricted to the configured administration CIDR
+The bearer token is generated on the host, stored mode 0600 and returned only by `sudo minecraft-stream-link`
+The dedicated media unit alone receives bounded `CAP_SYS_ADMIN` because FFmpeg `kmsgrab` must read DRM planes while Gamescope owns the display; its device list and other systemd protections remain restricted
+
+Terraform never downloads the game, transfers an account or embeds Microsoft credentials
+The operator must prepare `/srv/minecraft-owned/launch` as the dedicated `minecraft` user; that foreground program owns the verified game, x86-64 WineGDK/DXVK runtime and Xbox account-service lifetime
+The game and publisher services stay enabled but stopped until that per-user boundary is complete
+No Oracle deployment, Linux account sign-in or live GPU DMA-BUF import has been completed in this source environment
 
 ## Shared world data
 

@@ -46,6 +46,17 @@ After setup, choose **Play** to open Minecraft again
 ## Questions
 
 <details>
+<summary><strong>Can I play through a browser?</strong></summary>
+
+Build 41 includes an optional self-hosted WebRTC path for an Oracle Cloud Linux GPU host
+It keeps build 40's native Mac and Metal path unchanged and streams the owner's x64 Windows game through Gamescope, DXVK and Vulkan
+The browser receives WHEP video and sends low-latency input; it does not run Minecraft in WebAssembly
+The host still needs a separately prepared owned game, account runtime, DNS, TLS and a compatible GPU image
+See the [cloud build steps](docs/build.md#build-and-deploy-the-cloud-stream) and [browser controls](docs/play.md#browser-streaming)
+
+</details>
+
+<details>
 <summary><strong>Can I play with friends on Xbox or PlayStation?</strong></summary>
 
 Earlier builds joined a featured server and a PS5 friend's world, and displayed

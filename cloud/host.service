@@ -1,0 +1,29 @@
+[Unit]
+Description=Minecraft browser input and session UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+SupplementaryGroups=input
+EnvironmentFile=/etc/minecraft-stream/environment
+ExecStart=/usr/local/bin/MinecraftStream serve --origin https://${STREAM_HOSTNAME} --input /dev/uinput
+Restart=on-failure
+RestartSec=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+DevicePolicy=closed
+DeviceAllow=/dev/uinput rw
+
+[Install]
+WantedBy=multi-user.target

@@ -151,7 +151,7 @@ fn main() {
             }
             Some("--help" | "-h") => {
                 println!(
-                    "Usage: minecraft build|source|play|runtime|monitor|legacy|setup|graphics|wine\nUse COMMAND --help for arguments"
+                    "Usage: minecraft build|source|play|runtime|monitor|legacy|setup|graphics|wine|stream\nUse COMMAND --help for arguments"
                 );
                 Ok(())
             }

@@ -35,6 +35,45 @@ Finish and verify the candidate before asking the player to quit Minecraft norma
 Preserve the preceding working app as recovery, along with all accounts and saves
 Local ad-hoc signatures do not establish Developer ID signing or notarisation
 
+## Build and deploy the cloud stream
+
+The browser path is a separate Rust binary and does not replace the native Mac application
+Build the Linux host for the architecture that will run the control plane; the Windows Bedrock process itself remains x86-64
+
+```sh
+cargo build --locked --release --manifest-path stream/Cargo.toml \
+  --target x86_64-unknown-linux-gnu
+./minecraft stream publish --dry-run
+terraform fmt -check -recursive cloud
+```
+
+The OCI image must already contain a Vulkan-capable GPU driver, Gamescope, Caddy, FFmpeg with WHIP plus NVENC or VAAPI, and MediaMTX v1.15.4
+Create DNS for the chosen hostname, supply the required Terraform variables and use the built Linux `MinecraftStream` binary as `stream_binary`
+
+```sh
+terraform -chdir=cloud init
+terraform -chdir=cloud plan
+terraform -chdir=cloud apply
+```
+
+Terraform creates the GPU instance and narrow network policy, copies the reviewed host files and starts only Caddy, MediaMTX and the authenticated input host
+It preserves the boot volume and never uploads game files, saved worlds or account credentials
+
+Before starting gameplay, prepare `/srv/minecraft-owned` through a private administrator session and keep every file owned by the dedicated `minecraft` user
+Its executable `launch` file must stay in the foreground while it runs the verified owned game through x86-64 WineGDK and DXVK, and it must own the Xbox account-service lifetime
+This project does not provide a generic script that bypasses the per-user Microsoft sign-in or redistributes the game
+
+```sh
+sudo chown -R minecraft:minecraft /srv/minecraft-owned
+sudo chmod 0700 /srv/minecraft-owned /srv/minecraft-owned/launch
+sudo systemctl start minecraft-stream-game minecraft-stream-media
+sudo minecraft-stream-link
+```
+
+Rebuild the Rust binary and run `terraform apply` again to update the host
+The host-generated session token survives that update unless the administrator explicitly replaces `/etc/minecraft-stream/token`
+Measure browser FPS, decode time, input p50/p95 and the `/health` queue counters on the deployed regional GPU before making performance claims
+
 ## Iterate without losing a working build
 
 ```sh

@@ -47,6 +47,22 @@ service running until Minecraft exits. Reopen the app to return to its window.
 Choose **Continue** to retry. An interrupted game-file download restarts; it is
 not a resumable transfer. Avoid starting multiple copies of the app.
 
+## Browser streaming
+
+Build 41 can connect to a separately deployed Linux GPU host without changing the local build 40 Mac application
+The host operator starts the owned game and media services, then obtains the private URL with `sudo minecraft-stream-link`
+Treat that URL like a password because its fragment contains the active controller ticket
+
+Open the link in a current browser, choose **Connect**, then click the video to capture the pointer
+Use the normal keyboard and mouse controls, **Esc** to release the pointer and **Full screen** when wanted
+The status bar shows decoded FPS, cumulative dropped frames, average decode time and input RTT p50/p95
+Only one browser can control the host at a time, and disconnecting releases held keys and mouse buttons
+
+The ticket is removed from browser history after loading, while WHEP signalling and input remain behind the host's TLS origin
+This streams a native x64 game process; Minecraft does not run in WebAssembly or natively on ARM64 and RISC-V hosts
+Network distance, Wi-Fi, browser decode and cloud GPU availability can all prevent the 1080p60 and 80 ms regional targets
+If Connect fails, the operator should check `minecraft-stream-game`, `minecraft-stream-media`, `minecraft-stream-host`, `mediamtx` and `caddy` in that order without exposing their private logs or token
+
 ## Background scenery
 
 Look around keeps the pointer captured for camera movement and hides clickable

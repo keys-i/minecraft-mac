@@ -1,0 +1,87 @@
+#!/bin/sh
+set -eu
+STREAM_HOST=$1
+STREAM_ENCODER_VALUE=$2
+MEDIAMTX_VERSION=$3
+
+for command in caddy ffmpeg gamescope mediamtx openssl; do
+  command -v "$command" >/dev/null 2>&1 || {
+    printf 'The host image is missing %s\n' "$command" >&2
+    exit 1
+  }
+done
+
+case $(mediamtx --version 2>&1) in
+  *"$MEDIAMTX_VERSION"*) ;;
+  *)
+    printf 'MediaMTX must be %s\n' "$MEDIAMTX_VERSION" >&2
+    exit 1
+    ;;
+esac
+
+id minecraft >/dev/null 2>&1 || useradd --create-home --shell /bin/bash minecraft
+getent group input >/dev/null 2>&1 || groupadd input
+for group in video render audio; do
+  getent group "$group" >/dev/null 2>&1 || {
+    printf 'The host image is missing the %s group\n' "$group" >&2
+    exit 1
+  }
+done
+usermod --append --groups input,video,render,audio minecraft
+loginctl enable-linger minecraft
+
+install -d -m 0700 -o minecraft -g minecraft /etc/minecraft-stream
+install -d -m 0700 -o minecraft -g minecraft /srv/minecraft-owned
+if [ ! -f /etc/minecraft-stream/token ]; then
+  umask 077
+  openssl rand -hex 32 > /etc/minecraft-stream/token
+fi
+TOKEN=$(sed -n '1p' /etc/minecraft-stream/token)
+{
+  printf 'MINECRAFT_STREAM_TOKEN=%s\n' "$TOKEN"
+  printf 'STREAM_HOSTNAME=%s\n' "$STREAM_HOST"
+  printf 'STREAM_ENCODER=%s\n' "$STREAM_ENCODER_VALUE"
+} > /etc/minecraft-stream/environment
+chmod 0600 /etc/minecraft-stream/environment /etc/minecraft-stream/token
+
+install -m 0755 /tmp/MinecraftStream /usr/local/bin/MinecraftStream
+install -m 0644 /tmp/minecraft-cloud/Caddyfile /etc/caddy/Caddyfile
+sed "s/@HOSTNAME@/$STREAM_HOST/g" /tmp/minecraft-cloud/mediamtx.yml > /etc/mediamtx.yml
+chmod 0644 /etc/mediamtx.yml
+install -m 0644 /tmp/minecraft-cloud/host.service /etc/systemd/system/minecraft-stream-host.service
+sed "s/@UID@/$(id -u minecraft)/g" /tmp/minecraft-cloud/media.service > /etc/systemd/system/minecraft-stream-media.service
+chmod 0644 /etc/systemd/system/minecraft-stream-media.service
+GAMESCOPE=$(command -v gamescope)
+sed -e "s#@UID@#$(id -u minecraft)#g" -e "s#@GAMESCOPE@#$GAMESCOPE#g" \
+  /tmp/minecraft-cloud/game.service > /etc/systemd/system/minecraft-stream-game.service
+chmod 0644 /etc/systemd/system/minecraft-stream-game.service
+
+cat >/usr/local/bin/minecraft-stream-link <<'EOF'
+#!/bin/sh
+set -eu
+. /etc/minecraft-stream/environment
+printf 'https://%s/#ticket=%s\n' "$STREAM_HOSTNAME" "$MINECRAFT_STREAM_TOKEN"
+EOF
+chmod 0750 /usr/local/bin/minecraft-stream-link
+
+cat >/etc/udev/rules.d/90-minecraft-stream.rules <<'EOF'
+KERNEL=="uinput", MODE="0660", GROUP="input"
+EOF
+udevadm control --reload-rules
+modprobe uinput
+
+mkdir -p /etc/systemd/system/caddy.service.d /etc/systemd/system/mediamtx.service.d
+cat >/etc/systemd/system/caddy.service.d/environment.conf <<'EOF'
+[Service]
+EnvironmentFile=/etc/minecraft-stream/environment
+EOF
+MEDIAMTX=$(command -v mediamtx)
+cat >/etc/systemd/system/mediamtx.service.d/config.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=$MEDIAMTX /etc/mediamtx.yml
+EOF
+
+systemctl daemon-reload
+systemctl enable --now caddy mediamtx minecraft-stream-host
+systemctl enable minecraft-stream-game minecraft-stream-media

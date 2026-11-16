@@ -1,0 +1,40 @@
+[Unit]
+Description=Minecraft owned Linux game session
+After=network-online.target
+Wants=network-online.target
+ConditionPathIsExecutable=/srv/minecraft-owned/launch
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+SupplementaryGroups=audio input video render
+PAMName=login
+TTYPath=/dev/tty7
+StandardInput=tty
+TTYReset=true
+TTYVHangup=true
+TTYVTDisallocate=true
+UtmpIdentifier=tty7
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+Environment=WINEPREFIX=/srv/minecraft-owned/prefix
+Environment=DXVK_LOG_LEVEL=none
+WorkingDirectory=/srv/minecraft-owned
+ExecStart=@GAMESCOPE@ --backend drm -f -w 1920 -h 1080 -W 1920 -H 1080 -r 60 -- /srv/minecraft-owned/launch
+Restart=on-failure
+RestartSec=1
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/minecraft-owned
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

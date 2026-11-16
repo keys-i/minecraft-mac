@@ -12,6 +12,23 @@ inventories and exports
 
 ## Minecraft Launcher 0.17.0
 
+### Build 41 source candidate
+
+Build 41 preserves the verified build 40 native Mac and Metal mode and adds an optional cloud-stream host, browser client and OCI deployment definition
+The Linux media path requires Vulkan scanout, DRM PRIME and direct DMA-BUF mapping into NVENC or VAAPI, with no CPU encoder fallback
+The browser uses WHEP video, pointer capture and one authenticated WebSocket controller backed by a preallocated 1,024-event SPSC ring and Linux uinput
+The Rust control plane checks on macOS and x86-64 Linux; CI also requests ARM64 and RISC-V Linux checks, while the Windows Bedrock game remains x86-64
+
+Eleven ordinary stream checks pass and the ignored release saturation probe records 16.87 million attempts/s with 94.04/170.42/193.08 µs p50/p95/p99 on this Mac
+That deliberately overloaded probe fills the queue and drops 366,319 of one million attempts, so it is a ring saturation profile rather than a gameplay latency result
+The hot push/pop regression records zero allocations after ring construction, and the same-process HTTP/WebSocket exchange covers browser security headers, authentication and binary input enqueueing without a network listener
+Root rustfmt and Clippy pass; 24 of 25 unchanged root tests pass while the sandbox again denies the Unix socket recovery fixture
+
+No OCI host, DNS, owned Linux game, Xbox account session, GPU direct mapping or regional browser path was available for live validation
+The 1080p60 and at most 80 ms input-to-photon figures remain targets, and outperforming WebAssembly is not claimed as a universal benchmark result
+Terraform formatting and shell/JavaScript syntax pass; full Terraform validation awaits the unavailable OCI provider
+See the [build 41 evidence](test.md#build-41-cloud-stream-control-and-browser-path) and [cloud build guide](build.md#build-and-deploy-the-cloud-stream)
+
 ### Build 40 candidate
 
 The 0.17.0/build 40 candidate is prepared in `outputs/0.17.0-build40` from the build 38 source baseline carried through build 39

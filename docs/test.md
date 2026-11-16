@@ -5,6 +5,28 @@ its real boundary; avoid tests that only restate implementation. Documentation
 changes need link, command, export, and checksum checks, not a fresh game install.
 Dated sections below retain evidence for their named builds; they do not describe the current worker language
 
+## Build 41 cloud stream control and browser path
+
+October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1
+The separate stream crate passes rustfmt, Clippy with warnings denied and eleven ordinary checks, with one release-only saturation profile ignored by default
+The checks cover fixed ring order and capacity, exact drop ownership, 100,000 ordered cross-thread events, zero push/pop allocations after construction, the 24-byte input boundary, direct hardware mapping, SHA-1 vectors, RFC WebSocket acceptance, constant-time token comparison and same-process HTTP/WebSocket exchanges
+The exchange runs the production request and frame parsers over an in-process Unix socket pair because the managed sandbox denies loopback listeners
+The x86-64 Linux control target compiles offline after exercising the Linux uinput implementation
+
+The optimised saturation profile makes one million producer attempts against the fixed 1,024-event ring
+It records 633,681 delivered events, 366,319 bounded drops, a 1,024-event high-water mark, 16,874,374 attempts/s and p50/p95/p99 producer-to-consumer samples of 94.04/170.42/193.08 µs
+This is a deliberately overloaded synthetic ring measurement, not browser input-to-photon latency or normal 60 FPS input traffic
+
+The publisher dry run retains `kmsgrab`, `hwmap=mode=read+direct:derive_device=cuda`, `scale_cuda`, `h264_nvenc`, WHIP loopback signalling, 1920 × 1080, 60 FPS and 12 Mbit/s
+The browser JavaScript parser check, shell syntax check and recursive Terraform formatting check pass
+The cloud installer pins MediaMTX v1.15.4, and its WebRTC address, local UDP address, interface discovery, additional-host and on-demand path keys follow that version's official configuration schema
+Root rustfmt and Clippy pass; 24 of 25 root tests pass while the unchanged socket-recovery test is denied at its Unix socket operation by the managed sandbox
+
+ARM64 and RISC-V Linux standard libraries are not installed locally, so their configured CI checks remain unexecuted here
+Terraform validation cannot load the OCI provider in the network-restricted environment
+No Oracle instance, Linux owned-game/account session, Gamescope DRM scanout, DMA-BUF import, encoder, WHEP media session, 1080p60 output or regional 80 ms path has been exercised
+The Windows game remains x86-64 and no universal WebAssembly performance comparison is established
+
 ## Build 40 chunk, interaction and resident corrections
 
 October 31, 2026, on Apple M3 Pro, 36 GB RAM and macOS 27.0.1

@@ -1,0 +1,17 @@
+{$STREAM_HOSTNAME} {
+	encode zstd gzip
+
+	@media {
+		path /minecraft/*
+		header Authorization "Bearer {$MINECRAFT_STREAM_TOKEN}"
+	}
+	handle @media {
+		reverse_proxy 127.0.0.1:8889
+	}
+	handle /minecraft/* {
+		respond "Unauthorized" 401
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8090
+	}
+}

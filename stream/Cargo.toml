@@ -1,0 +1,25 @@
+[package]
+name = "minecraft-stream"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "GPL-3.0-only"
+publish = false
+
+[[bin]]
+name = "MinecraftStream"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "=1.0.104"
+base64 = "=0.23.1"
+httparse = "=1.10.1"
+libc = "=0.2.190"
+serde_json = "=1.0.151"
+signal-hook = "=0.3.18"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
